@@ -50,13 +50,10 @@ class GameViewController: UIViewController {
         }
         
     }
-
+    
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        if UIDevice.current.userInterfaceIdiom == .phone {
-            return .allButUpsideDown
-        } else {
-            return .all
-        }
+        // Restrict this view controller (and thus the app) to Portrait only
+        return .portrait
     }
 
     override var prefersStatusBarHidden: Bool {
