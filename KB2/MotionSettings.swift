@@ -12,7 +12,7 @@ struct MotionSettings {
 
     // Absolute limits
     var minSpeed: CGFloat = 25.0
-    var maxSpeed: CGFloat = 1000.0
+    var maxSpeed: CGFloat = 1200.0
 
     // Adjustment factors (how aggressively to correct)
     var meanCorrectionFactorUp: CGFloat = 1.01   // Factor to increase speed towards mean

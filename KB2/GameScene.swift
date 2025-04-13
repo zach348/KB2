@@ -1,7 +1,7 @@
 // NeuroGlide/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 7 Addendum: Log Actual Mean Speed
-// Role: Main scene for the game. Includes basic arousal state linked to motion.
+// Updated: [Current Date] - Step 7 Addendum 5: Link Arousal to Timer Frequency
+// Role: Main scene for the game. Maps arousal to parameters within tracking range.
 
 import SpriteKit
 import GameplayKit
@@ -9,23 +9,42 @@ import CoreHaptics
 import AVFoundation
 
 // --- Game State Enum ---
-enum GameState { case tracking, identifying, paused }
+enum GameState { case tracking, identifying, paused } // Add .breathing later
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Configuration ---
-    public var timerFrequency: Double = 5.0 { didSet { precisionTimer?.frequency = timerFrequency } }
+    // Rhythmic Pulse
+    // MODIFIED: timerFrequency now controlled by arousal, didSet updates timer
+    public var timerFrequency: Double = 5.0 { // Default starting value
+         didSet {
+             // Ensure frequency stays within reasonable bounds if needed
+             // timerFrequency = max(1.0, min(timerFrequency, 60.0)) // Example bounds
+             precisionTimer?.frequency = timerFrequency // Update the actual timer
+         }
+     }
     public var hapticOffset: TimeInterval = 0.020
     public var audioOffset: TimeInterval = 0.040
+    // Tracking Task
     let numberOfBalls = 10
     let numberOfTargets = 3
     let targetShiftInterval: TimeInterval = 5.0
+    // Identification Task
     let identificationInterval: TimeInterval = 10.0
     let identificationDuration: TimeInterval = 5.0
     let identificationStartDelay: TimeInterval = 0.5
     let flashCooldownDuration: TimeInterval = 0.5
-    let minTargetSpeedForArousal: CGFloat = 80.0
-    let maxTargetSpeedForArousal: CGFloat = 700.0
+    // Arousal Mapping & Thresholds
+    let trackingArousalThresholdLow: CGFloat = 0.35
+    let trackingArousalThresholdHigh: CGFloat = 1.0
+    // Parameter boundaries for the *tracking* range
+    let minTargetSpeedAtTrackingThreshold: CGFloat = 150.0
+    let maxTargetSpeedAtTrackingThreshold: CGFloat = 750.0
+    let minTargetSpeedSDAtTrackingThreshold: CGFloat = 0.0
+    let maxTargetSpeedSDAtTrackingThreshold: CGFloat = 300.0
+    // MODIFIED: Added min/max for timer frequency mapping
+    let minTimerFrequencyAtTrackingThreshold: Double = 5.0  // Low freq at arousal threshold
+    let maxTimerFrequencyAtTrackingThreshold: Double = 18.0 // High freq at arousal 1.0
 
     // --- Properties ---
     private var currentState: GameState = .tracking
@@ -76,8 +95,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if audioReady { startAudioEngine() }
         createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
-        setupTimer(); precisionTimer?.start()
-        updateParametersFromArousal()
+        setupTimer() // Setup timer *before* setting frequency via arousal
+        updateParametersFromArousal() // Set initial params (incl. frequency)
+        precisionTimer?.start() // Start timer *after* frequency is set
         startTrackingTimers(); updateUI()
         flashCooldownEndTime = CACurrentMediaTime()
         print("--- GameScene: didMove(to:) Finished ---")
@@ -256,20 +276,51 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Arousal Handling ---
     private func cycleArousalLevel() {
-        let steps: [CGFloat] = [0.25, 0.50, 0.75, 1.00]
-        if let currentIndex = steps.firstIndex(where: { abs($0 - currentArousalLevel) < 0.01 }) {
-            let nextIndex = (currentIndex + 1) % steps.count
-            currentArousalLevel = steps[nextIndex]
+        let steps: [CGFloat] = [0.35, 0.50, 0.75, 1.00] // Use steps within tracking range
+        let currentStep = steps.min(by: { abs($0 - currentArousalLevel) < abs($1 - currentArousalLevel) }) ?? trackingArousalThresholdLow
+        if let currentIndex = steps.firstIndex(of: currentStep) {
+             let nextIndex = (currentIndex + 1) % steps.count
+             currentArousalLevel = steps[nextIndex]
         } else {
-            currentArousalLevel = steps.first ?? 0.25
+             currentArousalLevel = trackingArousalThresholdLow
         }
+        currentArousalLevel = max(trackingArousalThresholdLow, currentArousalLevel) // Ensure stays >= threshold
     }
+
+    // MODIFIED: Added timerFrequency mapping
     private func updateParametersFromArousal() {
-        let speedRange = maxTargetSpeedForArousal - minTargetSpeedForArousal
-        motionSettings.targetMeanSpeed = minTargetSpeedForArousal + (speedRange * currentArousalLevel)
-        // print("DIAGNOSTIC: Parameters updated for arousal \(String(format: "%.2f", currentArousalLevel)). TargetSpeed: \(String(format: "%.1f", motionSettings.targetMeanSpeed))") // Less verbose
+        // Normalize arousal level within the tracking range [trackingArousalThresholdLow, 1.0] -> [0.0, 1.0]
+        let trackingRange = trackingArousalThresholdHigh - trackingArousalThresholdLow
+        // Ensure trackingRange is not zero to avoid division by zero
+        guard trackingRange > 0 else {
+            print("Warning: trackingArousalThresholdHigh <= trackingArousalThresholdLow. Cannot normalize.")
+            // Set parameters to their minimum values in this edge case
+            motionSettings.targetMeanSpeed = minTargetSpeedAtTrackingThreshold
+            motionSettings.targetSpeedSD = minTargetSpeedSDAtTrackingThreshold
+            self.timerFrequency = minTimerFrequencyAtTrackingThreshold // Use self.timerFrequency to trigger didSet
+            updateUI()
+            return
+        }
+        let clampedArousal = max(trackingArousalThresholdLow, min(currentArousalLevel, trackingArousalThresholdHigh))
+        let normalizedTrackingArousal = (clampedArousal - trackingArousalThresholdLow) / trackingRange
+
+        // Map Speed
+        let speedRange = maxTargetSpeedAtTrackingThreshold - minTargetSpeedAtTrackingThreshold
+        motionSettings.targetMeanSpeed = minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
+
+        // Map Speed SD
+        let sdRange = maxTargetSpeedSDAtTrackingThreshold - minTargetSpeedSDAtTrackingThreshold
+        motionSettings.targetSpeedSD = minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
+
+        // Map Timer Frequency
+        let freqRange = maxTimerFrequencyAtTrackingThreshold - minTimerFrequencyAtTrackingThreshold
+        // Assign directly to self.timerFrequency to trigger its didSet observer which updates the PrecisionTimer
+        self.timerFrequency = minTimerFrequencyAtTrackingThreshold + (freqRange * normalizedTrackingArousal)
+
+        print("DIAGNOSTIC: Parameters updated. Arousal: \(String(format: "%.2f", currentArousalLevel)) (Norm: \(String(format: "%.2f", normalizedTrackingArousal))) -> TargetSpeed: \(String(format: "%.1f", motionSettings.targetMeanSpeed)), TargetSD: \(String(format: "%.1f", motionSettings.targetSpeedSD)), TimerFreq: \(String(format: "%.1f", self.timerFrequency)) Hz")
         updateUI()
     }
+
 
     // --- Haptic Setup ---
     private func setupHaptics() {
@@ -301,7 +352,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Timer Setup ---
     private func setupTimer() {
-        precisionTimer = PrecisionTimer(); precisionTimer?.frequency = timerFrequency
+        precisionTimer = PrecisionTimer();
+        // Set initial frequency from property BEFORE assigning callbacks
+        precisionTimer?.frequency = self.timerFrequency
         precisionTimer?.onVisualTick = { [weak self] in self?.handleVisualTick() }
         precisionTimer?.onHapticTick = { [weak self] t in self?.handleHapticTick(visualTickTime: t) }; precisionTimer?.onAudioTick = { [weak self] t in self?.handleAudioTick(visualTickTime: t) }
     }
@@ -333,9 +386,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // --- Update Loop ---
-    // MODIFIED: Added actual mean speed logging
     override func update(_ currentTime: TimeInterval) {
-        // --- Identification Phase Check ---
         if identificationCheckNeeded {
             if currentState == .tracking && !isFlashSequenceRunning && currentTime >= flashCooldownEndTime {
                 startIdentificationPhase()
@@ -343,19 +394,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
         }
 
-        // --- Motion Control & Logging ---
         if currentState == .tracking && !balls.isEmpty {
-            // Calculate stats *before* applying corrections for accurate logging
             let stats = MotionController.calculateStats(balls: balls)
-
-            // Log the actual vs target mean speed
-            // Reduce frequency of logging to avoid spamming console (e.g., every 60 frames ~ 1s)
             if Int(currentTime * 60) % 60 == 0 {
-                 print(String(format: "Motion Speed - Actual Mean: %.1f (Target: %.1f)",
-                              stats.meanSpeed, motionSettings.targetMeanSpeed))
+                 print(String(format: "Motion Stats - Mean: %.1f (Tgt: %.1f) | SD: %.1f (Tgt: %.1f)",
+                              stats.meanSpeed, motionSettings.targetMeanSpeed,
+                              stats.speedSD, motionSettings.targetSpeedSD))
             }
-
-            // Apply corrections using the potentially updated settings
             MotionController.applyCorrections(balls: balls, settings: motionSettings, scene: self)
         }
     }
