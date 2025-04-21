@@ -1,7 +1,7 @@
 // NeuroGlide/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 7 Addendum 5: Link Arousal to Timer Frequency
-// Role: Main scene for the game. Maps arousal to parameters within tracking range.
+// Updated: [Current Date] - Step 7 FIX 2 (COMPLETE FILE - Border Pulse)
+// Role: Main scene for the game. Uses border pulse, maps arousal.
 
 import SpriteKit
 import GameplayKit
@@ -9,42 +9,34 @@ import CoreHaptics
 import AVFoundation
 
 // --- Game State Enum ---
-enum GameState { case tracking, identifying, paused } // Add .breathing later
+enum GameState { case tracking, identifying, paused }
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Configuration ---
-    // Rhythmic Pulse
-    // MODIFIED: timerFrequency now controlled by arousal, didSet updates timer
-    public var timerFrequency: Double = 5.0 { // Default starting value
+    public var timerFrequency: Double = 5.0 {
          didSet {
-             // Ensure frequency stays within reasonable bounds if needed
-             // timerFrequency = max(1.0, min(timerFrequency, 60.0)) // Example bounds
-             precisionTimer?.frequency = timerFrequency // Update the actual timer
+             precisionTimer?.frequency = timerFrequency
          }
      }
     public var hapticOffset: TimeInterval = 0.020
     public var audioOffset: TimeInterval = 0.040
-    // Tracking Task
     let numberOfBalls = 10
     let numberOfTargets = 3
     let targetShiftInterval: TimeInterval = 5.0
-    // Identification Task
     let identificationInterval: TimeInterval = 10.0
     let identificationDuration: TimeInterval = 5.0
     let identificationStartDelay: TimeInterval = 0.5
     let flashCooldownDuration: TimeInterval = 0.5
-    // Arousal Mapping & Thresholds
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
-    // Parameter boundaries for the *tracking* range
-    let minTargetSpeedAtTrackingThreshold: CGFloat = 150.0
-    let maxTargetSpeedAtTrackingThreshold: CGFloat = 750.0
-    let minTargetSpeedSDAtTrackingThreshold: CGFloat = 0.0
-    let maxTargetSpeedSDAtTrackingThreshold: CGFloat = 300.0
-    // MODIFIED: Added min/max for timer frequency mapping
-    let minTimerFrequencyAtTrackingThreshold: Double = 5.0  // Low freq at arousal threshold
-    let maxTimerFrequencyAtTrackingThreshold: Double = 18.0 // High freq at arousal 1.0
+    let minTargetSpeedAtTrackingThreshold: CGFloat = 100.0
+    let maxTargetSpeedAtTrackingThreshold: CGFloat = 1000.0
+    let minTargetSpeedSDAtTrackingThreshold: CGFloat = 20.0
+    let maxTargetSpeedSDAtTrackingThreshold: CGFloat = 150.0
+    let minTimerFrequencyAtTrackingThreshold: Double = 3.0
+    let maxTimerFrequencyAtTrackingThreshold: Double = 18.0
+    let visualPulseOnDurationRatio: Double = 0.2 // Keep asymmetric timing
 
     // --- Properties ---
     private var currentState: GameState = .tracking
@@ -62,7 +54,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var isFlashSequenceRunning: Bool = false
     private var flashCooldownEndTime: TimeInterval = 0.0
     private var identificationCheckNeeded: Bool = false
-    private var balls: [Ball] = []
+    private var balls: [Ball] = [] // Now holds SKShapeNodes
     private var motionSettings = MotionSettings()
     private var targetsToFind: Int = 0
     private var targetsFoundThisRound: Int = 0
@@ -72,6 +64,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var countdownLabel: SKLabelNode!
     private var arousalLabel: SKLabelNode!
     private var safeAreaTopInset: CGFloat = 0
+    // REMOVED: Texture properties
 
     // --- Haptic Engine ---
     private var hapticEngine: CHHapticEngine?
@@ -90,14 +83,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         print("--- GameScene: didMove(to:) ---")
         backgroundColor = .darkGray
         safeAreaTopInset = view.safeAreaInsets.top
+        // REMOVED: createCommonTextures() call
         setupPhysicsWorld(); setupWalls(); setupUI(); setupHaptics(); setupAudio()
         if hapticsReady { startHapticEngine() }
         if audioReady { startAudioEngine() }
-        createBalls()
+        createBalls() // Creates SKShapeNodes now
         if !balls.isEmpty { applyInitialImpulses() }
-        setupTimer() // Setup timer *before* setting frequency via arousal
-        updateParametersFromArousal() // Set initial params (incl. frequency)
-        precisionTimer?.start() // Start timer *after* frequency is set
+        setupTimer()
+        updateParametersFromArousal()
+        precisionTimer?.start()
         startTrackingTimers(); updateUI()
         flashCooldownEndTime = CACurrentMediaTime()
         print("--- GameScene: didMove(to:) Finished ---")
@@ -114,6 +108,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         print("GameScene cleaned up resources.")
         print("--- GameScene: willMove(from:) Finished ---")
     }
+
+    // REMOVED: createCommonTextures function
 
     // --- Physics Setup ---
     private func setupPhysicsWorld() { physicsWorld.gravity = CGVector(dx: 0, dy: 0); physicsWorld.contactDelegate = self }
@@ -157,6 +153,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
              } else {
                  startPosition = CGPoint(x: CGFloat.random(in: safeFrame.minX ..< safeFrame.maxX), y: CGFloat.random(in: safeFrame.minY ..< safeFrame.maxY))
              }
+             // Creates Ball (SKShapeNode)
              let newBall = Ball(isTarget: false, position: startPosition); newBall.name = "ball_\(i)"
              balls.append(newBall); addChild(newBall)
          }
@@ -175,6 +172,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if flashNewTargets && !newlyAssignedTargets.isEmpty {
             // print("DIAGNOSTIC: assignNewTargets - Flashing \(newlyAssignedTargets.count) new targets.")
             self.isFlashSequenceRunning = true
+            // Flash uses fillColor changes defined in Ball.swift
             newlyAssignedTargets.forEach { $0.flashAsNewTarget() }
             let flashEndTime = CACurrentMediaTime() + Ball.flashDuration
             self.flashCooldownEndTime = flashEndTime + flashCooldownDuration
@@ -190,7 +188,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Tracking Timers ---
     private func startTrackingTimers() {
-        // Target Shift Timer
         stopTargetShiftTimer()
         let waitShift = SKAction.wait(forDuration: targetShiftInterval)
         let performShift = SKAction.run { [weak self] in
@@ -199,12 +196,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         self.run(SKAction.repeatForever(.sequence([waitShift, performShift])), withKey: targetShiftTimerActionKey)
 
-        // Identification Trigger Timer (sets flag only)
         stopIdentificationTimer()
         let waitIdentify = SKAction.wait(forDuration: identificationInterval)
         let setCheckNeededFlagAction = SKAction.run { [weak self] in
             guard let self = self else { return }
-            // print("DIAGNOSTIC: ID Timer Fired - Setting identificationCheckNeeded = true")
             self.identificationCheckNeeded = true
         }
         self.run(SKAction.repeatForever(.sequence([waitIdentify, setCheckNeededFlagAction])), withKey: identificationTimerActionKey)
@@ -220,7 +215,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         physicsWorld.speed = 0; balls.forEach { ball in ball.storedVelocity = ball.physicsBody?.velocity; ball.physicsBody?.velocity = .zero; ball.physicsBody?.isDynamic = false }
         targetsToFind = 0; targetsFoundThisRound = 0
         guard !balls.isEmpty else { endIdentificationPhase(success: false); return }
-        for ball in balls { if ball.isTarget { targetsToFind += 1 }; ball.hideIdentity() }
+        for ball in balls { if ball.isTarget { targetsToFind += 1 }; ball.hideIdentity() } // Uses fillColor
         let waitBeforeCountdown = SKAction.wait(forDuration: identificationStartDelay)
         let startCountdownAction = SKAction.run { [weak self] in self?.startIdentificationTimeout() }
         self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
@@ -238,10 +233,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .identifying else { return }
         print("--- Ending Identification Phase (Success: \(success)) ---"); stopIdentificationTimeout()
         if success { print("Correct!"); score += 1 } else { print("Incorrect/Timeout.") }
-        balls.forEach { $0.revealIdentity() }
+        balls.forEach { $0.revealIdentity() } // Uses fillColor
         balls.forEach { ball in ball.physicsBody?.isDynamic = true; ball.physicsBody?.velocity = ball.storedVelocity ?? .zero; ball.storedVelocity = nil }; physicsWorld.speed = 1
         currentState = .tracking; updateUI()
-        startTrackingTimers() // Restart timers
+        startTrackingTimers()
     }
 
     // --- Touch Handling ---
@@ -260,11 +255,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
         }
     }
+    // MODIFIED: Compare fillColor instead of texture
     private func handleBallTap(_ ball: Ball) {
         guard currentState == .identifying else { return }
-        let targetTexture = Ball.createTexture(color: Ball.Appearance.targetColor); let currentTexture = ball.texture
+        let targetColor = Ball.Appearance.targetColor
+        let currentColor = ball.fillColor
+
         if ball.isTarget {
-            if currentTexture != targetTexture { targetsFoundThisRound += 1; ball.revealIdentity(); if targetsFoundThisRound >= targetsToFind { endIdentificationPhase(success: true) } }
+            // Check if it hasn't already been revealed (i.e., its color is not the target color)
+            if currentColor != targetColor {
+                targetsFoundThisRound += 1; ball.revealIdentity(); if targetsFoundThisRound >= targetsToFind { endIdentificationPhase(success: true) }
+            }
         } else { endIdentificationPhase(success: false) }
     }
     private func changeOffsetsOnTouch() {
@@ -276,7 +277,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Arousal Handling ---
     private func cycleArousalLevel() {
-        let steps: [CGFloat] = [0.35, 0.50, 0.75, 1.00] // Use steps within tracking range
+        let steps: [CGFloat] = [0.35, 0.50, 0.75, 1.00]
         let currentStep = steps.min(by: { abs($0 - currentArousalLevel) < abs($1 - currentArousalLevel) }) ?? trackingArousalThresholdLow
         if let currentIndex = steps.firstIndex(of: currentStep) {
              let nextIndex = (currentIndex + 1) % steps.count
@@ -284,43 +285,31 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         } else {
              currentArousalLevel = trackingArousalThresholdLow
         }
-        currentArousalLevel = max(trackingArousalThresholdLow, currentArousalLevel) // Ensure stays >= threshold
+        currentArousalLevel = max(trackingArousalThresholdLow, currentArousalLevel)
     }
-
-    // MODIFIED: Added timerFrequency mapping
     private func updateParametersFromArousal() {
-        // Normalize arousal level within the tracking range [trackingArousalThresholdLow, 1.0] -> [0.0, 1.0]
         let trackingRange = trackingArousalThresholdHigh - trackingArousalThresholdLow
-        // Ensure trackingRange is not zero to avoid division by zero
         guard trackingRange > 0 else {
-            print("Warning: trackingArousalThresholdHigh <= trackingArousalThresholdLow. Cannot normalize.")
-            // Set parameters to their minimum values in this edge case
             motionSettings.targetMeanSpeed = minTargetSpeedAtTrackingThreshold
             motionSettings.targetSpeedSD = minTargetSpeedSDAtTrackingThreshold
-            self.timerFrequency = minTimerFrequencyAtTrackingThreshold // Use self.timerFrequency to trigger didSet
-            updateUI()
-            return
+            self.timerFrequency = minTimerFrequencyAtTrackingThreshold
+            updateUI(); return
         }
         let clampedArousal = max(trackingArousalThresholdLow, min(currentArousalLevel, trackingArousalThresholdHigh))
         let normalizedTrackingArousal = (clampedArousal - trackingArousalThresholdLow) / trackingRange
 
-        // Map Speed
         let speedRange = maxTargetSpeedAtTrackingThreshold - minTargetSpeedAtTrackingThreshold
         motionSettings.targetMeanSpeed = minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
 
-        // Map Speed SD
         let sdRange = maxTargetSpeedSDAtTrackingThreshold - minTargetSpeedSDAtTrackingThreshold
         motionSettings.targetSpeedSD = minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
 
-        // Map Timer Frequency
         let freqRange = maxTimerFrequencyAtTrackingThreshold - minTimerFrequencyAtTrackingThreshold
-        // Assign directly to self.timerFrequency to trigger its didSet observer which updates the PrecisionTimer
         self.timerFrequency = minTimerFrequencyAtTrackingThreshold + (freqRange * normalizedTrackingArousal)
 
         print("DIAGNOSTIC: Parameters updated. Arousal: \(String(format: "%.2f", currentArousalLevel)) (Norm: \(String(format: "%.2f", normalizedTrackingArousal))) -> TargetSpeed: \(String(format: "%.1f", motionSettings.targetMeanSpeed)), TargetSD: \(String(format: "%.1f", motionSettings.targetSpeedSD)), TimerFreq: \(String(format: "%.1f", self.timerFrequency)) Hz")
         updateUI()
     }
-
 
     // --- Haptic Setup ---
     private func setupHaptics() {
@@ -353,17 +342,40 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- Timer Setup ---
     private func setupTimer() {
         precisionTimer = PrecisionTimer();
-        // Set initial frequency from property BEFORE assigning callbacks
         precisionTimer?.frequency = self.timerFrequency
         precisionTimer?.onVisualTick = { [weak self] in self?.handleVisualTick() }
         precisionTimer?.onHapticTick = { [weak self] t in self?.handleHapticTick(visualTickTime: t) }; precisionTimer?.onAudioTick = { [weak self] t in self?.handleAudioTick(visualTickTime: t) }
     }
 
     // --- Timer Callback Handlers ---
+    // MODIFIED: Use lineWidth changes for visual pulse
     private func handleVisualTick() {
-        guard currentState == .tracking else { return }; guard !balls.isEmpty else { return }
-        let pulseAction = SKAction.sequence([.scale(to: 1.15, duration: 0.05), .scale(to: 1.0, duration: 0.15)]); balls.forEach { $0.run(pulseAction) }
+        guard currentState == .tracking else { return }
+        guard !balls.isEmpty else { return }
+
+        // Calculate durations based on current frequency
+        let cycleDuration = 1.0 / timerFrequency
+        let onDuration = cycleDuration * visualPulseOnDurationRatio
+        // let offDuration = cycleDuration - onDuration // Not needed for sequence
+
+        // Don't run if durations are too short for actions to register reliably
+        guard onDuration > 0.001 else { return }
+
+        for ball in balls {
+            // Create the pulse sequence using lineWidth
+            // Each ball uses its own fill color for the border
+            let setBorderOn = SKAction.run { ball.lineWidth = Ball.pulseLineWidth }
+            let setBorderOff = SKAction.run { ball.lineWidth = 0 }
+            let waitOn = SKAction.wait(forDuration: onDuration)
+
+            // Sequence: Turn border on, wait, turn border off
+            let sequence = SKAction.sequence([setBorderOn, waitOn, setBorderOff])
+
+            // Run action, replacing any previous pulse action on this ball
+            ball.run(sequence, withKey: "visualPulse")
+        }
     }
+
     private func handleHapticTick(visualTickTime: CFTimeInterval) {
         guard currentState == .tracking else { return }
         guard hapticsReady, let player = hapticPlayer else { return }
@@ -390,7 +402,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if identificationCheckNeeded {
             if currentState == .tracking && !isFlashSequenceRunning && currentTime >= flashCooldownEndTime {
                 startIdentificationPhase()
-                identificationCheckNeeded = false // Consume flag ONLY if starting
+                identificationCheckNeeded = false
             }
         }
 
@@ -409,4 +421,4 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     func didBegin(_ contact: SKPhysicsContact) { }
 }
 
-// --- Ball.swift needs the flashDuration constant added ---
+// --- Ball class needs to be SKShapeNode ---
