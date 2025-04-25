@@ -1,7 +1,7 @@
 // NeuroGlide/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 7 FIX 2 (COMPLETE FILE - Border Pulse)
-// Role: Main scene for the game. Uses border pulse, maps arousal.
+// Updated: [Current Date] - Step 8 FIX: Corrected scope for visualPulseOnDurationRatio
+// Role: Main scene. Adds breathing state, animation, and cues.
 
 import SpriteKit
 import GameplayKit
@@ -9,11 +9,15 @@ import CoreHaptics
 import AVFoundation
 
 // --- Game State Enum ---
-enum GameState { case tracking, identifying, paused }
+enum GameState { case tracking, identifying, paused, breathing }
+
+// --- Breathing Phase Enum ---
+enum BreathingPhase { case idle, inhale, holdAfterInhale, exhale, holdAfterExhale }
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Configuration ---
+    // Rhythmic Pulse (Tracking State)
     public var timerFrequency: Double = 5.0 {
          didSet {
              precisionTimer?.frequency = timerFrequency
@@ -21,13 +25,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
      }
     public var hapticOffset: TimeInterval = 0.020
     public var audioOffset: TimeInterval = 0.040
+    // Tracking Task
     let numberOfBalls = 10
     let numberOfTargets = 3
     let targetShiftInterval: TimeInterval = 5.0
+    // Identification Task
     let identificationInterval: TimeInterval = 10.0
     let identificationDuration: TimeInterval = 5.0
     let identificationStartDelay: TimeInterval = 0.5
     let flashCooldownDuration: TimeInterval = 0.5
+    // Arousal Mapping & Thresholds
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
     let minTargetSpeedAtTrackingThreshold: CGFloat = 100.0
@@ -36,9 +43,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     let maxTargetSpeedSDAtTrackingThreshold: CGFloat = 150.0
     let minTimerFrequencyAtTrackingThreshold: Double = 3.0
     let maxTimerFrequencyAtTrackingThreshold: Double = 18.0
-    let visualPulseOnDurationRatio: Double = 0.2 // Keep asymmetric timing
+    // Visual Pulse (Border)
+    let visualPulseOnDurationRatio: Double = 0.2 // Asymmetric timing
+    // Breathing Task Timing & Visuals
+    let breathingInhaleDuration: TimeInterval = 4.0
+    let breathingHoldAfterInhaleDuration: TimeInterval = 1.5
+    let breathingExhaleDuration: TimeInterval = 6.0
+    let breathingHoldAfterExhaleDuration: TimeInterval = 1.0
+    let breathingCircleMinRadius: CGFloat = 60.0
+    let breathingCircleMaxRadius: CGFloat = 180.0
+    let breathingFormationDuration: TimeInterval = 1.0
 
     // --- Properties ---
+    // State
     private var currentState: GameState = .tracking
     private var currentArousalLevel: CGFloat = 0.75 {
         didSet {
@@ -47,6 +64,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             updateParametersFromArousal()
         }
     }
+    private var currentBreathingPhase: BreathingPhase = .idle
+    private var breathingAnimationActionKey = "breathingAnimation"
+    // Timers & Keys
     private var precisionTimer: PrecisionTimer?
     private var targetShiftTimerActionKey = "targetShiftTimer"
     private var identificationTimerActionKey = "identificationTimer"
@@ -54,17 +74,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var isFlashSequenceRunning: Bool = false
     private var flashCooldownEndTime: TimeInterval = 0.0
     private var identificationCheckNeeded: Bool = false
-    private var balls: [Ball] = [] // Now holds SKShapeNodes
+    // Game Objects & Settings
+    private var balls: [Ball] = [] // Holds SKShapeNodes now
     private var motionSettings = MotionSettings()
+    // Identification State
     private var targetsToFind: Int = 0
     private var targetsFoundThisRound: Int = 0
     private var score: Int = 0
+    // UI Elements
     private var scoreLabel: SKLabelNode!
     private var stateLabel: SKLabelNode!
     private var countdownLabel: SKLabelNode!
     private var arousalLabel: SKLabelNode!
+    private var breathingCueLabel: SKLabelNode!
     private var safeAreaTopInset: CGFloat = 0
-    // REMOVED: Texture properties
 
     // --- Haptic Engine ---
     private var hapticEngine: CHHapticEngine?
@@ -83,13 +106,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         print("--- GameScene: didMove(to:) ---")
         backgroundColor = .darkGray
         safeAreaTopInset = view.safeAreaInsets.top
-        // REMOVED: createCommonTextures() call
         setupPhysicsWorld(); setupWalls(); setupUI(); setupHaptics(); setupAudio()
         if hapticsReady { startHapticEngine() }
         if audioReady { startAudioEngine() }
-        createBalls() // Creates SKShapeNodes now
+        createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
-        setupTimer()
+        setupTimer();
         updateParametersFromArousal()
         precisionTimer?.start()
         startTrackingTimers(); updateUI()
@@ -100,16 +122,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     override func willMove(from view: SKView) {
         print("--- GameScene: willMove(from:) ---")
         precisionTimer?.stop(); stopTrackingTimers(); stopIdentificationTimeout()
+        stopBreathingAnimation()
         stopHapticEngine(); stopAudioEngine()
         self.removeAction(forKey: "flashSequenceCompletion")
         balls.forEach { $0.removeFromParent() }; balls.removeAll()
-        scoreLabel?.removeFromParent(); stateLabel?.removeFromParent(); countdownLabel?.removeFromParent(); arousalLabel?.removeFromParent()
+        scoreLabel?.removeFromParent(); stateLabel?.removeFromParent(); countdownLabel?.removeFromParent(); arousalLabel?.removeFromParent(); breathingCueLabel?.removeFromParent()
         precisionTimer = nil; hapticEngine = nil; hapticPlayer = nil; customAudioEngine = nil; audioPlayerNode = nil; audioBuffer = nil
         print("GameScene cleaned up resources.")
         print("--- GameScene: willMove(from:) Finished ---")
     }
-
-    // REMOVED: createCommonTextures function
 
     // --- Physics Setup ---
     private func setupPhysicsWorld() { physicsWorld.gravity = CGVector(dx: 0, dy: 0); physicsWorld.contactDelegate = self }
@@ -125,6 +146,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         countdownLabel.position = CGPoint(x: frame.midX, y: frame.maxY - safeAreaTopInset - 60); countdownLabel.horizontalAlignmentMode = .center; countdownLabel.isHidden = true; addChild(countdownLabel)
         arousalLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light"); arousalLabel.fontSize = 16; arousalLabel.fontColor = .lightGray
         arousalLabel.position = CGPoint(x: frame.maxX - 20, y: frame.maxY - safeAreaTopInset - 30); arousalLabel.horizontalAlignmentMode = .right; addChild(arousalLabel)
+        breathingCueLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold"); breathingCueLabel.fontSize = 36; breathingCueLabel.fontColor = .white
+        breathingCueLabel.position = CGPoint(x: frame.midX, y: frame.midY + 50); breathingCueLabel.horizontalAlignmentMode = .center; breathingCueLabel.isHidden = true; addChild(breathingCueLabel)
     }
 
     // --- UI Update ---
@@ -132,9 +155,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         scoreLabel.text = "Score: \(score)"
         arousalLabel.text = "Arousal: \(String(format: "%.2f", currentArousalLevel))"
         switch currentState {
-        case .tracking: stateLabel.text = "Tracking"; stateLabel.fontColor = .yellow; countdownLabel.isHidden = true
-        case .identifying: stateLabel.text = "Identify!"; stateLabel.fontColor = .red
-        case .paused: stateLabel.text = "Paused"; stateLabel.fontColor = .gray; countdownLabel.isHidden = true
+        case .tracking: stateLabel.text = "Tracking"; stateLabel.fontColor = .yellow; countdownLabel.isHidden = true; breathingCueLabel.isHidden = true
+        case .identifying: stateLabel.text = "Identify!"; stateLabel.fontColor = .red; countdownLabel.isHidden = false; breathingCueLabel.isHidden = true
+        case .breathing: stateLabel.text = "Breathing"; stateLabel.fontColor = .systemBlue; countdownLabel.isHidden = true; breathingCueLabel.isHidden = false
+        case .paused: stateLabel.text = "Paused"; stateLabel.fontColor = .gray; countdownLabel.isHidden = true; breathingCueLabel.isHidden = true
         }
     }
 
@@ -153,7 +177,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
              } else {
                  startPosition = CGPoint(x: CGFloat.random(in: safeFrame.minX ..< safeFrame.maxX), y: CGFloat.random(in: safeFrame.minY ..< safeFrame.maxY))
              }
-             // Creates Ball (SKShapeNode)
              let newBall = Ball(isTarget: false, position: startPosition); newBall.name = "ball_\(i)"
              balls.append(newBall); addChild(newBall)
          }
@@ -170,16 +193,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if ball.isTarget != shouldBeTarget { ball.isTarget = shouldBeTarget; assignmentsMade += 1; if shouldBeTarget { newlyAssignedTargets.append(ball) } }
         }
         if flashNewTargets && !newlyAssignedTargets.isEmpty {
-            // print("DIAGNOSTIC: assignNewTargets - Flashing \(newlyAssignedTargets.count) new targets.")
             self.isFlashSequenceRunning = true
-            // Flash uses fillColor changes defined in Ball.swift
             newlyAssignedTargets.forEach { $0.flashAsNewTarget() }
             let flashEndTime = CACurrentMediaTime() + Ball.flashDuration
             self.flashCooldownEndTime = flashEndTime + flashCooldownDuration
-            // print("DIAGNOSTIC: Flash sequence started. Cooldown ends at: \(self.flashCooldownEndTime)")
              let waitAction = SKAction.wait(forDuration: Ball.flashDuration)
              let clearSequenceFlagAction = SKAction.run { [weak self] in
-                 // print("DIAGNOSTIC: Flash sequence Action finished.")
                  self?.isFlashSequenceRunning = false
              }
              self.run(SKAction.sequence([waitAction, clearSequenceFlagAction]), withKey: "flashSequenceCompletion")
@@ -215,7 +234,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         physicsWorld.speed = 0; balls.forEach { ball in ball.storedVelocity = ball.physicsBody?.velocity; ball.physicsBody?.velocity = .zero; ball.physicsBody?.isDynamic = false }
         targetsToFind = 0; targetsFoundThisRound = 0
         guard !balls.isEmpty else { endIdentificationPhase(success: false); return }
-        for ball in balls { if ball.isTarget { targetsToFind += 1 }; ball.hideIdentity() } // Uses fillColor
+        for ball in balls { if ball.isTarget { targetsToFind += 1 }; ball.hideIdentity() }
         let waitBeforeCountdown = SKAction.wait(forDuration: identificationStartDelay)
         let startCountdownAction = SKAction.run { [weak self] in self?.startIdentificationTimeout() }
         self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
@@ -233,16 +252,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .identifying else { return }
         print("--- Ending Identification Phase (Success: \(success)) ---"); stopIdentificationTimeout()
         if success { print("Correct!"); score += 1 } else { print("Incorrect/Timeout.") }
-        balls.forEach { $0.revealIdentity() } // Uses fillColor
+        balls.forEach { $0.revealIdentity() }
         balls.forEach { ball in ball.physicsBody?.isDynamic = true; ball.physicsBody?.velocity = ball.storedVelocity ?? .zero; ball.storedVelocity = nil }; physicsWorld.speed = 1
-        currentState = .tracking; updateUI()
+        currentState = .tracking
+        updateUI()
         startTrackingTimers()
     }
 
     // --- Touch Handling ---
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if touches.count == 3 {
+            if currentState == .breathing { transitionToTrackingState() }
+            else if currentState == .tracking || currentState == .identifying { transitionToBreathingState() }
+            return
+        }
         if touches.count == 2 {
-            cycleArousalLevel(); return
+             if currentState == .tracking { cycleArousalLevel() }
+             return
         }
         guard currentState == .identifying else {
             if currentState == .tracking && touches.count == 1 { changeOffsetsOnTouch() }
@@ -255,17 +281,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
         }
     }
-    // MODIFIED: Compare fillColor instead of texture
     private func handleBallTap(_ ball: Ball) {
         guard currentState == .identifying else { return }
         let targetColor = Ball.Appearance.targetColor
         let currentColor = ball.fillColor
-
         if ball.isTarget {
-            // Check if it hasn't already been revealed (i.e., its color is not the target color)
-            if currentColor != targetColor {
-                targetsFoundThisRound += 1; ball.revealIdentity(); if targetsFoundThisRound >= targetsToFind { endIdentificationPhase(success: true) }
-            }
+            if currentColor != targetColor { targetsFoundThisRound += 1; ball.revealIdentity(); if targetsFoundThisRound >= targetsToFind { endIdentificationPhase(success: true) } }
         } else { endIdentificationPhase(success: false) }
     }
     private func changeOffsetsOnTouch() {
@@ -311,6 +332,86 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         updateUI()
     }
 
+    // --- State Transition Logic ---
+    private func transitionToBreathingState() {
+        guard currentState == .tracking || currentState == .identifying else { return }
+        print("--- Transitioning to Breathing State ---")
+        if currentState == .identifying { endIdentificationPhase(success: false) }
+        stopTrackingTimers(); precisionTimer?.stop()
+
+        currentState = .breathing; currentBreathingPhase = .idle; updateUI()
+
+        let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
+        let targetPositions = MotionController.circlePoints(numPoints: balls.count, center: centerPoint, radius: breathingCircleMinRadius)
+        guard targetPositions.count == balls.count else { return }
+
+        for (index, ball) in balls.enumerated() {
+            ball.physicsBody?.isDynamic = false; ball.physicsBody?.velocity = .zero; ball.storedVelocity = nil
+            ball.isTarget = false; ball.updateAppearance()
+            let moveAction = SKAction.move(to: targetPositions[index], duration: breathingFormationDuration)
+            moveAction.timingMode = .easeInEaseOut; ball.run(moveAction)
+        }
+
+        let waitFormation = SKAction.wait(forDuration: breathingFormationDuration)
+        let startAnimation = SKAction.run { [weak self] in self?.startBreathingAnimation() }
+        self.run(SKAction.sequence([waitFormation, startAnimation]))
+    }
+    private func transitionToTrackingState() {
+        guard currentState == .breathing else { return }
+        print("--- Transitioning to Tracking State ---")
+        stopBreathingAnimation(); currentState = .tracking; currentBreathingPhase = .idle; updateUI()
+        for ball in balls { ball.physicsBody?.isDynamic = true }
+        applyInitialImpulses()
+        precisionTimer?.start(); startTrackingTimers(); updateParametersFromArousal()
+    }
+
+    // --- Breathing Animation ---
+    private func startBreathingAnimation() {
+        guard currentState == .breathing else { return }
+        print("DIAGNOSTIC: Starting breathing animation cycle.")
+        currentBreathingPhase = .inhale
+        runBreathingCycleAction()
+    }
+    private func stopBreathingAnimation() {
+        print("DIAGNOSTIC: Stopping breathing animation cycle.")
+        self.removeAction(forKey: breathingAnimationActionKey)
+        currentBreathingPhase = .idle
+        breathingCueLabel.isHidden = true
+    }
+    private func runBreathingCycleAction() {
+        let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
+        let inhaleAction = SKAction.customAction(withDuration: breathingInhaleDuration) { node, elapsedTime in
+            let fraction = elapsedTime / CGFloat(self.breathingInhaleDuration)
+            let currentRadius = self.breathingCircleMinRadius + (self.breathingCircleMaxRadius - self.breathingCircleMinRadius) * fraction
+            let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
+            for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
+        }; inhaleAction.timingMode = .easeInEaseOut
+        let holdAfterInhaleAction = SKAction.wait(forDuration: breathingHoldAfterInhaleDuration)
+        let exhaleAction = SKAction.customAction(withDuration: breathingExhaleDuration) { node, elapsedTime in
+            let fraction = elapsedTime / CGFloat(self.breathingExhaleDuration)
+            let currentRadius = self.breathingCircleMaxRadius - (self.breathingCircleMaxRadius - self.breathingCircleMinRadius) * fraction
+            let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
+            for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
+        }; exhaleAction.timingMode = .easeInEaseOut
+        let holdAfterExhaleAction = SKAction.wait(forDuration: breathingHoldAfterExhaleDuration)
+        let setInhale = SKAction.run { [weak self] in self?.updateBreathingPhase(.inhale) }
+        let setHold1 = SKAction.run { [weak self] in self?.updateBreathingPhase(.holdAfterInhale) }
+        let setExhale = SKAction.run { [weak self] in self?.updateBreathingPhase(.exhale) }
+        let setHold2 = SKAction.run { [weak self] in self?.updateBreathingPhase(.holdAfterExhale) }
+        let sequence = SKAction.sequence([setInhale, inhaleAction, setHold1, holdAfterInhaleAction, setExhale, exhaleAction, setHold2, holdAfterExhaleAction])
+        self.run(SKAction.repeatForever(sequence), withKey: breathingAnimationActionKey)
+    }
+    private func updateBreathingPhase(_ newPhase: BreathingPhase) {
+        currentBreathingPhase = newPhase
+        switch newPhase {
+        case .idle: breathingCueLabel.text = ""
+        case .inhale: breathingCueLabel.text = "Inhale"
+        case .holdAfterInhale: breathingCueLabel.text = "Hold"
+        case .exhale: breathingCueLabel.text = "Exhale"
+        case .holdAfterExhale: breathingCueLabel.text = "Hold"
+        }
+    }
+
     // --- Haptic Setup ---
     private func setupHaptics() {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { hapticsReady = false; return }
@@ -348,34 +449,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // --- Timer Callback Handlers ---
-    // MODIFIED: Use lineWidth changes for visual pulse
+    // MODIFIED: Corrected scope for visualPulseOnDurationRatio
     private func handleVisualTick() {
         guard currentState == .tracking else { return }
         guard !balls.isEmpty else { return }
+        guard let _ = balls.first?.strokeColor else { return }
 
-        // Calculate durations based on current frequency
         let cycleDuration = 1.0 / timerFrequency
-        let onDuration = cycleDuration * visualPulseOnDurationRatio
-        // let offDuration = cycleDuration - onDuration // Not needed for sequence
-
-        // Don't run if durations are too short for actions to register reliably
+        // Use self to access property
+        let onDuration = cycleDuration * self.visualPulseOnDurationRatio
         guard onDuration > 0.001 else { return }
 
         for ball in balls {
-            // Create the pulse sequence using lineWidth
-            // Each ball uses its own fill color for the border
             let setBorderOn = SKAction.run { ball.lineWidth = Ball.pulseLineWidth }
             let setBorderOff = SKAction.run { ball.lineWidth = 0 }
             let waitOn = SKAction.wait(forDuration: onDuration)
-
-            // Sequence: Turn border on, wait, turn border off
             let sequence = SKAction.sequence([setBorderOn, waitOn, setBorderOff])
-
-            // Run action, replacing any previous pulse action on this ball
             ball.run(sequence, withKey: "visualPulse")
         }
     }
-
     private func handleHapticTick(visualTickTime: CFTimeInterval) {
         guard currentState == .tracking else { return }
         guard hapticsReady, let player = hapticPlayer else { return }

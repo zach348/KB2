@@ -1,6 +1,7 @@
 // NeuroGlide/MotionController.swift
-// Created: [Current Date]
-// Role: Calculates motion statistics and applies corrections to balls. (COMPLETE FILE)
+// Created: [Previous Date]
+// Updated: [Current Date] - Step 8: Added circlePoints function (COMPLETE FILE)
+// Role: Calculates motion statistics and applies corrections to balls.
 
 import Foundation
 import SpriteKit // For CGPoint, CGVector, etc.
@@ -40,7 +41,6 @@ struct MotionController {
 
         // Calculate Mean
         let totalSpeed = speeds.reduce(0, +)
-        // Avoid division by zero if count is somehow zero despite guard
         let meanSpeed = count > 0 ? totalSpeed / count : 0
 
         // Calculate Standard Deviation
@@ -51,8 +51,9 @@ struct MotionController {
         }
         // Use population standard deviation (divide by N)
         let variance = count > 0 ? sumOfSquaredDifferences / count : 0
-        // Ensure variance is non-negative before sqrt
+         // Ensure variance is non-negative before sqrt
         let speedSD = variance >= 0 ? sqrt(variance) : 0
+
 
         return MotionStats(meanSpeed: meanSpeed, speedSD: speedSD)
     }
@@ -140,5 +141,32 @@ struct MotionController {
                 // print("WallPush Y applied to \(ball.name ?? "")") // Debug
             }
         }
+    }
+
+    // --- Breathing Phase Helper ---
+    // ADDED: circlePoints function
+    /// Calculates points evenly distributed on a circle.
+    /// - Parameters:
+    ///   - numPoints: The number of points (balls) to calculate positions for.
+    ///   - center: The center point of the circle.
+    ///   - radius: The radius of the circle.
+    ///   - precision: Number of decimal places for coordinate rounding.
+    /// - Returns: An array of CGPoint positions on the circle.
+    static func circlePoints(numPoints: Int, center: CGPoint, radius: CGFloat, precision: Int = 3) -> [CGPoint] {
+        guard numPoints > 0 else { return [] }
+        var points = [CGPoint]()
+        let angleStep = CGFloat.pi * 2.0 / CGFloat(numPoints)
+        let p = pow(10.0, Double(precision))
+
+        for i in 0..<numPoints {
+            // Start from top (-pi/2) and go clockwise
+            let angle = angleStep * CGFloat(i) - (.pi / 2.0)
+            let x = center.x + radius * cos(angle)
+            let roundedX = (Double(p * x)).rounded() / Double(p)
+            let y = center.y + radius * sin(angle)
+            let roundedY = (Double(p * y)).rounded() / Double(p)
+            points.append(CGPoint(x: roundedX, y: roundedY))
+        }
+        return points
     }
 }
