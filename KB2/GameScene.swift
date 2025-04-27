@@ -69,6 +69,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var breathingVisualsFaded: Bool = false
     private var fadeOverlayNode: SKSpriteNode!
 
+    // --- ADDED: Properties for Dynamic Breathing Durations ---
+    private var currentBreathingInhaleDuration: TimeInterval = GameConfiguration().breathingInhaleDuration
+    private var currentBreathingHold1Duration: TimeInterval = GameConfiguration().breathingHoldAfterInhaleDuration
+    private var currentBreathingExhaleDuration: TimeInterval = GameConfiguration().breathingExhaleDuration
+    private var currentBreathingHold2Duration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
+    private var needsHapticPatternUpdate: Bool = false
+    // --- END ADDED ---
+
     // --- Feedback Properties ---
     private var correctTapEmitterTemplate: SKEmitterNode?
     private var activeParticleEmitters: [Ball: SKEmitterNode] = [:]
@@ -519,6 +527,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         let nextIndex = (currentIndex == 0) ? (gameConfiguration.arousalSteps.count - 1) : (currentIndex - 1)
         currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
+
+        // --- ADDED: Update Breathing Timings if Needed ---
+        // Check if we are in the breathing state and update dynamic parameters
+        if currentState == .breathing {
+            updateDynamicBreathingParameters()
+        }
+        // --- END ADDED ---
     }
     private func updateParametersFromArousal() {
         switch currentState {
@@ -554,11 +569,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if currentState == .tracking { for ball in balls { ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor) } }
         case .breathing:
             self.currentTimerFrequency = gameConfiguration.breathingTimerFrequency
-            motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
-            self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
-            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
+            // --- MODIFIED: Update dynamic breathing params instead of resetting others ---
+            updateDynamicBreathingParameters()
+            // Also ensure motion stops etc.
+            motionSettings.targetMeanSpeed = 0
+            motionSettings.targetSpeedSD = 0
+            // Keep colors low arousal
             activeTargetColor = gameConfiguration.targetColor_LowArousal
             activeDistractorColor = gameConfiguration.distractorColor_LowArousal
+            // --- END MODIFIED ---
         case .paused:
              self.currentTimerFrequency = 1.0; motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
              self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
@@ -689,20 +708,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     private func runBreathingCycleAction() {
         let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
-        let inhaleAction = SKAction.customAction(withDuration: gameConfiguration.breathingInhaleDuration) { _, elapsedTime in
-            let fraction = elapsedTime / CGFloat(self.gameConfiguration.breathingInhaleDuration)
+        let inhaleAction = SKAction.customAction(withDuration: currentBreathingInhaleDuration) { _, elapsedTime in
+            let fraction = elapsedTime / CGFloat(self.currentBreathingInhaleDuration)
             let currentRadius = self.gameConfiguration.breathingCircleMinRadius + (self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius) * fraction
             let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
         }; inhaleAction.timingMode = .easeInEaseOut
-        let hold1Visual = SKAction.wait(forDuration: gameConfiguration.breathingHoldAfterInhaleDuration)
-        let exhaleAction = SKAction.customAction(withDuration: gameConfiguration.breathingExhaleDuration) { _, elapsedTime in
-            let fraction = elapsedTime / CGFloat(self.gameConfiguration.breathingExhaleDuration)
+        let hold1Visual = SKAction.wait(forDuration: currentBreathingHold1Duration)
+        let exhaleAction = SKAction.customAction(withDuration: currentBreathingExhaleDuration) { _, elapsedTime in
+            let fraction = elapsedTime / CGFloat(self.currentBreathingExhaleDuration)
             let currentRadius = self.gameConfiguration.breathingCircleMaxRadius - (self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius) * fraction
             let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
         }; exhaleAction.timingMode = .easeInEaseOut
-        let hold2Visual = SKAction.wait(forDuration: gameConfiguration.breathingHoldAfterExhaleDuration)
+        let hold2Visual = SKAction.wait(forDuration: currentBreathingHold2Duration)
         let setInhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.inhale) }
         let setHold1Cue = SKAction.run { [weak self] in self?.updateBreathingPhase(.holdAfterInhale) }
         let setExhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.exhale) }
@@ -716,8 +735,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             setExhaleCue, exhaleAction,
             setHold2Cue, hold2Visual
         ])
+
+        // --- ADDED: Check and apply deferred haptic update at end of cycle ---
+        let applyDeferredHapticUpdate = SKAction.run {
+            [weak self] in
+            guard let self = self else { return }
+            if self.needsHapticPatternUpdate {
+                print("DIAGNOSTIC: Applying deferred haptic pattern update at end of cycle.")
+                self.updateBreathingHaptics() // Regenerates and restarts haptics
+            }
+        }
+        // --- END ADDED ---
+
         let runAgain = SKAction.run { [weak self] in self?.runBreathingCycleAction() }
-        self.run(SKAction.sequence([sequence, runAgain]), withKey: breathingAnimationActionKey)
+        self.run(SKAction.sequence([sequence, applyDeferredHapticUpdate, runAgain]), withKey: breathingAnimationActionKey)
     }
     private func updateBreathingPhase(_ newPhase: BreathingPhase) {
         currentBreathingPhase = newPhase
@@ -738,9 +769,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             hapticEngine?.stoppedHandler = { [weak self] r in print("Haptic stopped: \(r)"); self?.hapticsReady = false; self?.stopBreathingAnimation() }
             hapticEngine?.resetHandler = { [weak self] in print("Haptic reset."); self?.hapticsReady = false; self?.startHapticEngine() }
             let i = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.8); let s = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.6)
-            let e = CHHapticEvent(eventType: .hapticTransient, parameters: [i, s], relativeTime: 0); let p = try CHHapticPattern(events: [e], parameters: [])
-            hapticPlayer = try hapticEngine?.makePlayer(with: p)
-            prepareBreathingHaptics()
+            let transientEvent = CHHapticEvent(eventType: .hapticTransient, parameters: [i, s], relativeTime: 0)
+            let transientPattern = try CHHapticPattern(events: [transientEvent], parameters: [])
+            hapticPlayer = try hapticEngine?.makePlayer(with: transientPattern) // Basic player for simple taps
+
+            // --- MODIFIED: Generate initial breathing pattern & player ---
+            if let initialPattern = generateBreathingHapticPattern(inhaleDuration: currentBreathingInhaleDuration,
+                                                                   hold1Duration: currentBreathingHold1Duration,
+                                                                   exhaleDuration: currentBreathingExhaleDuration,
+                                                                   hold2Duration: currentBreathingHold2Duration) {
+                 breathingHapticPlayer = try hapticEngine?.makePlayer(with: initialPattern)
+             } else {
+                 print("ERROR: Failed to create initial breathing haptic pattern.")
+            }
+            // --- END MODIFIED ---
+
             hapticsReady = true
         } catch { print("DIAGNOSTIC: setupHaptics - Error: \(error.localizedDescription)"); hapticsReady = false }
     }
@@ -751,72 +794,140 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func stopHapticEngine() {
          guard let engine = hapticEngine else { return }; engine.stop { e in if let err = e { print("Error stopping haptic: \(err.localizedDescription)") } }; hapticsReady = false
     }
-    private func prepareBreathingHaptics() {
-        guard let engine = hapticEngine else { return }
-        var allBreathingEvents: [CHHapticEvent] = []
-        var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
-        let inhaleDuration = gameConfiguration.breathingInhaleDuration
-        let hold1Duration = gameConfiguration.breathingHoldAfterInhaleDuration
-        let exhaleDuration = gameConfiguration.breathingExhaleDuration
-        let hapticIntensity = gameConfiguration.breathingHapticIntensity
-        let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
-        let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
-        let accelFactor = gameConfiguration.breathingHapticAccelFactor
 
-        // Inhale Phase
-        var relativeTime: TimeInterval = 0; var currentDelayFactor: Double = 1.0
-        let baseInhaleDelay = inhaleDuration / 23.0
-        let sharpnessRangeInhale = sharpnessMax - sharpnessMin
-        while relativeTime < inhaleDuration - 0.01 {
-            let absoluteTime = phaseStartTime + relativeTime; inhaleEventTimes.append(absoluteTime)
-            let fraction = relativeTime / inhaleDuration
-            let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-            allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-            let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += accelFactor
-        }
-        let minimumDelay = inhaleEventTimes.count > 1 ? (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
-        phaseStartTime += inhaleDuration
+    // --- MODIFIED: Parameterized function to generate pattern ---
+    private func generateBreathingHapticPattern(inhaleDuration: TimeInterval, hold1Duration: TimeInterval, exhaleDuration: TimeInterval, hold2Duration: TimeInterval) -> CHHapticPattern? {
+         guard let engine = hapticEngine else { return nil }
+         var allBreathingEvents: [CHHapticEvent] = []
+         var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
 
-        // Hold After Inhale Phase
-        relativeTime = 0
-        while relativeTime < hold1Duration - 0.01 {
-            let absoluteTime = phaseStartTime + relativeTime
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
-            allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-            relativeTime += minimumDelay
-        }
-        phaseStartTime += hold1Duration
+         let hapticIntensity = gameConfiguration.breathingHapticIntensity
+         let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
+         let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
+         let accelFactor = gameConfiguration.breathingHapticAccelFactor
 
-        // Exhale Phase
-        relativeTime = 0
-        let baseExhaleDelay = exhaleDuration / 23.0
-        let numSteps = inhaleEventTimes.count
-        let maxFactor = 1.0 + accelFactor * Double(numSteps)
-        currentDelayFactor = maxFactor
-        let sharpnessRangeExhale = sharpnessMax - sharpnessMin
-        while relativeTime < exhaleDuration - 0.01 {
-             let absoluteTime = phaseStartTime + relativeTime
-             let fraction = relativeTime / exhaleDuration
-             let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
+         // Inhale Phase
+         var relativeTime: TimeInterval = 0; var currentDelayFactor: Double = 1.0
+         let baseInhaleDelay = inhaleDuration / 23.0
+         let sharpnessRangeInhale = sharpnessMax - sharpnessMin
+         while relativeTime < inhaleDuration - 0.01 {
+             let absoluteTime = phaseStartTime + relativeTime; inhaleEventTimes.append(absoluteTime)
+             let fraction = relativeTime / inhaleDuration
+             let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-             let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
-             relativeTime += delay; currentDelayFactor -= accelFactor
-             if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
-        }
-        // No Hold2 Events
+             let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += accelFactor
+         }
+         let minimumDelay = inhaleEventTimes.count > 1 ? (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
+         phaseStartTime += inhaleDuration
 
-        allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
-        guard !allBreathingEvents.isEmpty else { return }
-        do {
-            let breathingPattern = try CHHapticPattern(events: allBreathingEvents, parameters: [])
-            breathingHapticPlayer = try engine.makePlayer(with: breathingPattern)
-        } catch { print("Error creating single breathing haptic pattern/player: \(error.localizedDescription)") }
+         // Hold After Inhale Phase
+         relativeTime = 0
+         while relativeTime < hold1Duration - 0.01 {
+             let absoluteTime = phaseStartTime + relativeTime
+             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
+             let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
+             allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
+             relativeTime += minimumDelay
+         }
+         phaseStartTime += hold1Duration
+
+         // Exhale Phase
+         relativeTime = 0
+         let baseExhaleDelay = exhaleDuration / 23.0
+         let numSteps = inhaleEventTimes.count
+         let maxFactor = 1.0 + accelFactor * Double(numSteps)
+         currentDelayFactor = maxFactor
+         let sharpnessRangeExhale = sharpnessMax - sharpnessMin
+         while relativeTime < exhaleDuration - 0.01 {
+              let absoluteTime = phaseStartTime + relativeTime
+              let fraction = relativeTime / exhaleDuration
+              let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
+              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
+              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
+              let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
+              relativeTime += delay; currentDelayFactor -= accelFactor
+              if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
+         }
+         // No Hold2 Events
+
+         allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
+         guard !allBreathingEvents.isEmpty else { return nil }
+         do {
+             let breathingPattern = try CHHapticPattern(events: allBreathingEvents, parameters: [])
+             return breathingPattern
+         } catch { print("Error creating breathing haptic pattern: \(error.localizedDescription)"); return nil }
+     }
+
+    // --- ADDED: Helper to Update Dynamic Breathing Parameters & Trigger Haptic Regen ---
+    private func updateDynamicBreathingParameters() {
+        guard currentState == .breathing else { return }
+
+        // Normalize arousal within the breathing range [0.0, thresholdLow]
+        let breathingArousalRange = gameConfiguration.trackingArousalThresholdLow
+        guard breathingArousalRange > 0 else { return } // Avoid division by zero
+        let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
+        let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange // Range 0.0 to 1.0
+
+        // Define target duration ranges (Example: Inhale 3.5s-5.0s, Exhale 6.5s-5.0s)
+        let minInhale: TimeInterval = 3.5
+        let maxInhale: TimeInterval = 5.0
+        let minExhale: TimeInterval = 5.0
+        let maxExhale: TimeInterval = 6.5
+
+        // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
+        let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
+        let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
+
+        // Check if change exceeds tolerance
+        let tolerance: TimeInterval = 0.1
+        if abs(targetInhaleDuration - currentBreathingInhaleDuration) > tolerance || abs(targetExhaleDuration - currentBreathingExhaleDuration) > tolerance {
+            print("DIAGNOSTIC: Breathing duration change detected. Updating...")
+            currentBreathingInhaleDuration = targetInhaleDuration
+            currentBreathingExhaleDuration = targetExhaleDuration
+            // Keep holds constant for now
+            // currentBreathingHold1Duration = ...
+            // currentBreathingHold2Duration = ...
+
+            // Flag that haptic pattern needs update at end of cycle
+            needsHapticPatternUpdate = true
+        }
     }
+    // --- END ADDED ---
+
+    // --- ADDED: Function to Update Breathing Haptics ---
+    private func updateBreathingHaptics() {
+        guard hapticsReady, let engine = hapticEngine else { return }
+
+        print("DIAGNOSTIC: Updating breathing haptic pattern...")
+        // Stop the current player
+        try? breathingHapticPlayer?.stop(atTime: CHHapticTimeImmediate)
+        breathingHapticPlayer = nil // Release old player
+
+        // Generate new pattern with current durations
+        guard let newPattern = generateBreathingHapticPattern(inhaleDuration: currentBreathingInhaleDuration,
+                                                               hold1Duration: currentBreathingHold1Duration,
+                                                               exhaleDuration: currentBreathingExhaleDuration,
+                                                               hold2Duration: currentBreathingHold2Duration) else {
+            print("ERROR: Failed to generate new breathing haptic pattern during update.")
+            return
+        }
+
+        // Create and start a new player
+        do {
+            breathingHapticPlayer = try engine.makePlayer(with: newPattern)
+            // Try starting immediately - might cause slight jump if called mid-cycle
+            try? breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
+             print("DIAGNOSTIC: Successfully updated and started new breathing haptic player.")
+        } catch {
+            print("ERROR: Failed to create or start new breathing haptic player: \(error.localizedDescription)")
+        }
+
+        needsHapticPatternUpdate = false // Reset flag
+    }
+    // --- END ADDED ---
 
     // --- Audio Setup ---
     private func setupAudio() {
@@ -842,6 +953,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             audioReady = true
         } catch { print("DIAGNOSTIC: setupAudio - Error: \(error.localizedDescription)"); audioReady = false }
     }
+    // --- MODIFIED: Remove amplitude param, calculate internally based on arousalLevel, use odd harmonics for square wave approximation ---
     private func generateAudioBuffer(frequency: Float, arousalLevel: CGFloat) -> AVAudioPCMBuffer? {
         guard let format = audioFormat, format.sampleRate > 0 else { return nil }
         let sampleRate = Float(format.sampleRate)
@@ -855,29 +967,42 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let channelData = buffer.floatChannelData?[0] else { return nil }
 
         let angularFrequency = 2 * .pi * frequency / sampleRate
-        // --- MODIFIED: Calculate amplitude based on arousal ---
+        // --- Calculate amplitude based on arousal ---
         let minAmplitude: Float = 0.3
         let maxAmplitude: Float = 0.7
         let amplitudeRange = maxAmplitude - minAmplitude
         let clampedArousal = max(0.0, min(arousalLevel, 1.0))
         let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
-        // --- END MODIFIED ---
+        // --- END ---
 
-        // --- ADDED: Harmonic calculation based on arousal ---
-        let harmonicFrequency = frequency * 2.0 // Second harmonic
-        let harmonicAngularFrequency = 2 * .pi * harmonicFrequency / sampleRate
-        let maxHarmonicAmplitude: Float = 0.25
-        let harmonicAmplitude = maxHarmonicAmplitude * Float(max(0.0, min(arousalLevel, 1.0)))
-        // --- END ADDED ---
+        // --- Square wave approximation via odd harmonics ---
+        let squarenessFactor = Float(clampedArousal) // 0.0 (sine) to 1.0 (more square)
+
+        let angularFreq3 = 3.0 * angularFrequency
+        let amplitude3 = (calculatedAmplitude / 3.0) * squarenessFactor
+
+        let angularFreq5 = 5.0 * angularFrequency
+        let amplitude5 = (calculatedAmplitude / 5.0) * squarenessFactor
+
+        let angularFreq7 = 7.0 * angularFrequency
+        let amplitude7 = (calculatedAmplitude / 7.0) * squarenessFactor
+        // --- END ---
+
 
         for frame in 0..<Int(frameCount) {
-            // --- MODIFIED: Add harmonic to fundamental ---
-            let fundamentalValue = sin(Float(frame) * angularFrequency) * calculatedAmplitude
-            let harmonicValue = sin(Float(frame) * harmonicAngularFrequency) * harmonicAmplitude
-            channelData[frame] = fundamentalValue + harmonicValue
-            // --- END MODIFIED ---
+            let time = Float(frame)
+            // --- Sum fundamental and scaled odd harmonics ---
+            let fundamentalValue = sin(time * angularFrequency) * calculatedAmplitude
+            let harmonic3Value = sin(time * angularFreq3) * amplitude3
+            let harmonic5Value = sin(time * angularFreq5) * amplitude5
+            let harmonic7Value = sin(time * angularFreq7) * amplitude7
+
+            channelData[frame] = fundamentalValue + harmonic3Value + harmonic5Value + harmonic7Value
+            // Optional: Clamp to avoid potential clipping, although unlikely with these amplitudes
+            // channelData[frame] = max(-1.0, min(1.0, channelData[frame]))
+            // --- END ---
         }
-        // print("DIAGNOSTIC: Generated audio buffer with Freq: \(frequency) Hz, Amp: \(calculatedAmplitude), HarmonicAmp: \(harmonicAmplitude)")
+        // print("DIAGNOSTIC: Generated audio buffer Freq:\(frequency) Hz, Amp:\(calculatedAmplitude), Squareness:\(squarenessFactor)")
         return buffer
     }
     private func startAudioEngine() {
