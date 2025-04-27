@@ -75,6 +75,17 @@ struct GameConfiguration {
     // --- Identification Task ---
     let identificationStartDelay: TimeInterval = 0.5
     let identificationDuration: TimeInterval = 5.0 // Base duration
+    // --- Feedback Settings ---
+    let correctTapParticleEffectFileName: String = "CorrectTapEffect.sks" // Ensure this file exists
+    let correctTapSoundFileName: String = "correct_sound" // Base name, assumes extension
+    let groupCompleteSoundFileName: String = "streak_sound" // Base name, assumes extension
+    let feedbackMinArousalThreshold: CGFloat = 0.5 // Arousal level below which feedback is zero
+    let feedbackMaxArousalThreshold: CGFloat = 1.0 // Arousal level at which feedback is maximum
+    // Particle Feedback Mapping
+    let particleFeedbackMaxBirthRate: CGFloat = 200 // Example: Birth rate at max arousal
+    let particleFeedbackMaxScale: CGFloat = 1.0 // Example: Scale at max arousal
+    // Audio Feedback Mapping
+    let audioFeedbackMaxVolume: Float = 1.0 // Volume at max arousal
 
     // --- Visuals ---
     let visualPulseOnDurationRatio: Double = 0.2

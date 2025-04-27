@@ -69,6 +69,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var breathingVisualsFaded: Bool = false
     private var fadeOverlayNode: SKSpriteNode!
 
+    // --- Feedback Properties ---
+    private var correctTapEmitterTemplate: SKEmitterNode?
+    private var activeParticleEmitters: [Ball: SKEmitterNode] = [:]
+    private var correctTapPlayer: AVAudioPlayer?
+    private var groupCompletePlayer: AVAudioPlayer?
+
     // --- Haptic Engine ---
     private var hapticEngine: CHHapticEngine?
     private var hapticPlayer: CHHapticPatternPlayer?
@@ -122,6 +128,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         safeAreaTopInset = view.safeAreaInsets.top
         setupPhysicsWorld(); setupWalls(); setupUI(); setupHaptics(); setupAudio()
         setupFadeOverlay() // Setup overlay
+        setupFeedbackAssets() // Load particles and sounds
         if hapticsReady { startHapticEngine() }
         if audioReady { startAudioEngine() }
         updateParametersFromArousal()
@@ -140,11 +147,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         stopIdentificationTimeout()
         stopBreathingAnimation()
         stopHapticEngine(); stopAudioEngine()
+        correctTapPlayer?.stop(); groupCompletePlayer?.stop() // Stop feedback sounds
         self.removeAction(forKey: "flashSequenceCompletion"); self.removeAction(forKey: breathingAnimationActionKey)
         balls.forEach { $0.removeFromParent() }; balls.removeAll()
         scoreLabel.removeFromParent(); stateLabel.removeFromParent(); countdownLabel.removeFromParent(); arousalLabel.removeFromParent(); breathingCueLabel.removeFromParent()
         fadeOverlayNode.removeFromParent()
         breathingHapticPlayer = nil; hapticPlayer = nil
+        correctTapEmitterTemplate = nil; activeParticleEmitters.removeAll() // Clear feedback assets
+        correctTapPlayer = nil; groupCompletePlayer = nil
         precisionTimer = nil; hapticEngine = nil; customAudioEngine = nil; audioPlayerNode = nil; audioBuffer = nil
         print("GameScene cleaned up resources.")
         print("--- GameScene: willMove(from:) Finished ---")
@@ -280,6 +290,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func endIdentificationPhase(success: Bool) {
         guard currentState == .identifying else { return }
         print("--- Ending Identification Phase (Success: \(success)) ---"); stopIdentificationTimeout()
+
+        // --- Remove Active Particle Emitters ---
+        for (_, emitter) in activeParticleEmitters {
+            emitter.removeFromParent()
+        }
+        activeParticleEmitters.removeAll()
+        // --------------------------------------
+
         if success { print("Correct!"); score += 1 } else { print("Incorrect/Timeout.") }
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
         balls.forEach { ball in ball.physicsBody?.isDynamic = true; ball.physicsBody?.velocity = ball.storedVelocity ?? .zero; ball.storedVelocity = nil }; physicsWorld.speed = 1
@@ -324,23 +342,71 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .identifying else { return }
         print("DEBUG: handleBallTap called for \(ball.name ?? "Unknown"). IsTarget: \(ball.isTarget), IsHidden: \(ball.isVisuallyHidden)") // DEBUG
 
-        // Check if the ball is currently hidden visually
-        if ball.isVisuallyHidden {
+        // Check if the ball is currently hidden visually and hasn't already been correctly identified (no emitter attached)
+        if ball.isVisuallyHidden && activeParticleEmitters[ball] == nil {
             if ball.isTarget {
                 print("DEBUG: Correct tap on hidden target.")
                 targetsFoundThisRound += 1
                 ball.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) // Reveal it
+
+                // --- Calculate Feedback Salience based on Arousal ---
+                let minArousal = gameConfiguration.feedbackMinArousalThreshold
+                let maxArousal = gameConfiguration.feedbackMaxArousalThreshold
+                var normalizedFeedbackArousal: CGFloat = 0.0
+                if currentArousalLevel >= minArousal {
+                    let arousalRange = maxArousal - minArousal
+                    if arousalRange > 0 {
+                        normalizedFeedbackArousal = min(1.0, (currentArousalLevel - minArousal) / arousalRange)
+                    } else if currentArousalLevel >= maxArousal {
+                        normalizedFeedbackArousal = 1.0 // Handle edge case where min == max
+                    }
+                }
+                // -----------------------------------------------------
+
+                // --- Add Visual Feedback (Particle Emitter) ---
+                if normalizedFeedbackArousal > 0, let template = correctTapEmitterTemplate {
+                    let emitter = template.copy() as! SKEmitterNode
+                    // Map arousal to emitter properties (e.g., birth rate, scale)
+                    emitter.particleBirthRate = gameConfiguration.particleFeedbackMaxBirthRate * normalizedFeedbackArousal
+                    emitter.particleScale = gameConfiguration.particleFeedbackMaxScale * normalizedFeedbackArousal
+                    emitter.targetNode = self // Particles should move relative to the scene
+                    ball.addChild(emitter) // Attach to the ball
+                    activeParticleEmitters[ball] = emitter // Track it
+                    // print("DIAGNOSTIC: Added particle emitter to \(ball.name ?? "Unknown") with birthRate: \(emitter.particleBirthRate)")
+                }
+                // -----------------------------------------------
+
+                // --- Play Audio Feedback (Correct Tap) ---
+                if normalizedFeedbackArousal > 0, let player = correctTapPlayer {
+                    player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
+                    player.currentTime = 0 // Rewind
+                    player.play()
+                    // print("DIAGNOSTIC: Played correct tap sound with volume: \(player.volume)")
+                }
+                // -------------------------------------------
+
+                // --- Check for Round Completion ---
                 if targetsFoundThisRound >= targetsToFind {
+                    // --- Play Audio Feedback (Group Complete) ---
+                    if normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
+                        player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
+                        player.currentTime = 0 // Rewind
+                        player.play()
+                        // print("DIAGNOSTIC: Played group complete sound with volume: \(player.volume)")
+                    }
+                    // --------------------------------------------
                     endIdentificationPhase(success: true)
                 }
+                // -----------------------------------
+
             } else {
                 // Tapped a hidden distractor
                 print("DEBUG: Incorrect tap on hidden distractor.")
                 endIdentificationPhase(success: false)
             }
         } else {
-            // Ball was likely already revealed
-            print("DEBUG: Tap on already revealed ball.")
+            // Ball was likely already revealed or tapped incorrectly before
+            print("DEBUG: Tap on already revealed or previously tapped ball.")
             // Optional: Add penalty for tapping revealed ball? For now, do nothing.
         }
     }
@@ -764,6 +830,48 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Physics Contact Delegate Method ---
     func didBegin(_ contact: SKPhysicsContact) { }
+
+    // --- Feedback Setup ---
+    private func setupFeedbackAssets() {
+        // Load Particle Emitter Template
+        if let emitter = SKEmitterNode(fileNamed: gameConfiguration.correctTapParticleEffectFileName) {
+            correctTapEmitterTemplate = emitter
+            // print("DIAGNOSTIC: Loaded particle emitter template: \(gameConfiguration.correctTapParticleEffectFileName)")
+        } else {
+            print("ERROR: Could not load particle emitter file: \(gameConfiguration.correctTapParticleEffectFileName)")
+        }
+
+        // Prepare Audio Players
+        correctTapPlayer = prepareAudioPlayer(filename: gameConfiguration.correctTapSoundFileName)
+        groupCompletePlayer = prepareAudioPlayer(filename: gameConfiguration.groupCompleteSoundFileName)
+    }
+
+    private func prepareAudioPlayer(filename: String) -> AVAudioPlayer? {
+        // Attempt to find the sound file with common extensions
+        let extensions = ["wav", "mp3", "m4a", "caf"]
+        var soundURL: URL? = nil
+        for ext in extensions {
+            if let url = Bundle.main.url(forResource: filename, withExtension: ext) {
+                soundURL = url
+                break
+            }
+        }
+
+        guard let url = soundURL else {
+            print("ERROR: Could not find sound file: \(filename) with extensions \(extensions)")
+            return nil
+        }
+
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.prepareToPlay()
+            // print("DIAGNOSTIC: Prepared audio player for: \(filename)")
+            return player
+        } catch {
+            print("ERROR: Could not create AVAudioPlayer for \(filename): \(error.localizedDescription)")
+            return nil
+        }
+    }
 }
 
 // --- Ball class needs to be SKShapeNode ---
