@@ -1,7 +1,7 @@
 // NeuroGlide/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 Part 2 (COMPLETE FILE - Variable Intervals)
-// Role: Main scene. Implements variable intervals for shifts/ID prompts.
+// Updated: [Current Date] - Step 11 FIX 4 (COMPLETE FILE - Restored Stop Timers)
+// Role: Main scene. Uses GameConfiguration struct, maps target count inversely to arousal.
 
 import SpriteKit
 import GameplayKit
@@ -20,7 +20,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private let gameConfiguration = GameConfiguration()
 
     // --- Properties ---
-    // State
     private var currentState: GameState = .tracking
     private var _currentArousalLevel: CGFloat = 0.75 // Backing variable
     private var currentArousalLevel: CGFloat { // Computed property with observer
@@ -32,40 +31,33 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 _currentArousalLevel = clampedValue
                 print("DIAGNOSTIC: Arousal Level Changed to \(String(format: "%.2f", _currentArousalLevel))")
                 checkStateTransition(oldValue: oldValue, newValue: _currentArousalLevel)
-                updateParametersFromArousal() // Update all params based on new level
+                updateParametersFromArousal()
                 checkBreathingFade()
             }
         }
     }
     private var currentBreathingPhase: BreathingPhase = .idle
     private var breathingAnimationActionKey = "breathingAnimation"
-    // Timers & Keys
     private var precisionTimer: PrecisionTimer?
-    // MODIFIED: Removed SKAction timer keys
-    // private var targetShiftTimerActionKey = "targetShiftTimer"
-    // private var identificationTimerActionKey = "identificationTimer"
-    private var identificationTimeoutActionKey = "identificationTimeout" // Keep for ID duration
+    // Removed SKAction timer keys, keep for removal check if needed
+    private var targetShiftTimerActionKey = "targetShiftTimer"
+    private var identificationTimerActionKey = "identificationTimer"
+    private var identificationTimeoutActionKey = "identificationTimeout"
     private var isFlashSequenceRunning: Bool = false
     private var flashCooldownEndTime: TimeInterval = 0.0
-    private var identificationCheckNeeded: Bool = false // Still used by update loop
-    // MODIFIED: Added state variables for manual timers
+    private var identificationCheckNeeded: Bool = false
     private var timeUntilNextShift: TimeInterval = 0
     private var timeUntilNextIDCheck: TimeInterval = 0
-    // MODIFIED: Added properties for current interval ranges
-    private var currentMinShiftInterval: TimeInterval = 5.0 // Default values
+    private var currentMinShiftInterval: TimeInterval = 5.0
     private var currentMaxShiftInterval: TimeInterval = 10.0
     private var currentMinIDInterval: TimeInterval = 10.0
     private var currentMaxIDInterval: TimeInterval = 15.0
-
-    // Game Objects & Settings
     private var balls: [Ball] = []
     private var motionSettings = MotionSettings()
     private var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
-    // Identification State
     private var targetsToFind: Int = 0
     private var targetsFoundThisRound: Int = 0
     private var score: Int = 0
-    // UI Elements
     private var scoreLabel: SKLabelNode!
     private var stateLabel: SKLabelNode!
     private var countdownLabel: SKLabelNode!
@@ -110,12 +102,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupFadeOverlay()
         if hapticsReady { startHapticEngine() }
         if audioReady { startAudioEngine() }
-        updateParametersFromArousal() // Set initial params based on default arousal & state
+        updateParametersFromArousal() // Set initial target count before creating balls
         createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
         setupTimer();
         precisionTimer?.start()
-        startTrackingTimers(); // Now just resets the manual timers
+        startTrackingTimers(); // Reset manual timers based on initial arousal
         updateUI()
         flashCooldownEndTime = CACurrentMediaTime()
         print("--- GameScene: didMove(to:) Finished ---")
@@ -123,8 +115,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     override func willMove(from view: SKView) {
         print("--- GameScene: willMove(from:) ---")
-        precisionTimer?.stop(); // Stop VHA timer
-        // No need to stop SKAction timers as they are removed
+        precisionTimer?.stop();
+        // stopTrackingTimers() // No longer needed as timers are manual
         stopIdentificationTimeout()
         stopBreathingAnimation()
         stopHapticEngine(); stopAudioEngine()
@@ -219,27 +211,36 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // --- Tracking Timers ---
-    // MODIFIED: No longer uses SKActions, just resets manual timer variables
     private func startTrackingTimers() {
         print("DIAGNOSTIC: Resetting manual timers for Shift and ID Check.")
         resetShiftTimer()
         resetIDTimer()
     }
-    // MODIFIED: Added reset functions
     private func resetShiftTimer() {
-        // Calculate next delay based on current arousal-mapped interval range
         timeUntilNextShift = TimeInterval.random(in: currentMinShiftInterval...currentMaxShiftInterval)
         print("DIAGNOSTIC: Next target shift in \(String(format: "%.2f", timeUntilNextShift))s (Range: \(String(format: "%.1f", currentMinShiftInterval))-\(String(format: "%.1f", currentMaxShiftInterval)))")
     }
     private func resetIDTimer() {
-        // Calculate next delay based on current arousal-mapped interval range
         timeUntilNextIDCheck = TimeInterval.random(in: currentMinIDInterval...currentMaxIDInterval)
         print("DIAGNOSTIC: Next ID check in \(String(format: "%.2f", timeUntilNextIDCheck))s (Range: \(String(format: "%.1f", currentMinIDInterval))-\(String(format: "%.1f", currentMaxIDInterval)))")
     }
-    // MODIFIED: No longer needed as SKActions are removed
-    // private func stopTrackingTimers() { stopTargetShiftTimer(); stopIdentificationTimer() }
-    // private func stopTargetShiftTimer() { self.removeAction(forKey: targetShiftTimerActionKey) }
-    // private func stopIdentificationTimer() { self.removeAction(forKey: identificationTimerActionKey) }
+    // ** ADDED Back Timer Stop Functions (Needed by transitions) **
+    private func stopTrackingTimers() {
+        // No SKActions to stop, but could reset countdowns if needed (not necessary currently)
+        print("DIAGNOSTIC: Stopping tracking timer logic (manual timers will stop decrementing).")
+        // Resetting timeUntil... here might cause immediate trigger on resume,
+        // rely on startTrackingTimers being called on transition back.
+    }
+    // These might be needed if other parts of code still reference them, though the actions are gone
+    private func stopTargetShiftTimer() {
+         self.removeAction(forKey: targetShiftTimerActionKey) // Remove old action just in case
+         print("DIAGNOSTIC: Target shift timer logic stopped.")
+    }
+    private func stopIdentificationTimer() {
+         self.removeAction(forKey: identificationTimerActionKey) // Remove old action just in case
+         print("DIAGNOSTIC: Identification trigger timer logic stopped.")
+    }
+
 
     // --- Identification Phase Logic ---
     private func startIdentificationPhase() {
@@ -296,7 +297,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let targetColor = Ball.Appearance.targetColor
         let currentColor = ball.fillColor
         if ball.isTarget {
-            if currentColor != targetColor { targetsFoundThisRound += 1; ball.revealIdentity(); if targetsFoundThisRound >= currentTargetCount { endIdentificationPhase(success: true) } }
+            if currentColor != targetColor { targetsFoundThisRound += 1; ball.revealIdentity(); if targetsFoundThisRound >= targetsToFind { endIdentificationPhase(success: true) } }
         } else { endIdentificationPhase(success: false) }
     }
     private func changeOffsetsOnTouch() {
@@ -321,7 +322,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let nextIndex = (currentIndex == 0) ? (gameConfiguration.arousalSteps.count - 1) : (currentIndex - 1)
         currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
     }
-    // MODIFIED: Calculates and stores current interval ranges
     private func updateParametersFromArousal() {
         switch currentState {
         case .tracking, .identifying:
@@ -329,54 +329,33 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             guard trackingRange > 0 else { return }
             let clampedArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
             let normalizedTrackingArousal = (clampedArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
-
-            // Map Speed
             let speedRange = gameConfiguration.maxTargetSpeedAtTrackingThreshold - gameConfiguration.minTargetSpeedAtTrackingThreshold
             motionSettings.targetMeanSpeed = gameConfiguration.minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
-
-            // Map Speed SD
             let sdRange = gameConfiguration.maxTargetSpeedSDAtTrackingThreshold - gameConfiguration.minTargetSpeedSDAtTrackingThreshold
             motionSettings.targetSpeedSD = gameConfiguration.minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
-
-            // Map Timer Frequency
             let freqRange = gameConfiguration.maxTimerFrequencyAtTrackingThreshold - gameConfiguration.minTimerFrequencyAtTrackingThreshold
             self.currentTimerFrequency = gameConfiguration.minTimerFrequencyAtTrackingThreshold + (freqRange * normalizedTrackingArousal)
-
-            // Map Number of Targets
             let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
             let calculatedTargetCount = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal) - (targetCountRange * normalizedTrackingArousal)
             self.currentTargetCount = max(gameConfiguration.minTargetsAtHighTrackingArousal, min(gameConfiguration.maxTargetsAtLowTrackingArousal, Int(calculatedTargetCount.rounded())))
-
-            // Map Shift Interval Range
             let shiftMinRange = gameConfiguration.shiftIntervalMin_HighArousal - gameConfiguration.shiftIntervalMin_LowArousal
             currentMinShiftInterval = gameConfiguration.shiftIntervalMin_LowArousal + (shiftMinRange * normalizedTrackingArousal)
             let shiftMaxRange = gameConfiguration.shiftIntervalMax_HighArousal - gameConfiguration.shiftIntervalMax_LowArousal
             currentMaxShiftInterval = gameConfiguration.shiftIntervalMax_LowArousal + (shiftMaxRange * normalizedTrackingArousal)
-            // Ensure Min <= Max
             if currentMinShiftInterval > currentMaxShiftInterval { currentMinShiftInterval = currentMaxShiftInterval }
-
-
-            // Map ID Interval Range
             let idMinRange = gameConfiguration.idIntervalMin_HighArousal - gameConfiguration.idIntervalMin_LowArousal
             currentMinIDInterval = gameConfiguration.idIntervalMin_LowArousal + (idMinRange * normalizedTrackingArousal)
             let idMaxRange = gameConfiguration.idIntervalMax_HighArousal - gameConfiguration.idIntervalMax_LowArousal
             currentMaxIDInterval = gameConfiguration.idIntervalMax_LowArousal + (idMaxRange * normalizedTrackingArousal)
-             // Ensure Min <= Max
             if currentMinIDInterval > currentMaxIDInterval { currentMinIDInterval = currentMaxIDInterval }
-
-
         case .breathing:
             self.currentTimerFrequency = gameConfiguration.breathingTimerFrequency
             motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
             self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
-
         case .paused:
              self.currentTimerFrequency = 1.0; motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
              self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
         }
-        print("DIAGNOSTIC: Parameters updated. Arousal: \(String(format: "%.2f", currentArousalLevel)) -> TargetSpeed: \(String(format: "%.1f", motionSettings.targetMeanSpeed)), TargetSD: \(String(format: "%.1f", motionSettings.targetSpeedSD)), TimerFreq: \(String(format: "%.1f", self.currentTimerFrequency)) Hz, TargetCount: \(self.currentTargetCount)")
-        // Add interval ranges to log if needed for debugging
-        // print("DIAGNOSTIC: Shift Interval [\(String(format: "%.1f", currentMinShiftInterval))-\(String(format: "%.1f", currentMaxShiftInterval))], ID Interval [\(String(format: "%.1f", currentMinIDInterval))-\(String(format: "%.1f", currentMaxIDInterval))]")
         updateUI()
     }
 
@@ -412,7 +391,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let finalTransitionDuration = calculatedMaxDuration
 
         if currentState == .identifying { endIdentificationPhase(success: false) }
-        // stopTrackingTimers() // No longer needed, update loop handles state check
+        // stopTrackingTimers() // No longer needed
 
         currentState = .breathing; currentBreathingPhase = .idle
         updateParametersFromArousal(); updateUI(); breathingVisualsFaded = false
@@ -440,9 +419,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         stopBreathingAnimation();
         currentState = .tracking; currentBreathingPhase = .idle
         fadeInBreathingVisuals()
-        updateParametersFromArousal() // Set tracking params
+        updateParametersFromArousal()
         updateUI()
         for ball in balls { ball.physicsBody?.isDynamic = true }
+        // Assign targets immediately upon returning to tracking
+        assignNewTargets(flashNewTargets: false) // No flash on return
         applyInitialImpulses()
         startTrackingTimers() // Reset manual timers
     }
@@ -677,40 +658,32 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Update Loop ---
     override func update(_ currentTime: TimeInterval) {
-        // Initialize lastUpdateTime on first frame
         if lastUpdateTime == 0 { lastUpdateTime = currentTime }
         let dt = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
 
-        // --- Manual Timer Decrements & Checks (Tracking State Only) ---
         if currentState == .tracking {
-            // Decrement timers
             timeUntilNextShift -= dt
             timeUntilNextIDCheck -= dt
 
-            // Check Shift Timer
-            if timeUntilNextShift <= 0 && !isFlashSequenceRunning { // Only shift if not already flashing
+            if timeUntilNextShift <= 0 && !isFlashSequenceRunning {
                 assignNewTargets(flashNewTargets: true)
-                resetShiftTimer() // Reset for next random interval
+                resetShiftTimer()
             }
 
-            // Check ID Timer
             if timeUntilNextIDCheck <= 0 {
-                identificationCheckNeeded = true // Signal update loop to check conditions
-                resetIDTimer() // Reset for next random interval
+                identificationCheckNeeded = true
+                resetIDTimer()
             }
         }
 
-        // --- Identification Phase Check (Handles cooldown etc.) ---
         if identificationCheckNeeded {
             if currentState == .tracking && !isFlashSequenceRunning && currentTime >= flashCooldownEndTime {
                 startIdentificationPhase()
-                identificationCheckNeeded = false // Consume flag ONLY if starting
+                identificationCheckNeeded = false
             }
-            // If conditions not met, flag remains true until consumed or state changes
         }
 
-        // --- Motion Control ---
         if currentState == .tracking && !balls.isEmpty {
             let stats = MotionController.calculateStats(balls: balls)
             if Int(currentTime * 60) % 60 == 0 {

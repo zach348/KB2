@@ -1,6 +1,6 @@
 // NeuroGlide/GameConfiguration.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 Part 2: Variable Interval Config
+// Updated: [Current Date] - Step 10/11 Refinement: Slower Fade
 // Role: Centralized configuration settings for the game parameters.
 
 import Foundation
@@ -30,28 +30,20 @@ struct GameConfiguration {
     // Target Count
     let maxTargetsAtLowTrackingArousal: Int = 5
     let minTargetsAtHighTrackingArousal: Int = 1
-
-    // ** MODIFIED: Variable Intervals **
     // Target Shift Intervals (Seconds)
-    let shiftIntervalMin_LowArousal: TimeInterval = 35.0 // Min delay at arousal 0.35
-    let shiftIntervalMax_LowArousal: TimeInterval = 65.0 // Max delay at arousal 0.35 (Wide range = unpredictable)
-    let shiftIntervalMin_HighArousal: TimeInterval = 2.5 // Min delay at arousal 1.0
-    let shiftIntervalMax_HighArousal: TimeInterval = 6.0 // Max delay at arousal 1.0 (Narrow range = predictable)
-
+    let shiftIntervalMin_LowArousal: TimeInterval = 20.0
+    let shiftIntervalMax_LowArousal: TimeInterval = 30.0
+    let shiftIntervalMin_HighArousal: TimeInterval = 2.5
+    let shiftIntervalMax_HighArousal: TimeInterval = 4
     // Identification Prompt Intervals (Seconds)
-    let idIntervalMin_LowArousal: TimeInterval = 30.0 // Min delay at arousal 0.35
-    let idIntervalMax_LowArousal: TimeInterval = 50.0 // Max delay at arousal 0.35 (Wide range = unpredictable)
-    let idIntervalMin_HighArousal: TimeInterval = 8.0  // Min delay at arousal 1.0
-    let idIntervalMax_HighArousal: TimeInterval = 12.0 // Max delay at arousal 1.0 (Narrow range = predictable)
-
-    // Identification Duration (Base value, could be mapped too)
+    let idIntervalMin_LowArousal: TimeInterval = 30.0
+    let idIntervalMax_LowArousal: TimeInterval = 50.0
+    let idIntervalMin_HighArousal: TimeInterval = 10
+    let idIntervalMax_HighArousal: TimeInterval = 15
+    // Identification Duration (Base value)
     let identificationDuration: TimeInterval = 5.0
 
     // --- TODO: Add ranges/factors for other parameters ---
-    // let minIdentificationDuration: TimeInterval = ...
-    // let maxIdentificationDuration: TimeInterval = ...
-    // let lowArousalTargetColor: SKColor = ...
-    // let highArousalTargetColor: SKColor = ...
 
     // --- Breathing Task ---
     let breathingTimerFrequency: Double = 3.0 // Hz during breathing
@@ -76,7 +68,8 @@ struct GameConfiguration {
     // --- Visuals ---
     let visualPulseOnDurationRatio: Double = 0.2
     let flashCooldownDuration: TimeInterval = 0.5
-    let fadeDuration: TimeInterval = 0.75
+    // MODIFIED: Increased fade duration
+    let fadeDuration: TimeInterval = 2.25 // Was 0.75
 
     // --- Motion Control Fine Tuning ---
     // MotionSettings struct remains separate for now.
