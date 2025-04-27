@@ -242,9 +242,22 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if flashNewTargets && !newlyAssignedTargets.isEmpty {
             self.isFlashSequenceRunning = true
 
-            // Start visual flash on each ball
+            // --- Calculate Flash Color based on Arousal --- 
+            let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
+            var normalizedTrackingArousal: CGFloat = 0.0
+            if trackingRange > 0 {
+                let clampedArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
+                normalizedTrackingArousal = (clampedArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
+            }
+            let baseFlashColor = gameConfiguration.flashColor // e.g., White
+            let lowArousalFlashColor = self.activeDistractorColor
+            let currentFlashColor = interpolateColor(from: lowArousalFlashColor, to: baseFlashColor, t: normalizedTrackingArousal)
+            // print("DIAGNOSTIC: Arousal \(String(format: "%.2f", currentArousalLevel)), Norm: \(String(format: "%.2f", normalizedTrackingArousal)), FlashColor: \(currentFlashColor.description)")
+            // -----------------------------------------------
+
+            // Start visual flash on each ball using the calculated flash color
             let numberOfFlashes = 6 // Default used in Ball.flashAsNewTarget
-            newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: gameConfiguration.flashColor, flashes: numberOfFlashes) }
+            newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: currentFlashColor, flashes: numberOfFlashes) }
 
             // --- Start CONCURRENT sound sequence on the SCENE --- 
             let flashDuration = Ball.flashDuration
