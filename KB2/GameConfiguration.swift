@@ -1,6 +1,6 @@
 // NeuroGlide/GameConfiguration.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 10/11 Refinement: Slower Fade
+// Updated: [Current Date] - Step 11 FIX 6: Added ID Duration AGAIN
 // Role: Centralized configuration settings for the game parameters.
 
 import Foundation
@@ -34,14 +34,17 @@ struct GameConfiguration {
     let shiftIntervalMin_LowArousal: TimeInterval = 20.0
     let shiftIntervalMax_LowArousal: TimeInterval = 30.0
     let shiftIntervalMin_HighArousal: TimeInterval = 2.5
-    let shiftIntervalMax_HighArousal: TimeInterval = 4
+    let shiftIntervalMax_HighArousal: TimeInterval = 4.0
     // Identification Prompt Intervals (Seconds)
     let idIntervalMin_LowArousal: TimeInterval = 30.0
     let idIntervalMax_LowArousal: TimeInterval = 50.0
-    let idIntervalMin_HighArousal: TimeInterval = 10
-    let idIntervalMax_HighArousal: TimeInterval = 15
-    // Identification Duration (Base value)
-    let identificationDuration: TimeInterval = 5.0
+    let idIntervalMin_HighArousal: TimeInterval = 10.0
+    let idIntervalMax_HighArousal: TimeInterval = 15.0
+    // Identification Duration Ranges/Values
+    let maxIdentificationDurationAtLowArousal: TimeInterval = 10.0
+    let minIdentificationDurationAtHighArousal: TimeInterval = 1.75
+    // ** ADDED BACK identificationDuration **
+    let identificationDuration: TimeInterval = 5.0 // Base/Default if not mapped yet
 
     // --- TODO: Add ranges/factors for other parameters ---
 
@@ -68,8 +71,7 @@ struct GameConfiguration {
     // --- Visuals ---
     let visualPulseOnDurationRatio: Double = 0.2
     let flashCooldownDuration: TimeInterval = 0.5
-    // MODIFIED: Increased fade duration
-    let fadeDuration: TimeInterval = 2.25 // Was 0.75
+    let fadeDuration: TimeInterval = 4.0
 
     // --- Motion Control Fine Tuning ---
     // MotionSettings struct remains separate for now.

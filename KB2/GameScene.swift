@@ -1,6 +1,6 @@
 // NeuroGlide/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 FIX 4 (COMPLETE FILE - Restored Stop Timers)
+// Updated: [Current Date] - Step 11 FIX 6 (COMPLETE FILE - Font/Optional Chain Fix)
 // Role: Main scene. Uses GameConfiguration struct, maps target count inversely to arousal.
 
 import SpriteKit
@@ -22,7 +22,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- Properties ---
     private var currentState: GameState = .tracking
     private var _currentArousalLevel: CGFloat = 0.75 // Backing variable
-    private var currentArousalLevel: CGFloat { // Computed property with observer
+    private var currentArousalLevel: CGFloat {
         get { return _currentArousalLevel }
         set {
             let oldValue = _currentArousalLevel
@@ -39,7 +39,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var currentBreathingPhase: BreathingPhase = .idle
     private var breathingAnimationActionKey = "breathingAnimation"
     private var precisionTimer: PrecisionTimer?
-    // Removed SKAction timer keys, keep for removal check if needed
     private var targetShiftTimerActionKey = "targetShiftTimer"
     private var identificationTimerActionKey = "identificationTimer"
     private var identificationTimeoutActionKey = "identificationTimeout"
@@ -55,17 +54,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var balls: [Ball] = []
     private var motionSettings = MotionSettings()
     private var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
+    private var currentIdentificationDuration: TimeInterval = GameConfiguration().identificationDuration
     private var targetsToFind: Int = 0
     private var targetsFoundThisRound: Int = 0
     private var score: Int = 0
-    private var scoreLabel: SKLabelNode!
-    private var stateLabel: SKLabelNode!
-    private var countdownLabel: SKLabelNode!
-    private var arousalLabel: SKLabelNode!
-    private var breathingCueLabel: SKLabelNode!
+    // Initialize directly
+    private var scoreLabel: SKLabelNode = SKLabelNode()
+    private var stateLabel: SKLabelNode = SKLabelNode()
+    private var countdownLabel: SKLabelNode = SKLabelNode()
+    private var arousalLabel: SKLabelNode = SKLabelNode()
+    private var breathingCueLabel: SKLabelNode = SKLabelNode()
     private var safeAreaTopInset: CGFloat = 0
     private var breathingVisualsFaded: Bool = false
-    private var fadeOverlayNode: SKSpriteNode!
+    private var fadeOverlayNode: SKSpriteNode = SKSpriteNode()
 
     // --- Haptic Engine ---
     private var hapticEngine: CHHapticEngine?
@@ -81,12 +82,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var audioReady: Bool = false
 
     // --- Rhythmic Pulse Properties ---
-    private var currentTimerFrequency: Double = 5.0 {
-         didSet {
-             if currentTimerFrequency <= 0 { currentTimerFrequency = 1.0 }
-             precisionTimer?.frequency = currentTimerFrequency
-         }
-     }
+    private var currentTimerFrequency: Double = 5.0
     public var hapticOffset: TimeInterval = 0.020
     public var audioOffset: TimeInterval = 0.040
 
@@ -102,28 +98,27 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupFadeOverlay()
         if hapticsReady { startHapticEngine() }
         if audioReady { startAudioEngine() }
-        updateParametersFromArousal() // Set initial target count before creating balls
+        updateParametersFromArousal()
         createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
         setupTimer();
         precisionTimer?.start()
-        startTrackingTimers(); // Reset manual timers based on initial arousal
-        updateUI()
+        startTrackingTimers(); updateUI()
         flashCooldownEndTime = CACurrentMediaTime()
         print("--- GameScene: didMove(to:) Finished ---")
     }
 
     override func willMove(from view: SKView) {
         print("--- GameScene: willMove(from:) ---")
-        precisionTimer?.stop();
-        // stopTrackingTimers() // No longer needed as timers are manual
+        precisionTimer?.stop(); // stopTrackingTimers(); // No longer needed
         stopIdentificationTimeout()
         stopBreathingAnimation()
         stopHapticEngine(); stopAudioEngine()
         self.removeAction(forKey: "flashSequenceCompletion"); self.removeAction(forKey: breathingAnimationActionKey)
         balls.forEach { $0.removeFromParent() }; balls.removeAll()
-        scoreLabel?.removeFromParent(); stateLabel?.removeFromParent(); countdownLabel?.removeFromParent(); arousalLabel?.removeFromParent(); breathingCueLabel?.removeFromParent()
-        fadeOverlayNode?.removeFromParent()
+        // ** CORRECTED: Removed optional chaining '?' **
+        scoreLabel.removeFromParent(); stateLabel.removeFromParent(); countdownLabel.removeFromParent(); arousalLabel.removeFromParent(); breathingCueLabel.removeFromParent()
+        fadeOverlayNode.removeFromParent()
         breathingHapticPlayer = nil; hapticPlayer = nil
         precisionTimer = nil; hapticEngine = nil; customAudioEngine = nil; audioPlayerNode = nil; audioBuffer = nil
         print("GameScene cleaned up resources.")
@@ -135,24 +130,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func setupWalls() { let b = SKPhysicsBody(edgeLoopFrom: self.frame); b.friction = 0.0; b.restitution = 1.0; self.physicsBody = b }
 
     // --- UI Setup ---
+    // ** CORRECTED: Use fontName instead of fontNamed **
     private func setupUI() {
-        scoreLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light"); scoreLabel.fontSize = 20; scoreLabel.fontColor = .white
+        scoreLabel.fontName = "HelveticaNeue-Light"; scoreLabel.fontSize = 20; scoreLabel.fontColor = .white
         scoreLabel.position = CGPoint(x: frame.minX + 20, y: frame.maxY - safeAreaTopInset - 30); scoreLabel.horizontalAlignmentMode = .left; addChild(scoreLabel)
-        stateLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold"); stateLabel.fontSize = 24; stateLabel.fontColor = .yellow
+        stateLabel.fontName = "HelveticaNeue-Bold"; stateLabel.fontSize = 24; stateLabel.fontColor = .yellow
         stateLabel.position = CGPoint(x: frame.midX, y: frame.maxY - safeAreaTopInset - 30); stateLabel.horizontalAlignmentMode = .center; addChild(stateLabel)
-        countdownLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium"); countdownLabel.fontSize = 22; countdownLabel.fontColor = .orange
+        countdownLabel.fontName = "HelveticaNeue-Medium"; countdownLabel.fontSize = 22; countdownLabel.fontColor = .orange
         countdownLabel.position = CGPoint(x: frame.midX, y: frame.maxY - safeAreaTopInset - 60); countdownLabel.horizontalAlignmentMode = .center; countdownLabel.isHidden = true; addChild(countdownLabel)
-        arousalLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light"); arousalLabel.fontSize = 16; arousalLabel.fontColor = .lightGray
+        arousalLabel.fontName = "HelveticaNeue-Light"; arousalLabel.fontSize = 16; arousalLabel.fontColor = .lightGray
         arousalLabel.position = CGPoint(x: frame.maxX - 20, y: frame.maxY - safeAreaTopInset - 30); arousalLabel.horizontalAlignmentMode = .right; addChild(arousalLabel)
-        breathingCueLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold"); breathingCueLabel.fontSize = 36; breathingCueLabel.fontColor = .white
+        breathingCueLabel.fontName = "HelveticaNeue-Bold"; breathingCueLabel.fontSize = 36; breathingCueLabel.fontColor = .white
         breathingCueLabel.position = CGPoint(x: frame.midX, y: frame.midY + 50); breathingCueLabel.horizontalAlignmentMode = .center; breathingCueLabel.isHidden = true; addChild(breathingCueLabel)
     }
     private func setupFadeOverlay() {
-        fadeOverlayNode = SKSpriteNode(color: .black, size: self.size)
+        fadeOverlayNode.color = .black; fadeOverlayNode.size = self.size
         fadeOverlayNode.position = CGPoint(x: frame.midX, y: frame.midY)
         fadeOverlayNode.zPosition = 100
         fadeOverlayNode.alpha = 0.0
-        addChild(fadeOverlayNode)
+        if fadeOverlayNode.parent == nil { addChild(fadeOverlayNode) }
     }
 
     // --- UI Update ---
@@ -212,35 +208,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Tracking Timers ---
     private func startTrackingTimers() {
-        print("DIAGNOSTIC: Resetting manual timers for Shift and ID Check.")
         resetShiftTimer()
         resetIDTimer()
     }
     private func resetShiftTimer() {
         timeUntilNextShift = TimeInterval.random(in: currentMinShiftInterval...currentMaxShiftInterval)
-        print("DIAGNOSTIC: Next target shift in \(String(format: "%.2f", timeUntilNextShift))s (Range: \(String(format: "%.1f", currentMinShiftInterval))-\(String(format: "%.1f", currentMaxShiftInterval)))")
     }
     private func resetIDTimer() {
         timeUntilNextIDCheck = TimeInterval.random(in: currentMinIDInterval...currentMaxIDInterval)
-        print("DIAGNOSTIC: Next ID check in \(String(format: "%.2f", timeUntilNextIDCheck))s (Range: \(String(format: "%.1f", currentMinIDInterval))-\(String(format: "%.1f", currentMaxIDInterval)))")
     }
-    // ** ADDED Back Timer Stop Functions (Needed by transitions) **
-    private func stopTrackingTimers() {
-        // No SKActions to stop, but could reset countdowns if needed (not necessary currently)
-        print("DIAGNOSTIC: Stopping tracking timer logic (manual timers will stop decrementing).")
-        // Resetting timeUntil... here might cause immediate trigger on resume,
-        // rely on startTrackingTimers being called on transition back.
-    }
-    // These might be needed if other parts of code still reference them, though the actions are gone
-    private func stopTargetShiftTimer() {
-         self.removeAction(forKey: targetShiftTimerActionKey) // Remove old action just in case
-         print("DIAGNOSTIC: Target shift timer logic stopped.")
-    }
-    private func stopIdentificationTimer() {
-         self.removeAction(forKey: identificationTimerActionKey) // Remove old action just in case
-         print("DIAGNOSTIC: Identification trigger timer logic stopped.")
-    }
-
+    // Removed stop functions
 
     // --- Identification Phase Logic ---
     private func startIdentificationPhase() {
@@ -257,10 +234,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     private func startIdentificationTimeout() {
         stopIdentificationTimeout()
-        var remainingTime = gameConfiguration.identificationDuration
+        var remainingTime = currentIdentificationDuration
+        guard remainingTime > 0 else { endIdentificationPhase(success: false); return }
         countdownLabel.text = String(format: "Time: %.1f", remainingTime); countdownLabel.isHidden = false
         let wait = SKAction.wait(forDuration: 0.1); let update = SKAction.run { [weak self] in guard let self = self, self.currentState == .identifying else { self?.stopIdentificationTimeout(); return }; remainingTime -= 0.1; self.countdownLabel.text = String(format: "Time: %.1f", max(0, remainingTime)) }
-        let repeatCount = Int(gameConfiguration.identificationDuration / 0.1)
+        let repeatCount = Int(currentIdentificationDuration / 0.1)
         let countdownAction = SKAction.repeat(.sequence([wait, update]), count: repeatCount)
         let timeoutAction = SKAction.run { [weak self] in print("--- Identification Timeout! ---"); self?.endIdentificationPhase(success: false) }
         self.run(.sequence([countdownAction, timeoutAction]), withKey: identificationTimeoutActionKey)
@@ -274,7 +252,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         balls.forEach { ball in ball.physicsBody?.isDynamic = true; ball.physicsBody?.velocity = ball.storedVelocity ?? .zero; ball.storedVelocity = nil }; physicsWorld.speed = 1
         currentState = .tracking
         updateUI()
-        startTrackingTimers() // Reset manual timers for next cycle
+        startTrackingTimers()
     }
 
     // --- Touch Handling ---
@@ -348,14 +326,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let idMaxRange = gameConfiguration.idIntervalMax_HighArousal - gameConfiguration.idIntervalMax_LowArousal
             currentMaxIDInterval = gameConfiguration.idIntervalMax_LowArousal + (idMaxRange * normalizedTrackingArousal)
             if currentMinIDInterval > currentMaxIDInterval { currentMinIDInterval = currentMaxIDInterval }
+            let idDurationRange = gameConfiguration.maxIdentificationDurationAtLowArousal - gameConfiguration.minIdentificationDurationAtHighArousal
+            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal - (idDurationRange * normalizedTrackingArousal)
+            self.currentIdentificationDuration = max(0.1, self.currentIdentificationDuration)
         case .breathing:
             self.currentTimerFrequency = gameConfiguration.breathingTimerFrequency
             motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
             self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
+            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
         case .paused:
              self.currentTimerFrequency = 1.0; motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
              self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
+             self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
         }
+        // Update the precision timer's frequency directly
+        precisionTimer?.frequency = self.currentTimerFrequency
         updateUI()
     }
 
@@ -422,8 +407,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         updateParametersFromArousal()
         updateUI()
         for ball in balls { ball.physicsBody?.isDynamic = true }
-        // Assign targets immediately upon returning to tracking
-        assignNewTargets(flashNewTargets: false) // No flash on return
+        assignNewTargets(flashNewTargets: false)
         applyInitialImpulses()
         startTrackingTimers() // Reset manual timers
     }
