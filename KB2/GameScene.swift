@@ -89,6 +89,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var audioBuffer: AVAudioPCMBuffer?
     private var audioFormat: AVAudioFormat?
     private var audioReady: Bool = false
+    private var currentTargetAudioFrequency: Float = 440.0
+    private var currentBufferFrequency: Float? = nil
+    private let minAudioFrequency: Float = 200.0
+    private let maxAudioFrequency: Float = 1000.0
 
     // --- Rhythmic Pulse Properties ---
     private var currentTimerFrequency: Double = 5.0 {
@@ -550,6 +554,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
              activeDistractorColor = gameConfiguration.distractorColor_LowArousal
         }
         precisionTimer?.frequency = self.currentTimerFrequency
+
+        // --- ADDED: Calculate Target Audio Frequency ---
+        let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
+        let freqRange = maxAudioFrequency - minAudioFrequency
+        self.currentTargetAudioFrequency = minAudioFrequency + (freqRange * Float(clampedArousal))
+        // --- END ADDED ---
+
         updateUI()
     }
 
@@ -798,7 +809,46 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func setupAudio() {
         customAudioEngine = AVAudioEngine(); audioPlayerNode = AVAudioPlayerNode()
         guard let engine = customAudioEngine, let playerNode = audioPlayerNode else { audioReady = false; return }
-        do { engine.attach(playerNode); audioFormat = AVAudioFormat(standardFormatWithSampleRate: 44100.0, channels: 1); guard let format = audioFormat else { audioReady = false; return }; let sr = Float(format.sampleRate); let fq: Float = 440.0; let dur: Float = 0.1; let fc = AVAudioFrameCount(sr * dur); audioBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: fc); guard let buffer = audioBuffer else { audioReady = false; return }; buffer.frameLength = fc; guard let cd = buffer.floatChannelData?[0] else { audioReady = false; return }; let amp: Float = 0.5; let af = 2 * .pi * fq / sr; for frame in 0..<Int(fc) { cd[frame] = sin(Float(frame) * af) * amp }; engine.connect(playerNode, to: engine.mainMixerNode, format: format); try engine.prepare(); audioReady = true } catch { print("DIAGNOSTIC: setupAudio - Error: \(error.localizedDescription)"); audioReady = false }
+        do {
+            engine.attach(playerNode)
+            // Define format (assuming standard CD quality)
+            audioFormat = AVAudioFormat(standardFormatWithSampleRate: 44100.0, channels: 1)
+            guard let format = audioFormat else { audioReady = false; return }
+
+            // --- MODIFIED: Generate initial buffer using helper ---
+            self.audioBuffer = generateAudioBuffer(frequency: self.currentTargetAudioFrequency, amplitude: 0.5) // Use initial target freq
+            guard self.audioBuffer != nil else {
+                print("ERROR: Initial audio buffer generation failed.")
+                audioReady = false; return
+            }
+            self.currentBufferFrequency = self.currentTargetAudioFrequency // Track frequency of initial buffer
+            // --- END MODIFIED ---
+
+            engine.connect(playerNode, to: engine.mainMixerNode, format: format)
+            try engine.prepare()
+            audioReady = true
+        } catch { print("DIAGNOSTIC: setupAudio - Error: \(error.localizedDescription)"); audioReady = false }
+    }
+    private func generateAudioBuffer(frequency: Float, amplitude: Float) -> AVAudioPCMBuffer? {
+        guard let format = audioFormat, format.sampleRate > 0 else { return nil }
+        let sampleRate = Float(format.sampleRate)
+        let duration: Float = 0.1 // Keep duration short for rhythmic pulse
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard frameCount > 0 else { return nil }
+
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount // Important: Set the frame length
+
+        guard let channelData = buffer.floatChannelData?[0] else { return nil }
+
+        let angularFrequency = 2 * .pi * frequency / sampleRate
+        let clampedAmplitude = max(0.0, min(amplitude, 1.0)) // Ensure amplitude is valid
+
+        for frame in 0..<Int(frameCount) {
+            channelData[frame] = sin(Float(frame) * angularFrequency) * clampedAmplitude
+        }
+        // print("DIAGNOSTIC: Generated audio buffer with Freq: \(frequency) Hz, Amp: \(amplitude)")
+        return buffer
     }
     private func startAudioEngine() {
          guard audioReady, let engine = customAudioEngine else { print("DIAGNOSTIC: startAudioEngine - Aborted. Ready:\(audioReady), Engine:\(self.customAudioEngine != nil)."); return }
@@ -851,11 +901,35 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + delayUntilStartTime) { [weak self] in
             guard let self = self else { return }
             guard (self.currentState == .tracking || self.currentState == .identifying || self.currentState == .breathing), self.audioReady else { return }
+
+            // --- MODIFIED: Regenerate buffer if frequency changed ---
+            var bufferToPlay = self.audioBuffer // Start with the existing buffer
+            if self.currentBufferFrequency == nil || abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 /* Tolerance */ {
+                // print("DIAGNOSTIC: Regenerating audio buffer for frequency: \(self.currentTargetAudioFrequency) Hz")
+                if let newBuffer = self.generateAudioBuffer(frequency: self.currentTargetAudioFrequency, amplitude: 0.5) {
+                    self.audioBuffer = newBuffer          // Update the stored buffer
+                    self.currentBufferFrequency = self.currentTargetAudioFrequency // Update the tracking frequency
+                    bufferToPlay = newBuffer              // Use the new buffer for this tick
+                } else {
+                    print("ERROR: Failed to regenerate audio buffer for frequency \(self.currentTargetAudioFrequency)")
+                    // Keep using the old buffer if regeneration fails
+                }
+            }
+            // --- END MODIFIED ---
+
+            // --- MODIFIED: Ensure engine/node/buffer still valid and schedule the potentially updated buffer ---
             guard let currentEngine = self.customAudioEngine, currentEngine.isRunning,
-                  let currentPlayerNode = self.audioPlayerNode, currentPlayerNode === initialPlayerNode,
-                  let currentBuffer = self.audioBuffer, currentBuffer === initialBuffer
-            else { return }
-            currentPlayerNode.scheduleBuffer(currentBuffer, at: nil, options: .interrupts) { }; if !currentPlayerNode.isPlaying { currentPlayerNode.play() }
+                  let currentPlayerNode = self.audioPlayerNode, // No need to check identity anymore
+                  let buffer = bufferToPlay // Use the potentially updated buffer
+            else {
+                 print("DIAGNOSTIC: Audio tick aborted - engine/node/buffer invalid after potential regeneration check.")
+                 return
+            }
+            // --- END MODIFIED ---
+
+            // Schedule and play
+            currentPlayerNode.scheduleBuffer(buffer, at: nil, options: .interrupts) { /* Completion handler */ }
+            if !currentPlayerNode.isPlaying { currentPlayerNode.play() }
         }
     }
 
