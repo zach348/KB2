@@ -1,7 +1,7 @@
 // NeuroGlide/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 FIX 6 (COMPLETE FILE - Font/Optional Chain Fix)
-// Role: Main scene. Uses GameConfiguration struct, maps target count inversely to arousal.
+// Updated: [Current Date] - Step 11 FIX 7 (COMPLETE FILE - Color Refs Corrected)
+// Role: Main scene. Maps color similarity to arousal.
 
 import SpriteKit
 import GameplayKit
@@ -55,18 +55,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var motionSettings = MotionSettings()
     private var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
     private var currentIdentificationDuration: TimeInterval = GameConfiguration().identificationDuration
+    // ** CORRECTED: Initialized active colors **
+    private var activeTargetColor: SKColor = GameConfiguration().targetColor_LowArousal
+    private var activeDistractorColor: SKColor = GameConfiguration().distractorColor_LowArousal
     private var targetsToFind: Int = 0
     private var targetsFoundThisRound: Int = 0
     private var score: Int = 0
-    // Initialize directly
-    private var scoreLabel: SKLabelNode = SKLabelNode()
-    private var stateLabel: SKLabelNode = SKLabelNode()
-    private var countdownLabel: SKLabelNode = SKLabelNode()
-    private var arousalLabel: SKLabelNode = SKLabelNode()
-    private var breathingCueLabel: SKLabelNode = SKLabelNode()
+    private var scoreLabel: SKLabelNode! // Use implicitly unwrapped optionals
+    private var stateLabel: SKLabelNode!
+    private var countdownLabel: SKLabelNode!
+    private var arousalLabel: SKLabelNode!
+    private var breathingCueLabel: SKLabelNode!
     private var safeAreaTopInset: CGFloat = 0
     private var breathingVisualsFaded: Bool = false
-    private var fadeOverlayNode: SKSpriteNode = SKSpriteNode()
+    private var fadeOverlayNode: SKSpriteNode! // Use implicitly unwrapped optionals
 
     // --- Haptic Engine ---
     private var hapticEngine: CHHapticEngine?
@@ -82,12 +84,44 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var audioReady: Bool = false
 
     // --- Rhythmic Pulse Properties ---
-    private var currentTimerFrequency: Double = 5.0
+    private var currentTimerFrequency: Double = 5.0 {
+         didSet {
+             if currentTimerFrequency <= 0 { currentTimerFrequency = 1.0 }
+             precisionTimer?.frequency = currentTimerFrequency
+         }
+     }
     public var hapticOffset: TimeInterval = 0.020
     public var audioOffset: TimeInterval = 0.040
 
     // --- Helper: Delta Time ---
     private var lastUpdateTime: TimeInterval = 0
+
+    // --- Initializers ---
+    // ** ADDED Initializers **
+    override init(size: CGSize) {
+        // Initialize non-optional properties BEFORE calling super.init
+        // For implicitly unwrapped optionals (!), they *must* be assigned
+        // a non-nil value before they are first used. Initializing here is safe.
+        scoreLabel = SKLabelNode()
+        stateLabel = SKLabelNode()
+        countdownLabel = SKLabelNode()
+        arousalLabel = SKLabelNode()
+        breathingCueLabel = SKLabelNode()
+        fadeOverlayNode = SKSpriteNode()
+
+        super.init(size: size)
+    }
+
+    required init?(coder aDecoder: NSCoder) {
+        // Initialize implicitly unwrapped optionals here as well
+        scoreLabel = SKLabelNode()
+        stateLabel = SKLabelNode()
+        countdownLabel = SKLabelNode()
+        arousalLabel = SKLabelNode()
+        breathingCueLabel = SKLabelNode()
+        fadeOverlayNode = SKSpriteNode()
+        super.init(coder: aDecoder)
+    }
 
     // --- Scene Lifecycle ---
     override func didMove(to view: SKView) {
@@ -110,7 +144,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     override func willMove(from view: SKView) {
         print("--- GameScene: willMove(from:) ---")
-        precisionTimer?.stop(); // stopTrackingTimers(); // No longer needed
+        precisionTimer?.stop(); // stopTrackingTimers();
         stopIdentificationTimeout()
         stopBreathingAnimation()
         stopHapticEngine(); stopAudioEngine()
@@ -130,7 +164,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func setupWalls() { let b = SKPhysicsBody(edgeLoopFrom: self.frame); b.friction = 0.0; b.restitution = 1.0; self.physicsBody = b }
 
     // --- UI Setup ---
-    // ** CORRECTED: Use fontName instead of fontNamed **
+    // ** CORRECTED: Use fontName **
     private func setupUI() {
         scoreLabel.fontName = "HelveticaNeue-Light"; scoreLabel.fontSize = 20; scoreLabel.fontColor = .white
         scoreLabel.position = CGPoint(x: frame.minX + 20, y: frame.maxY - safeAreaTopInset - 30); scoreLabel.horizontalAlignmentMode = .left; addChild(scoreLabel)
@@ -146,8 +180,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func setupFadeOverlay() {
         fadeOverlayNode.color = .black; fadeOverlayNode.size = self.size
         fadeOverlayNode.position = CGPoint(x: frame.midX, y: frame.midY)
-        fadeOverlayNode.zPosition = 100
-        fadeOverlayNode.alpha = 0.0
+        fadeOverlayNode.zPosition = 100; fadeOverlayNode.alpha = 0.0
         if fadeOverlayNode.parent == nil { addChild(fadeOverlayNode) }
     }
 
@@ -179,6 +212,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                  startPosition = CGPoint(x: CGFloat.random(in: safeFrame.minX ..< safeFrame.maxX), y: CGFloat.random(in: safeFrame.minY ..< safeFrame.maxY))
              }
              let newBall = Ball(isTarget: false, position: startPosition); newBall.name = "ball_\(i)"
+             // ** CORRECTED: Use self.active...Color **
+             newBall.updateAppearance(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
              balls.append(newBall); addChild(newBall)
          }
          if !balls.isEmpty { assignNewTargets(flashNewTargets: false) }
@@ -191,11 +226,18 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let shuffledBalls = balls.shuffled(); var newlyAssignedTargets: [Ball] = []; var assignmentsMade = 0
         for (index, ball) in shuffledBalls.enumerated() {
             let shouldBeTarget = index < currentTargetCount
-            if ball.isTarget != shouldBeTarget { ball.isTarget = shouldBeTarget; assignmentsMade += 1; if shouldBeTarget { newlyAssignedTargets.append(ball) } }
+            if ball.isTarget != shouldBeTarget {
+                ball.isTarget = shouldBeTarget
+                // ** CORRECTED: Use self.active...Color **
+                ball.updateAppearance(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
+                assignmentsMade += 1
+                if shouldBeTarget { newlyAssignedTargets.append(ball) }
+            }
         }
         if flashNewTargets && !newlyAssignedTargets.isEmpty {
             self.isFlashSequenceRunning = true
-            newlyAssignedTargets.forEach { $0.flashAsNewTarget() }
+            // ** CORRECTED: Use self.activeTargetColor and gameConfiguration.flashColor **
+            newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: self.activeTargetColor, flashColor: gameConfiguration.flashColor) }
             let flashEndTime = CACurrentMediaTime() + Ball.flashDuration
             self.flashCooldownEndTime = flashEndTime + gameConfiguration.flashCooldownDuration
              let waitAction = SKAction.wait(forDuration: Ball.flashDuration)
@@ -207,16 +249,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // --- Tracking Timers ---
-    private func startTrackingTimers() {
-        resetShiftTimer()
-        resetIDTimer()
-    }
-    private func resetShiftTimer() {
-        timeUntilNextShift = TimeInterval.random(in: currentMinShiftInterval...currentMaxShiftInterval)
-    }
-    private func resetIDTimer() {
-        timeUntilNextIDCheck = TimeInterval.random(in: currentMinIDInterval...currentMaxIDInterval)
-    }
+    private func startTrackingTimers() { resetShiftTimer(); resetIDTimer() }
+    private func resetShiftTimer() { timeUntilNextShift = TimeInterval.random(in: currentMinShiftInterval...currentMaxShiftInterval) }
+    private func resetIDTimer() { timeUntilNextIDCheck = TimeInterval.random(in: currentMinIDInterval...currentMaxIDInterval) }
     // Removed stop functions
 
     // --- Identification Phase Logic ---
@@ -227,7 +262,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         targetsToFind = 0; targetsFoundThisRound = 0
         guard !balls.isEmpty else { endIdentificationPhase(success: false); return }
         self.targetsToFind = self.currentTargetCount
-        for ball in balls { ball.hideIdentity() }
+         // ** CORRECTED: Use gameConfiguration.hiddenColor **
+        for ball in balls { ball.hideIdentity(hiddenColor: gameConfiguration.hiddenColor) }
         let waitBeforeCountdown = SKAction.wait(forDuration: gameConfiguration.identificationStartDelay)
         let startCountdownAction = SKAction.run { [weak self] in self?.startIdentificationTimeout() }
         self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
@@ -238,6 +274,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard remainingTime > 0 else { endIdentificationPhase(success: false); return }
         countdownLabel.text = String(format: "Time: %.1f", remainingTime); countdownLabel.isHidden = false
         let wait = SKAction.wait(forDuration: 0.1); let update = SKAction.run { [weak self] in guard let self = self, self.currentState == .identifying else { self?.stopIdentificationTimeout(); return }; remainingTime -= 0.1; self.countdownLabel.text = String(format: "Time: %.1f", max(0, remainingTime)) }
+        // ** CORRECTED: Use currentIdentificationDuration **
         let repeatCount = Int(currentIdentificationDuration / 0.1)
         let countdownAction = SKAction.repeat(.sequence([wait, update]), count: repeatCount)
         let timeoutAction = SKAction.run { [weak self] in print("--- Identification Timeout! ---"); self?.endIdentificationPhase(success: false) }
@@ -248,7 +285,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .identifying else { return }
         print("--- Ending Identification Phase (Success: \(success)) ---"); stopIdentificationTimeout()
         if success { print("Correct!"); score += 1 } else { print("Incorrect/Timeout.") }
-        balls.forEach { $0.revealIdentity() }
+        // ** CORRECTED: Use self.active...Color **
+        balls.forEach { $0.revealIdentity(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor) }
         balls.forEach { ball in ball.physicsBody?.isDynamic = true; ball.physicsBody?.velocity = ball.storedVelocity ?? .zero; ball.storedVelocity = nil }; physicsWorld.speed = 1
         currentState = .tracking
         updateUI()
@@ -272,10 +310,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     private func handleBallTap(_ ball: Ball) {
         guard currentState == .identifying else { return }
-        let targetColor = Ball.Appearance.targetColor
         let currentColor = ball.fillColor
         if ball.isTarget {
-            if currentColor != targetColor { targetsFoundThisRound += 1; ball.revealIdentity(); if targetsFoundThisRound >= targetsToFind { endIdentificationPhase(success: true) } }
+            // ** CORRECTED: Use gameConfiguration.hiddenColor for comparison **
+            if currentColor == gameConfiguration.hiddenColor {
+                targetsFoundThisRound += 1
+                // ** CORRECTED: Use self.active...Color **
+                ball.revealIdentity(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
+                if targetsFoundThisRound >= targetsToFind { endIdentificationPhase(success: true) }
+            }
         } else { endIdentificationPhase(success: false) }
     }
     private func changeOffsetsOnTouch() {
@@ -300,6 +343,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let nextIndex = (currentIndex == 0) ? (gameConfiguration.arousalSteps.count - 1) : (currentIndex - 1)
         currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
     }
+    // MODIFIED: Includes color interpolation logic
     private func updateParametersFromArousal() {
         switch currentState {
         case .tracking, .identifying:
@@ -307,6 +351,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             guard trackingRange > 0 else { return }
             let clampedArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
             let normalizedTrackingArousal = (clampedArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
+
+            // Map Speed, SD, Frequency, Target Count, ID Duration
             let speedRange = gameConfiguration.maxTargetSpeedAtTrackingThreshold - gameConfiguration.minTargetSpeedAtTrackingThreshold
             motionSettings.targetMeanSpeed = gameConfiguration.minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
             let sdRange = gameConfiguration.maxTargetSpeedSDAtTrackingThreshold - gameConfiguration.minTargetSpeedSDAtTrackingThreshold
@@ -316,30 +362,52 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
             let calculatedTargetCount = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal) - (targetCountRange * normalizedTrackingArousal)
             self.currentTargetCount = max(gameConfiguration.minTargetsAtHighTrackingArousal, min(gameConfiguration.maxTargetsAtLowTrackingArousal, Int(calculatedTargetCount.rounded())))
+            let idDurationRange = gameConfiguration.maxIdentificationDurationAtLowArousal - gameConfiguration.minIdentificationDurationAtHighArousal
+            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal - (idDurationRange * normalizedTrackingArousal)
+            self.currentIdentificationDuration = max(0.1, self.currentIdentificationDuration)
+
+            // Map Shift Interval Range
             let shiftMinRange = gameConfiguration.shiftIntervalMin_HighArousal - gameConfiguration.shiftIntervalMin_LowArousal
             currentMinShiftInterval = gameConfiguration.shiftIntervalMin_LowArousal + (shiftMinRange * normalizedTrackingArousal)
             let shiftMaxRange = gameConfiguration.shiftIntervalMax_HighArousal - gameConfiguration.shiftIntervalMax_LowArousal
             currentMaxShiftInterval = gameConfiguration.shiftIntervalMax_LowArousal + (shiftMaxRange * normalizedTrackingArousal)
             if currentMinShiftInterval > currentMaxShiftInterval { currentMinShiftInterval = currentMaxShiftInterval }
+
+            // Map ID Interval Range
             let idMinRange = gameConfiguration.idIntervalMin_HighArousal - gameConfiguration.idIntervalMin_LowArousal
             currentMinIDInterval = gameConfiguration.idIntervalMin_LowArousal + (idMinRange * normalizedTrackingArousal)
             let idMaxRange = gameConfiguration.idIntervalMax_HighArousal - gameConfiguration.idIntervalMax_LowArousal
             currentMaxIDInterval = gameConfiguration.idIntervalMax_LowArousal + (idMaxRange * normalizedTrackingArousal)
             if currentMinIDInterval > currentMaxIDInterval { currentMinIDInterval = currentMaxIDInterval }
-            let idDurationRange = gameConfiguration.maxIdentificationDurationAtLowArousal - gameConfiguration.minIdentificationDurationAtHighArousal
-            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal - (idDurationRange * normalizedTrackingArousal)
-            self.currentIdentificationDuration = max(0.1, self.currentIdentificationDuration)
+
+            // Map Colors
+            // ** CORRECTED: Use gameConfiguration for boundary colors **
+            activeTargetColor = interpolateColor(from: gameConfiguration.targetColor_LowArousal, to: gameConfiguration.targetColor_HighArousal, t: normalizedTrackingArousal)
+            activeDistractorColor = interpolateColor(from: gameConfiguration.distractorColor_LowArousal, to: gameConfiguration.distractorColor_HighArousal, t: normalizedTrackingArousal)
+
+            // Apply updated colors immediately
+            for ball in balls {
+                // ** CORRECTED: Use self.active...Color **
+                ball.updateAppearance(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
+            }
+
         case .breathing:
             self.currentTimerFrequency = gameConfiguration.breathingTimerFrequency
             motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
             self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
             self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
+            // ** CORRECTED: Use gameConfiguration for boundary colors **
+            activeTargetColor = gameConfiguration.targetColor_LowArousal
+            activeDistractorColor = gameConfiguration.distractorColor_LowArousal
+
         case .paused:
              self.currentTimerFrequency = 1.0; motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
              self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
              self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
+             // ** CORRECTED: Use gameConfiguration for boundary colors **
+             activeTargetColor = gameConfiguration.targetColor_LowArousal
+             activeDistractorColor = gameConfiguration.distractorColor_LowArousal
         }
-        // Update the precision timer's frequency directly
         precisionTimer?.frequency = self.currentTimerFrequency
         updateUI()
     }
@@ -387,7 +455,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         for (index, ball) in balls.enumerated() {
             ball.physicsBody?.isDynamic = false; ball.physicsBody?.velocity = .zero; ball.storedVelocity = nil
-            ball.isTarget = false; ball.updateAppearance(); ball.alpha = 1.0
+            ball.isTarget = false
+            // ** CORRECTED: Use gameConfiguration for boundary colors **
+            ball.updateAppearance(targetColor: gameConfiguration.targetColor_LowArousal, distractorColor: gameConfiguration.distractorColor_LowArousal)
+            ball.alpha = 1.0
             let moveAction = SKAction.move(to: targetPositions[index], duration: finalTransitionDuration)
             moveAction.timingMode = .easeInEaseOut; ball.run(moveAction)
         }
@@ -404,10 +475,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         stopBreathingAnimation();
         currentState = .tracking; currentBreathingPhase = .idle
         fadeInBreathingVisuals()
-        updateParametersFromArousal()
+        updateParametersFromArousal() // Sets tracking params incl. colors
         updateUI()
-        for ball in balls { ball.physicsBody?.isDynamic = true }
-        assignNewTargets(flashNewTargets: false)
+        for ball in balls {
+            ball.physicsBody?.isDynamic = true
+            // ** CORRECTED: Use self.active...Color **
+            ball.updateAppearance(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
+        }
+        assignNewTargets(flashNewTargets: false) // Assign roles based on currentTargetCount
         applyInitialImpulses()
         startTrackingTimers() // Reset manual timers
     }
@@ -604,34 +679,38 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Timer Callback Handlers ---
     private func handleVisualTick() {
-        guard currentState == .tracking || currentState == .breathing else { return }
+        guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
         guard !balls.isEmpty else { return }
         guard let _ = balls.first?.strokeColor else { return }
         let cycleDuration = 1.0 / currentTimerFrequency
         let onDuration = cycleDuration * gameConfiguration.visualPulseOnDurationRatio
         guard onDuration > 0.001 else { return }
         for ball in balls {
-            let setBorderOn = SKAction.run { ball.lineWidth = Ball.pulseLineWidth }
-            let setBorderOff = SKAction.run { ball.lineWidth = 0 }
-            let waitOn = SKAction.wait(forDuration: onDuration)
-            let sequence = SKAction.sequence([setBorderOn, waitOn, setBorderOff])
-            ball.run(sequence, withKey: "visualPulse")
+            if !breathingVisualsFaded || currentState != .breathing {
+                let setBorderOn = SKAction.run { ball.lineWidth = Ball.pulseLineWidth }
+                let setBorderOff = SKAction.run { ball.lineWidth = 0 }
+                let waitOn = SKAction.wait(forDuration: onDuration)
+                let sequence = SKAction.sequence([setBorderOn, waitOn, setBorderOff])
+                ball.run(sequence, withKey: "visualPulse")
+            } else {
+                ball.removeAction(forKey: "visualPulse"); ball.lineWidth = 0
+            }
         }
     }
     private func handleHapticTick(visualTickTime: CFTimeInterval) {
-        guard currentState == .tracking || currentState == .breathing else { return }
+        guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
         guard hapticsReady, let player = hapticPlayer else { return }
         let hapticStartTime = visualTickTime + hapticOffset
         try? player.start(atTime: hapticStartTime)
     }
     private func handleAudioTick(visualTickTime: CFTimeInterval) {
-        guard currentState == .tracking || currentState == .breathing else { return }
+        guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
         guard audioReady, let initialEngine = customAudioEngine, let initialPlayerNode = audioPlayerNode, let initialBuffer = audioBuffer else { return }
         guard initialEngine.isRunning else { return }
         let audioStartTime = visualTickTime + audioOffset; let currentTime = CACurrentMediaTime(); let delayUntilStartTime = max(0, audioStartTime - currentTime)
         DispatchQueue.main.asyncAfter(deadline: .now() + delayUntilStartTime) { [weak self] in
             guard let self = self else { return }
-            guard (self.currentState == .tracking || self.currentState == .breathing), self.audioReady else { return }
+            guard (self.currentState == .tracking || self.currentState == .identifying || self.currentState == .breathing), self.audioReady else { return }
             guard let currentEngine = self.customAudioEngine, currentEngine.isRunning,
                   let currentPlayerNode = self.audioPlayerNode, currentPlayerNode === initialPlayerNode,
                   let currentBuffer = self.audioBuffer, currentBuffer === initialBuffer

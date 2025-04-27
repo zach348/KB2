@@ -1,11 +1,11 @@
 // NeuroGlide/GameConfiguration.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 FIX 6: Added ID Duration AGAIN
+// Updated: [Current Date] - Step 11 FIX 7: Restored Color Properties
 // Role: Centralized configuration settings for the game parameters.
 
 import Foundation
 import CoreGraphics // For CGFloat
-import SpriteKit // For SKColor if needed later
+import SpriteKit // For SKColor
 
 struct GameConfiguration {
 
@@ -43,10 +43,19 @@ struct GameConfiguration {
     // Identification Duration Ranges/Values
     let maxIdentificationDurationAtLowArousal: TimeInterval = 10.0
     let minIdentificationDurationAtHighArousal: TimeInterval = 1.75
-    // ** ADDED BACK identificationDuration **
-    let identificationDuration: TimeInterval = 5.0 // Base/Default if not mapped yet
+    // ** RESTORED Color Definitions **
+    // Low Arousal (0.35) = Distinct Cool Colors
+    let targetColor_LowArousal: SKColor = SKColor(red: 0.2, green: 0.6, blue: 1.0, alpha: 1.0) // Bright Blue
+    let distractorColor_LowArousal: SKColor = SKColor(red: 0.3, green: 1.0, blue: 0.6, alpha: 1.0) // Bright Green
+    // High Arousal (1.0) = Similar Warm Colors
+    let targetColor_HighArousal: SKColor = SKColor(red: 1.0, green: 0.4, blue: 0.2, alpha: 1.0) // Orange-Red
+    let distractorColor_HighArousal: SKColor = SKColor(red: 1.0, green: 0.6, blue: 0.2, alpha: 1.0) // Orange-Yellow
+    // Color during ID phase when hidden
+    let hiddenColor: SKColor = SKColor(red: 0.6, green: 0.6, blue: 0.65, alpha: 1.0) // Neutral Grayish
+    // Color for flash animation when target assigned
+    let flashColor: SKColor = .white
 
-    // --- TODO: Add ranges/factors for other parameters ---
+    // --- TODO: Add ranges/factors for predictability ---
 
     // --- Breathing Task ---
     let breathingTimerFrequency: Double = 3.0 // Hz during breathing
@@ -67,11 +76,12 @@ struct GameConfiguration {
 
     // --- Identification Task ---
     let identificationStartDelay: TimeInterval = 0.5
+    let identificationDuration: TimeInterval = 5.0 // Base duration
 
     // --- Visuals ---
     let visualPulseOnDurationRatio: Double = 0.2
     let flashCooldownDuration: TimeInterval = 0.5
-    let fadeDuration: TimeInterval = 4.0
+    let fadeDuration: TimeInterval = 4.0 // User adjusted
 
     // --- Motion Control Fine Tuning ---
     // MotionSettings struct remains separate for now.
