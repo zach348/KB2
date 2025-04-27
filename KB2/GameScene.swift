@@ -273,8 +273,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if numberOfFlashes > 0 && flashDuration > 0 {
                  // Duration calculation needs to account for the variable number of flashes
                  // Total duration = flashDuration, so each on/off phase duration is flashDuration / (numberOfFlashes * 2)
-                let singlePhaseDuration = flashDuration / Double(numberOfFlashes * 2)
-                let waitBetweenSounds = singlePhaseDuration * 2
+                // Base duration for one ON-OFF cycle 
+                let baseCycleDuration = flashDuration / Double(numberOfFlashes)
+                // Apply speed factor to get the actual cycle duration
+                let adjustedCycleDuration = max(0.002, baseCycleDuration * gameConfiguration.flashSpeedFactor)
+                let waitBetweenSounds = adjustedCycleDuration // Wait for one full adjusted cycle
 
                 let playSoundAction = SKAction.run { [weak self] in
                     guard let self = self else { return }
@@ -297,10 +300,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             } 
             // ---------------------------------------------------
 
-            let flashEndTime = CACurrentMediaTime() + flashDuration
+            // --- MODIFIED: Calculate actual duration based on factor ---
+            // The total duration of the flashing is reduced by the speed factor.
+            let actualFlashSequenceDuration = flashDuration * gameConfiguration.flashSpeedFactor
+            let flashEndTime = CACurrentMediaTime() + actualFlashSequenceDuration
+            // ---------------------------------------------------------
             self.flashCooldownEndTime = flashEndTime + gameConfiguration.flashCooldownDuration
-            let waitAction = SKAction.wait(forDuration: flashDuration)
-            let clearSequenceFlagAction = SKAction.run { [weak self] in
+             // --- MODIFIED: Wait for the adjusted duration --- 
+             let waitAction = SKAction.wait(forDuration: actualFlashSequenceDuration)
+             // -------------------------------------------
+             let clearSequenceFlagAction = SKAction.run { [weak self] in
                 self?.isFlashSequenceRunning = false
             }
             self.run(SKAction.sequence([waitAction, clearSequenceFlagAction]), withKey: "flashSequenceCompletion")

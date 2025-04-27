@@ -52,6 +52,7 @@ struct GameConfiguration {
     let distractorColor_HighArousal: SKColor = SKColor(red: 1.0, green: 0.6, blue: 0.2, alpha: 1.0) // Orange-Yellow
     // REMOVED: hiddenColor (will use activeDistractorColor)
     let flashColor: SKColor = .white // Color for flash animation
+    let flashSpeedFactor: CGFloat = 0.7 // Speed multiplier for flash iterations (0.7 = 30% faster)
 
     // --- TODO: Add ranges/factors for predictability ---
 

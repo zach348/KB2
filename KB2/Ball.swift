@@ -76,11 +76,27 @@ class Ball: SKShapeNode {
         guard duration > 0, flashes > 0 else {
             self.fillColor = originalColor; self.strokeColor = originalColor; return
         }
+
+        // --- Apply Speed Factor --- 
+        // Need access to GameConfiguration here. Simplest is to pass it in or make factor static.
+        // Let's assume GameConfiguration is accessible or factor is passed.
+        // For now, hardcoding it as an example, but should be read from config.
+        // *** TODO: Read flashSpeedFactor properly from GameConfiguration *** 
+        let configSpeedFactor = GameConfiguration().flashSpeedFactor // Direct access if needed 
+        // ---------------------------
+
         let flashOn = SKAction.run { [weak self] in self?.fillColor = flashColor; self?.strokeColor = flashColor }
         let flashOff = SKAction.run { [weak self] in self?.fillColor = originalColor; self?.strokeColor = originalColor }
-        let wait = SKAction.wait(forDuration: duration / Double(flashes * 2))
+        
+        // Calculate base wait time per phase (on or off)
+        let baseWaitPerPhase = duration / Double(flashes * 2)
+        // Apply speed factor
+        let adjustedWaitPerPhase = max(0.001, baseWaitPerPhase * configSpeedFactor) // Ensure minimum duration
+        
+        let waitAction = SKAction.wait(forDuration: adjustedWaitPerPhase)
+        
         var sequence: [SKAction] = []
-        for _ in 0..<flashes { sequence.append(contentsOf: [flashOn, wait, flashOff, wait]) }
+        for _ in 0..<flashes { sequence.append(contentsOf: [flashOn, waitAction, flashOff, waitAction]) } // Use adjusted wait
         sequence.append(flashOff) // Ensure ends on correct color
         // Flashing means it's not hidden
         let setNotHidden = SKAction.run { [weak self] in self?.isVisuallyHidden = false }
