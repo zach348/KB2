@@ -1,6 +1,6 @@
 // NeuroGlide/GameConfiguration.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 FIX 3: Reversed Target Count Mapping
+// Updated: [Current Date] - Step 11 Part 2: Variable Interval Config
 // Role: Centralized configuration settings for the game parameters.
 
 import Foundation
@@ -10,7 +10,7 @@ import SpriteKit // For SKColor if needed later
 struct GameConfiguration {
 
     // --- General ---
-    let numberOfBalls: Int = 10 // Total balls in scene
+    let numberOfBalls: Int = 10
 
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
@@ -27,19 +27,27 @@ struct GameConfiguration {
     // Rhythmic Pulse Frequency
     let minTimerFrequencyAtTrackingThreshold: Double = 6.0  // Hz
     let maxTimerFrequencyAtTrackingThreshold: Double = 20.0 // Hz
-    // Target Count (Working Memory Load / Attentional Breadth)
-    // MODIFIED: Renamed and values set for reversed mapping
-    let maxTargetsAtLowTrackingArousal: Int = 5 // Max targets when arousal is at trackingArousalThresholdLow
-    let minTargetsAtHighTrackingArousal: Int = 1 // Min targets when arousal is at trackingArousalThresholdHigh (1.0)
+    // Target Count
+    let maxTargetsAtLowTrackingArousal: Int = 5
+    let minTargetsAtHighTrackingArousal: Int = 1
 
-    // Tracking/ID Intervals (Base values, variability added later)
-    let targetShiftInterval: TimeInterval = 5.0
-    let identificationInterval: TimeInterval = 10.0
-    let identificationDuration: TimeInterval = 5.0 // Base duration (could be mapped too)
+    // ** MODIFIED: Variable Intervals **
+    // Target Shift Intervals (Seconds)
+    let shiftIntervalMin_LowArousal: TimeInterval = 35.0 // Min delay at arousal 0.35
+    let shiftIntervalMax_LowArousal: TimeInterval = 65.0 // Max delay at arousal 0.35 (Wide range = unpredictable)
+    let shiftIntervalMin_HighArousal: TimeInterval = 2.5 // Min delay at arousal 1.0
+    let shiftIntervalMax_HighArousal: TimeInterval = 6.0 // Max delay at arousal 1.0 (Narrow range = predictable)
 
-    // --- TODO: Add ranges/factors for predictability and other parameters ---
-    // let targetShiftPredictabilityFactor: CGFloat = ...
-    // let identificationPredictabilityFactor: CGFloat = ...
+    // Identification Prompt Intervals (Seconds)
+    let idIntervalMin_LowArousal: TimeInterval = 30.0 // Min delay at arousal 0.35
+    let idIntervalMax_LowArousal: TimeInterval = 50.0 // Max delay at arousal 0.35 (Wide range = unpredictable)
+    let idIntervalMin_HighArousal: TimeInterval = 8.0  // Min delay at arousal 1.0
+    let idIntervalMax_HighArousal: TimeInterval = 12.0 // Max delay at arousal 1.0 (Narrow range = predictable)
+
+    // Identification Duration (Base value, could be mapped too)
+    let identificationDuration: TimeInterval = 5.0
+
+    // --- TODO: Add ranges/factors for other parameters ---
     // let minIdentificationDuration: TimeInterval = ...
     // let maxIdentificationDuration: TimeInterval = ...
     // let lowArousalTargetColor: SKColor = ...
