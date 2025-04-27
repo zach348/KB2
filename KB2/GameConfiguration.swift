@@ -1,6 +1,6 @@
 // NeuroGlide/GameConfiguration.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 FIX 7: Restored Color Properties
+// Updated: [Current Date] - Step 11 FIX 8: Revised Arousal Steps, Removed Hidden Color
 // Role: Centralized configuration settings for the game parameters.
 
 import Foundation
@@ -16,7 +16,9 @@ struct GameConfiguration {
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
     let breathingFadeOutThreshold: CGFloat = 0.20
-    let arousalSteps: [CGFloat] = [0.15, 0.25, 0.35, 0.50, 0.75, 1.00]
+    // MODIFIED: Expanded arousal steps for testing
+    let arousalSteps: [CGFloat] = stride(from: 0.0, through: 1.0, by: 0.05).map { $0 }
+    // Generates [0.0, 0.05, 0.10, ..., 0.95, 1.0]
 
     // --- Tracking Task Parameter Ranges (Mapped within Tracking Thresholds) ---
     // Motion
@@ -43,17 +45,13 @@ struct GameConfiguration {
     // Identification Duration Ranges/Values
     let maxIdentificationDurationAtLowArousal: TimeInterval = 10.0
     let minIdentificationDurationAtHighArousal: TimeInterval = 1.75
-    // ** RESTORED Color Definitions **
-    // Low Arousal (0.35) = Distinct Cool Colors
+    // Color Similarity / Discriminatory Load
     let targetColor_LowArousal: SKColor = SKColor(red: 0.2, green: 0.6, blue: 1.0, alpha: 1.0) // Bright Blue
     let distractorColor_LowArousal: SKColor = SKColor(red: 0.3, green: 1.0, blue: 0.6, alpha: 1.0) // Bright Green
-    // High Arousal (1.0) = Similar Warm Colors
     let targetColor_HighArousal: SKColor = SKColor(red: 1.0, green: 0.4, blue: 0.2, alpha: 1.0) // Orange-Red
     let distractorColor_HighArousal: SKColor = SKColor(red: 1.0, green: 0.6, blue: 0.2, alpha: 1.0) // Orange-Yellow
-    // Color during ID phase when hidden
-    let hiddenColor: SKColor = SKColor(red: 0.6, green: 0.6, blue: 0.65, alpha: 1.0) // Neutral Grayish
-    // Color for flash animation when target assigned
-    let flashColor: SKColor = .white
+    // REMOVED: hiddenColor (will use activeDistractorColor)
+    let flashColor: SKColor = .white // Color for flash animation
 
     // --- TODO: Add ranges/factors for predictability ---
 

@@ -1,6 +1,6 @@
 // NeuroGlide/Ball.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 Part 4: Dynamic Colors
+// Updated: [Current Date] - Step 11 FIX 9: Added isVisuallyHidden flag
 // Role: Represents a single ball in the tracking task. Inherits from SKShapeNode.
 
 import SpriteKit
@@ -12,20 +12,16 @@ class Ball: SKShapeNode {
     static let flashDuration: TimeInterval = 1.5
     static let pulseLineWidth: CGFloat = 6.0
 
-    // --- Colors ---
-    // REMOVED: Static Appearance struct
-
     // --- Properties ---
     var isTarget: Bool = false {
         didSet {
-            // Appearance update is now triggered externally after color calculation
-            // if oldValue != isTarget && !isHidingTargets {
-            //      updateAppearance() // Needs colors passed in
-            // }
+            // Appearance update is triggered externally after color calculation
         }
     }
     var storedVelocity: CGVector? = nil
-    var isHidingTargets: Bool = false // Flag to potentially prevent updates during hide transition
+    // MODIFIED: Added flag to track hidden state reliably
+    var isVisuallyHidden: Bool = false
+    // --- Internal state for stuck detection ---
     private var previousPosition: CGPoint?
     private var stuckCounterX: Int = 0
     private var stuckCounterY: Int = 0
@@ -34,66 +30,61 @@ class Ball: SKShapeNode {
     // --- Initialization ---
     init(isTarget: Bool, position: CGPoint) {
         self.isTarget = isTarget
-
         super.init()
         let circlePath = CGPath(ellipseIn: CGRect(x: -Ball.defaultRadius, y: -Ball.defaultRadius, width: Ball.defaultRadius * 2, height: Ball.defaultRadius * 2), transform: nil)
         self.path = circlePath
-
-        // Initial appearance set externally after creation using updateAppearance
         self.lineWidth = 0
-        // Default colors until set externally
-        self.fillColor = .gray
+        self.fillColor = .gray // Default until set by updateAppearance
         self.strokeColor = .gray
-
         self.position = position
         self.previousPosition = position
         setupPhysics()
     }
 
-    required init?(coder aDecoder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     // --- Appearance Update ---
-    // MODIFIED: Takes colors as arguments
     func updateAppearance(targetColor: SKColor, distractorColor: SKColor) {
         let color = isTarget ? targetColor : distractorColor
         self.fillColor = color
-        self.strokeColor = color // Border pulse uses this color
+        self.strokeColor = color
+         // When appearance is explicitly updated, it's not hidden
+        self.isVisuallyHidden = false
     }
 
     // --- Hiding/Revealing for Identification ---
-    // MODIFIED: Takes hidden color as argument
+    // MODIFIED: Sets/unsets isVisuallyHidden flag
     func hideIdentity(hiddenColor: SKColor) {
-        self.isHidingTargets = true // Prevent potential didSet interference if added back
+        // self.isHidingTargets = true // No longer needed with explicit flag
         self.fillColor = hiddenColor
-        self.strokeColor = hiddenColor // Match stroke for consistency
-        self.lineWidth = 0 // Ensure pulse border is off
-        self.isHidingTargets = false
+        self.strokeColor = hiddenColor
+        self.lineWidth = 0
+        self.isVisuallyHidden = true // Mark as hidden
+        // self.isHidingTargets = false
     }
 
-    // MODIFIED: Takes current colors as arguments
     func revealIdentity(targetColor: SKColor, distractorColor: SKColor) {
-        updateAppearance(targetColor: targetColor, distractorColor: distractorColor)
+        updateAppearance(targetColor: targetColor, distractorColor: distractorColor) // This sets isVisuallyHidden = false
     }
 
     // --- Flashing Animation ---
-    // MODIFIED: Takes current target color and flash color as arguments
     func flashAsNewTarget(targetColor: SKColor, flashColor: SKColor, duration: TimeInterval = Ball.flashDuration, flashes: Int = 6) {
         self.removeAction(forKey: "flash")
-        let originalColor = targetColor // Should flash *to* the target color
-        // let flashColor = flashColor // Passed in
-
+        let originalColor = targetColor
         guard duration > 0, flashes > 0 else {
             self.fillColor = originalColor; self.strokeColor = originalColor; return
         }
-
-        // Use run blocks to change fill and stroke together
         let flashOn = SKAction.run { [weak self] in self?.fillColor = flashColor; self?.strokeColor = flashColor }
         let flashOff = SKAction.run { [weak self] in self?.fillColor = originalColor; self?.strokeColor = originalColor }
         let wait = SKAction.wait(forDuration: duration / Double(flashes * 2))
-
         var sequence: [SKAction] = []
         for _ in 0..<flashes { sequence.append(contentsOf: [flashOn, wait, flashOff, wait]) }
         sequence.append(flashOff) // Ensure ends on correct color
+        // Flashing means it's not hidden
+        let setNotHidden = SKAction.run { [weak self] in self?.isVisuallyHidden = false }
+        sequence.append(setNotHidden)
 
         self.run(SKAction.sequence(sequence), withKey: "flash")
     }
