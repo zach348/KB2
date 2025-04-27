@@ -255,13 +255,24 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             // print("DIAGNOSTIC: Arousal \(String(format: "%.2f", currentArousalLevel)), Norm: \(String(format: "%.2f", normalizedTrackingArousal)), FlashColor: \(currentFlashColor.description)")
             // -----------------------------------------------
 
-            // Start visual flash on each ball using the calculated flash color
-            let numberOfFlashes = 6 // Default used in Ball.flashAsNewTarget
+            // --- Calculate Number of Flashes based on Arousal (Inverse mapping) ---
+            let minFlashes: CGFloat = 3.0
+            let maxFlashes: CGFloat = 6.0
+            let calculatedFloatFlashes = maxFlashes + (minFlashes - maxFlashes) * normalizedTrackingArousal
+            let numberOfFlashes = max(Int(minFlashes), min(Int(maxFlashes), Int(calculatedFloatFlashes.rounded())))
+            // print("DIAGNOSTIC: Calculated Flashes: \(numberOfFlashes)")
+            // ------------------------------------------------------------------
+
+            // Start visual flash on each ball using the calculated flash color and count
+            // --- MODIFIED: Pass calculated numberOfFlashes --- 
             newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: currentFlashColor, flashes: numberOfFlashes) }
+            // -------------------------------------------------
 
             // --- Start CONCURRENT sound sequence on the SCENE --- 
             let flashDuration = Ball.flashDuration
             if numberOfFlashes > 0 && flashDuration > 0 {
+                 // Duration calculation needs to account for the variable number of flashes
+                 // Total duration = flashDuration, so each on/off phase duration is flashDuration / (numberOfFlashes * 2)
                 let singlePhaseDuration = flashDuration / Double(numberOfFlashes * 2)
                 let waitBetweenSounds = singlePhaseDuration * 2
 
@@ -276,7 +287,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     }
                 }
                 let waitAction = SKAction.wait(forDuration: waitBetweenSounds)
-                let soundSequence = SKAction.repeat(SKAction.sequence([playSoundAction, waitAction]), count: 3)
+                // --- MODIFIED: Use calculated numberOfFlashes for sound repeat count --- 
+                let soundSequence = SKAction.repeat(SKAction.sequence([playSoundAction, waitAction]), count: numberOfFlashes) 
+                // -------------------------------------------------------------------
 
                 // Stop previous sequence if any, then run the new one
                 self.removeAction(forKey: "targetShiftSoundSequence")
