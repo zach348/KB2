@@ -816,7 +816,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             guard let format = audioFormat else { audioReady = false; return }
 
             // --- MODIFIED: Generate initial buffer using helper ---
-            self.audioBuffer = generateAudioBuffer(frequency: self.currentTargetAudioFrequency, amplitude: 0.5) // Use initial target freq
+            self.audioBuffer = generateAudioBuffer(frequency: self.currentTargetAudioFrequency, amplitude: 0.5, arousalLevel: self.currentArousalLevel)
             guard self.audioBuffer != nil else {
                 print("ERROR: Initial audio buffer generation failed.")
                 audioReady = false; return
@@ -829,7 +829,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             audioReady = true
         } catch { print("DIAGNOSTIC: setupAudio - Error: \(error.localizedDescription)"); audioReady = false }
     }
-    private func generateAudioBuffer(frequency: Float, amplitude: Float) -> AVAudioPCMBuffer? {
+    private func generateAudioBuffer(frequency: Float, amplitude: Float, arousalLevel: CGFloat) -> AVAudioPCMBuffer? {
         guard let format = audioFormat, format.sampleRate > 0 else { return nil }
         let sampleRate = Float(format.sampleRate)
         let duration: Float = 0.1 // Keep duration short for rhythmic pulse
@@ -844,10 +844,22 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let angularFrequency = 2 * .pi * frequency / sampleRate
         let clampedAmplitude = max(0.0, min(amplitude, 1.0)) // Ensure amplitude is valid
 
+        // --- ADDED: Harmonic calculation based on arousal ---
+        let harmonicFrequency = frequency * 2.0 // Second harmonic
+        let harmonicAngularFrequency = 2 * .pi * harmonicFrequency / sampleRate
+        // Map arousal [0.0, 1.0] to harmonic amplitude [0.0, 0.25]
+        let maxHarmonicAmplitude: Float = 0.25
+        let harmonicAmplitude = maxHarmonicAmplitude * Float(max(0.0, min(arousalLevel, 1.0)))
+        // --- END ADDED ---
+
         for frame in 0..<Int(frameCount) {
-            channelData[frame] = sin(Float(frame) * angularFrequency) * clampedAmplitude
+            // --- MODIFIED: Add harmonic to fundamental ---
+            let fundamentalValue = sin(Float(frame) * angularFrequency) * clampedAmplitude
+            let harmonicValue = sin(Float(frame) * harmonicAngularFrequency) * harmonicAmplitude
+            channelData[frame] = fundamentalValue + harmonicValue
+            // --- END MODIFIED ---
         }
-        // print("DIAGNOSTIC: Generated audio buffer with Freq: \(frequency) Hz, Amp: \(amplitude)")
+        // print("DIAGNOSTIC: Generated audio buffer with Freq: \(frequency) Hz, Amp: \(amplitude), HarmonicAmp: \(harmonicAmplitude)")
         return buffer
     }
     private func startAudioEngine() {
@@ -906,7 +918,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             var bufferToPlay = self.audioBuffer // Start with the existing buffer
             if self.currentBufferFrequency == nil || abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 /* Tolerance */ {
                 // print("DIAGNOSTIC: Regenerating audio buffer for frequency: \(self.currentTargetAudioFrequency) Hz")
-                if let newBuffer = self.generateAudioBuffer(frequency: self.currentTargetAudioFrequency, amplitude: 0.5) {
+                if let newBuffer = self.generateAudioBuffer(frequency: self.currentTargetAudioFrequency, amplitude: 0.5, arousalLevel: self.currentArousalLevel) {
                     self.audioBuffer = newBuffer          // Update the stored buffer
                     self.currentBufferFrequency = self.currentTargetAudioFrequency // Update the tracking frequency
                     bufferToPlay = newBuffer              // Use the new buffer for this tick
