@@ -1,7 +1,7 @@
 // NeuroGlide/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 10 Addendum 5 (COMPLETE FILE - Final Check)
-// Role: Main scene. Transition to breathing speed based on tracking speed.
+// Updated: [Current Date] - Step 11 FIX 3 (COMPLETE FILE - Reversed Target Count Mapping)
+// Role: Main scene. Uses GameConfiguration struct, maps target count inversely to arousal.
 
 import SpriteKit
 import GameplayKit
@@ -17,70 +17,22 @@ enum BreathingPhase { case idle, inhale, holdAfterInhale, exhale, holdAfterExhal
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Configuration ---
-    public var timerFrequency: Double = 5.0 {
-         didSet {
-             if timerFrequency <= 0 { timerFrequency = 1.0 }
-             precisionTimer?.frequency = timerFrequency
-         }
-     }
-    public var hapticOffset: TimeInterval = 0.020
-    public var audioOffset: TimeInterval = 0.040
-    let numberOfBalls = 10
-    let numberOfTargets = 3
-    let targetShiftInterval: TimeInterval = 5.0
-    let identificationInterval: TimeInterval = 10.0
-    let identificationDuration: TimeInterval = 5.0
-    let identificationStartDelay: TimeInterval = 0.5
-    let flashCooldownDuration: TimeInterval = 0.5
-    let trackingArousalThresholdLow: CGFloat = 0.35
-    let trackingArousalThresholdHigh: CGFloat = 1.0
-    let breathingFadeOutThreshold: CGFloat = 0.20
-    let minTargetSpeedAtTrackingThreshold: CGFloat = 100.0
-    let maxTargetSpeedAtTrackingThreshold: CGFloat = 1000.0
-    let minTargetSpeedSDAtTrackingThreshold: CGFloat = 20.0
-    let maxTargetSpeedSDAtTrackingThreshold: CGFloat = 150.0
-    let minTimerFrequencyAtTrackingThreshold: Double = 6.0
-    let maxTimerFrequencyAtTrackingThreshold: Double = 20.0
-    let breathingTimerFrequency: Double = 3.0
-    let visualPulseOnDurationRatio: Double = 0.2
-    let breathingInhaleDuration: TimeInterval = 4.0
-    let breathingHoldAfterInhaleDuration: TimeInterval = 1.5
-    let breathingExhaleDuration: TimeInterval = 6.0
-    let breathingHoldAfterExhaleDuration: TimeInterval = 1.0
-    let breathingCircleMinRadius: CGFloat = 60.0
-    let breathingCircleMaxRadius: CGFloat = 180.0
-    // let breathingFormationDuration: TimeInterval = 2.5 // Removed
-    let transitionSpeedFactor: CGFloat = 0.8
-    let minTransitionSpeed: CGFloat = 50.0
-    let maxTransitionDuration: TimeInterval = 4.0
-    let breathingHapticIntensity: Float = 0.8
-    let breathingHapticSharpnessMin: Float = 0.35
-    let breathingHapticSharpnessMax: Float = 0.8
-    let breathingHapticAccelFactor: Double = 0.13
-    let arousalSteps: [CGFloat] = [0.15, 0.25, 0.35, 0.50, 0.75, 1.00]
-    let fadeDuration: TimeInterval = 2.25  // Increased by factor of 3 from original 0.75
+    private let gameConfiguration = GameConfiguration()
 
     // --- Properties ---
     private var currentState: GameState = .tracking
-    // ** Included full didSet implementation **
-    private var currentArousalLevel: CGFloat = 0.75 {
-        didSet {
-            let oldValue = oldValue // Capture old value for comparison
-            // Clamp the new value first
-            let clampedValue = max(0.0, min(currentArousalLevel, 1.0))
-            // Only proceed if the clamped value is different from the previous value
-            // to prevent potential infinite loops if clamping occurs
-            if clampedValue != oldValue {
-                // Update the property ONLY if clamping changed it, otherwise didSet might re-trigger
-                if clampedValue != currentArousalLevel {
-                     currentArousalLevel = clampedValue // This will trigger didSet again, but comparison will fail next time
-                     return // Exit early to avoid running logic twice for one external change
-                }
-                // If we reach here, the value was already within 0-1 or was just clamped
-                print("DIAGNOSTIC: Arousal Level Changed to \(String(format: "%.2f", currentArousalLevel))")
-                checkStateTransition(oldValue: oldValue, newValue: currentArousalLevel) // Check for state change
-                updateParametersFromArousal() // Update params based on new level & current state
-                checkBreathingFade() // Check if fade in/out is needed in breathing state
+    private var _currentArousalLevel: CGFloat = 0.75 // Backing variable
+    private var currentArousalLevel: CGFloat { // Computed property with observer
+        get { return _currentArousalLevel }
+        set {
+            let oldValue = _currentArousalLevel
+            let clampedValue = max(0.0, min(newValue, 1.0))
+            if clampedValue != _currentArousalLevel {
+                _currentArousalLevel = clampedValue
+                print("DIAGNOSTIC: Arousal Level Changed to \(String(format: "%.2f", _currentArousalLevel))")
+                checkStateTransition(oldValue: oldValue, newValue: _currentArousalLevel)
+                updateParametersFromArousal()
+                checkBreathingFade()
             }
         }
     }
@@ -95,6 +47,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var identificationCheckNeeded: Bool = false
     private var balls: [Ball] = []
     private var motionSettings = MotionSettings()
+    // Use config for initial default, will be updated by arousal mapping
+    private var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
     private var targetsToFind: Int = 0
     private var targetsFoundThisRound: Int = 0
     private var score: Int = 0
@@ -120,6 +74,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var audioFormat: AVAudioFormat?
     private var audioReady: Bool = false
 
+    // --- Rhythmic Pulse Properties ---
+    private var currentTimerFrequency: Double = 5.0 {
+         didSet {
+             if currentTimerFrequency <= 0 { currentTimerFrequency = 1.0 }
+             precisionTimer?.frequency = currentTimerFrequency
+         }
+     }
+    public var hapticOffset: TimeInterval = 0.020 // Could move to config
+    public var audioOffset: TimeInterval = 0.040 // Could move to config
+
     // --- Scene Lifecycle ---
     override func didMove(to view: SKView) {
         print("--- GameScene: didMove(to:) ---")
@@ -129,10 +93,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupFadeOverlay()
         if hapticsReady { startHapticEngine() }
         if audioReady { startAudioEngine() }
-        createBalls()
+        updateParametersFromArousal() // Set initial target count before creating balls
+        createBalls() // Uses gameConfiguration.numberOfBalls
         if !balls.isEmpty { applyInitialImpulses() }
         setupTimer();
-        updateParametersFromArousal()
+        // updateParametersFromArousal() // Called again to set frequency etc.
         precisionTimer?.start()
         startTrackingTimers(); updateUI()
         flashCooldownEndTime = CACurrentMediaTime()
@@ -194,9 +159,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- Ball Creation ---
     private func createBalls() {
          guard balls.isEmpty else { return }
-         guard numberOfTargets <= numberOfBalls else { return }
+         // Use config for total number, check against *current* target count
+         guard currentTargetCount <= gameConfiguration.numberOfBalls else {
+             print("Error: currentTargetCount (\(currentTargetCount)) > total balls (\(gameConfiguration.numberOfBalls))")
+             return
+         }
          guard self.frame.width > 0 && self.frame.height > 0 else { return }
-         for i in 0..<numberOfBalls {
+         for i in 0..<gameConfiguration.numberOfBalls {
              let buffer: CGFloat = Ball.defaultRadius * 2.5; let safeFrame = self.frame.insetBy(dx: buffer, dy: buffer)
              var startPosition: CGPoint
              if safeFrame.width <= 0 || safeFrame.height <= 0 {
@@ -209,23 +178,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
              let newBall = Ball(isTarget: false, position: startPosition); newBall.name = "ball_\(i)"
              balls.append(newBall); addChild(newBall)
          }
-         if !balls.isEmpty { assignNewTargets(flashNewTargets: false) }
+         if !balls.isEmpty { assignNewTargets(flashNewTargets: false) } // Assigns initial targets based on currentTargetCount
     }
     private func applyInitialImpulses() { balls.forEach { $0.applyRandomImpulse() } }
 
     // --- Target Shift Logic ---
     private func assignNewTargets(flashNewTargets: Bool) {
-        guard numberOfTargets <= balls.count, !balls.isEmpty else { return }
+        guard currentTargetCount <= balls.count, !balls.isEmpty else { return } // Use currentTargetCount
         let shuffledBalls = balls.shuffled(); var newlyAssignedTargets: [Ball] = []; var assignmentsMade = 0
         for (index, ball) in shuffledBalls.enumerated() {
-            let shouldBeTarget = index < numberOfTargets
+            let shouldBeTarget = index < currentTargetCount // Use currentTargetCount
             if ball.isTarget != shouldBeTarget { ball.isTarget = shouldBeTarget; assignmentsMade += 1; if shouldBeTarget { newlyAssignedTargets.append(ball) } }
         }
         if flashNewTargets && !newlyAssignedTargets.isEmpty {
             self.isFlashSequenceRunning = true
             newlyAssignedTargets.forEach { $0.flashAsNewTarget() }
             let flashEndTime = CACurrentMediaTime() + Ball.flashDuration
-            self.flashCooldownEndTime = flashEndTime + flashCooldownDuration
+            self.flashCooldownEndTime = flashEndTime + gameConfiguration.flashCooldownDuration
              let waitAction = SKAction.wait(forDuration: Ball.flashDuration)
              let clearSequenceFlagAction = SKAction.run { [weak self] in
                  self?.isFlashSequenceRunning = false
@@ -237,7 +206,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- Tracking Timers ---
     private func startTrackingTimers() {
         stopTargetShiftTimer()
-        let waitShift = SKAction.wait(forDuration: targetShiftInterval)
+        let waitShift = SKAction.wait(forDuration: gameConfiguration.targetShiftInterval)
         let performShift = SKAction.run { [weak self] in
             guard let self = self, self.currentState == .tracking else { return }
             self.assignNewTargets(flashNewTargets: true)
@@ -245,7 +214,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         self.run(SKAction.repeatForever(.sequence([waitShift, performShift])), withKey: targetShiftTimerActionKey)
 
         stopIdentificationTimer()
-        let waitIdentify = SKAction.wait(forDuration: identificationInterval)
+        let waitIdentify = SKAction.wait(forDuration: gameConfiguration.identificationInterval)
         let setCheckNeededFlagAction = SKAction.run { [weak self] in
             guard let self = self else { return }
             self.identificationCheckNeeded = true
@@ -263,16 +232,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         physicsWorld.speed = 0; balls.forEach { ball in ball.storedVelocity = ball.physicsBody?.velocity; ball.physicsBody?.velocity = .zero; ball.physicsBody?.isDynamic = false }
         targetsToFind = 0; targetsFoundThisRound = 0
         guard !balls.isEmpty else { endIdentificationPhase(success: false); return }
-        for ball in balls { if ball.isTarget { targetsToFind += 1 }; ball.hideIdentity() }
-        let waitBeforeCountdown = SKAction.wait(forDuration: identificationStartDelay)
+        // Use currentTargetCount to know how many targets *should* exist
+        self.targetsToFind = self.currentTargetCount
+        for ball in balls { ball.hideIdentity() } // Hide all balls regardless
+        let waitBeforeCountdown = SKAction.wait(forDuration: gameConfiguration.identificationStartDelay)
         let startCountdownAction = SKAction.run { [weak self] in self?.startIdentificationTimeout() }
         self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
     }
     private func startIdentificationTimeout() {
-        stopIdentificationTimeout(); var remainingTime = identificationDuration
+        stopIdentificationTimeout()
+        var remainingTime = gameConfiguration.identificationDuration
         countdownLabel.text = String(format: "Time: %.1f", remainingTime); countdownLabel.isHidden = false
         let wait = SKAction.wait(forDuration: 0.1); let update = SKAction.run { [weak self] in guard let self = self, self.currentState == .identifying else { self?.stopIdentificationTimeout(); return }; remainingTime -= 0.1; self.countdownLabel.text = String(format: "Time: %.1f", max(0, remainingTime)) }
-        let countdownAction = SKAction.repeat(.sequence([wait, update]), count: Int(identificationDuration / 0.1))
+        let repeatCount = Int(gameConfiguration.identificationDuration / 0.1)
+        let countdownAction = SKAction.repeat(.sequence([wait, update]), count: repeatCount)
         let timeoutAction = SKAction.run { [weak self] in print("--- Identification Timeout! ---"); self?.endIdentificationPhase(success: false) }
         self.run(.sequence([countdownAction, timeoutAction]), withKey: identificationTimeoutActionKey)
     }
@@ -308,6 +281,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let targetColor = Ball.Appearance.targetColor
         let currentColor = ball.fillColor
         if ball.isTarget {
+            // Check against targetsToFind which was set when phase started
             if currentColor != targetColor { targetsFoundThisRound += 1; ball.revealIdentity(); if targetsFoundThisRound >= targetsToFind { endIdentificationPhase(success: true) } }
         } else { endIdentificationPhase(success: false) }
     }
@@ -320,47 +294,65 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Arousal Handling ---
     private func incrementArousalLevel() {
-        guard let currentIndex = arousalSteps.lastIndex(where: { $0 <= currentArousalLevel + 0.01 }) else {
-            currentArousalLevel = arousalSteps.first ?? 0.0; return
+        guard let currentIndex = gameConfiguration.arousalSteps.lastIndex(where: { $0 <= currentArousalLevel + 0.01 }) else {
+            currentArousalLevel = gameConfiguration.arousalSteps.first ?? 0.0; return
         }
-        let nextIndex = (currentIndex + 1) % arousalSteps.count
-        currentArousalLevel = arousalSteps[nextIndex]
+        let nextIndex = (currentIndex + 1) % gameConfiguration.arousalSteps.count
+        currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
     }
     private func decrementArousalLevel() {
-        guard let currentIndex = arousalSteps.firstIndex(where: { $0 >= currentArousalLevel - 0.01 }) else {
-            currentArousalLevel = arousalSteps.last ?? 1.0; return
+        guard let currentIndex = gameConfiguration.arousalSteps.firstIndex(where: { $0 >= currentArousalLevel - 0.01 }) else {
+            currentArousalLevel = gameConfiguration.arousalSteps.last ?? 1.0; return
         }
-        let nextIndex = (currentIndex == 0) ? (arousalSteps.count - 1) : (currentIndex - 1)
-        currentArousalLevel = arousalSteps[nextIndex]
+        let nextIndex = (currentIndex == 0) ? (gameConfiguration.arousalSteps.count - 1) : (currentIndex - 1)
+        currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
     }
+    // MODIFIED: Implemented reversed target count mapping
     private func updateParametersFromArousal() {
         switch currentState {
         case .tracking, .identifying:
-            let trackingRange = trackingArousalThresholdHigh - trackingArousalThresholdLow
-            guard trackingRange > 0 else { /* set mins */ return }
-            let clampedArousal = max(trackingArousalThresholdLow, min(currentArousalLevel, trackingArousalThresholdHigh))
-            let normalizedTrackingArousal = (clampedArousal - trackingArousalThresholdLow) / trackingRange
-            let speedRange = maxTargetSpeedAtTrackingThreshold - minTargetSpeedAtTrackingThreshold
-            motionSettings.targetMeanSpeed = minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
-            let sdRange = maxTargetSpeedSDAtTrackingThreshold - minTargetSpeedSDAtTrackingThreshold
-            motionSettings.targetSpeedSD = minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
-            let freqRange = maxTimerFrequencyAtTrackingThreshold - minTimerFrequencyAtTrackingThreshold
-            self.timerFrequency = minTimerFrequencyAtTrackingThreshold + (freqRange * normalizedTrackingArousal)
+            let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
+            guard trackingRange > 0 else { return }
+            let clampedArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
+            let normalizedTrackingArousal = (clampedArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
+
+            // Map Speed
+            let speedRange = gameConfiguration.maxTargetSpeedAtTrackingThreshold - gameConfiguration.minTargetSpeedAtTrackingThreshold
+            motionSettings.targetMeanSpeed = gameConfiguration.minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
+
+            // Map Speed SD
+            let sdRange = gameConfiguration.maxTargetSpeedSDAtTrackingThreshold - gameConfiguration.minTargetSpeedSDAtTrackingThreshold
+            motionSettings.targetSpeedSD = gameConfiguration.minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
+
+            // Map Timer Frequency
+            let freqRange = gameConfiguration.maxTimerFrequencyAtTrackingThreshold - gameConfiguration.minTimerFrequencyAtTrackingThreshold
+            self.currentTimerFrequency = gameConfiguration.minTimerFrequencyAtTrackingThreshold + (freqRange * normalizedTrackingArousal)
+
+            // Map Number of Targets (Reversed Mapping)
+            let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
+            // Start at MAX targets and DECREASE as normalized arousal increases
+            let calculatedTargetCount = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal) - (targetCountRange * normalizedTrackingArousal)
+            self.currentTargetCount = max(gameConfiguration.minTargetsAtHighTrackingArousal, min(gameConfiguration.maxTargetsAtLowTrackingArousal, Int(calculatedTargetCount.rounded())))
+
         case .breathing:
-            self.timerFrequency = breathingTimerFrequency
+            self.currentTimerFrequency = gameConfiguration.breathingTimerFrequency
             motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
+            self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal // Reset to max when breathing? Or keep last tracking value? Resetting seems safer.
+
         case .paused:
-             self.timerFrequency = 1.0; motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
+             self.currentTimerFrequency = 1.0; motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
+             self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
         }
+        print("DIAGNOSTIC: Parameters updated. Arousal: \(String(format: "%.2f", currentArousalLevel)) -> TargetSpeed: \(String(format: "%.1f", motionSettings.targetMeanSpeed)), TargetSD: \(String(format: "%.1f", motionSettings.targetSpeedSD)), TimerFreq: \(String(format: "%.1f", self.currentTimerFrequency)) Hz, TargetCount: \(self.currentTargetCount)")
         updateUI()
     }
 
     // --- State Transition Logic ---
     private func checkStateTransition(oldValue: CGFloat, newValue: CGFloat) {
-        if (currentState == .tracking || currentState == .identifying) && newValue < trackingArousalThresholdLow && oldValue >= trackingArousalThresholdLow {
+        if (currentState == .tracking || currentState == .identifying) && newValue < gameConfiguration.trackingArousalThresholdLow && oldValue >= gameConfiguration.trackingArousalThresholdLow {
             transitionToBreathingState()
         }
-        else if currentState == .breathing && newValue >= trackingArousalThresholdLow && oldValue < trackingArousalThresholdLow {
+        else if currentState == .breathing && newValue >= gameConfiguration.trackingArousalThresholdLow && oldValue < gameConfiguration.trackingArousalThresholdLow {
             transitionToTrackingState()
         }
     }
@@ -370,9 +362,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         var calculatedMaxDuration: TimeInterval = 0.5
         if currentState == .tracking && !balls.isEmpty {
             let currentMeanSpeed = MotionController.calculateStats(balls: balls).meanSpeed
-            let targetTransitionSpeed = max(minTransitionSpeed, currentMeanSpeed * transitionSpeedFactor)
+            let targetTransitionSpeed = max(gameConfiguration.breathingMinTransitionSpeed, currentMeanSpeed * gameConfiguration.transitionSpeedFactor)
             let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
-            let targetPositions = MotionController.circlePoints(numPoints: balls.count, center: centerPoint, radius: breathingCircleMinRadius)
+            let targetPositions = MotionController.circlePoints(numPoints: balls.count, center: centerPoint, radius: gameConfiguration.breathingCircleMinRadius)
             if targetPositions.count == balls.count {
                 var maxDurationForAnyBall: TimeInterval = 0
                 for (index, ball) in balls.enumerated() {
@@ -380,7 +372,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     let distance = sqrt(pow(endPos.x - startPos.x, 2) + pow(endPos.y - startPos.y, 2))
                     if targetTransitionSpeed > 0 { let durationForBall = TimeInterval(distance / targetTransitionSpeed); maxDurationForAnyBall = max(maxDurationForAnyBall, durationForBall) }
                 }
-                calculatedMaxDuration = min(maxTransitionDuration, maxDurationForAnyBall)
+                calculatedMaxDuration = min(gameConfiguration.maxTransitionDuration, maxDurationForAnyBall)
                 calculatedMaxDuration = max(0.5, calculatedMaxDuration)
             }
         }
@@ -393,7 +385,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         updateParametersFromArousal(); updateUI(); breathingVisualsFaded = false
 
         let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
-        let targetPositions = MotionController.circlePoints(numPoints: balls.count, center: centerPoint, radius: breathingCircleMinRadius)
+        let targetPositions = MotionController.circlePoints(numPoints: balls.count, center: centerPoint, radius: gameConfiguration.breathingCircleMinRadius)
         guard targetPositions.count == balls.count else { return }
 
         for (index, ball) in balls.enumerated() {
@@ -424,14 +416,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func checkBreathingFade() {
         guard currentState == .breathing else { return }
         guard fadeOverlayNode != nil else { return }
-        if currentArousalLevel < breathingFadeOutThreshold && !breathingVisualsFaded {
+        if currentArousalLevel < gameConfiguration.breathingFadeOutThreshold && !breathingVisualsFaded {
             print("DIAGNOSTIC: Fading out breathing visuals...")
             breathingVisualsFaded = true
-            let fadeOut = SKAction.fadeOut(withDuration: fadeDuration)
-            let fadeInOverlay = SKAction.fadeIn(withDuration: fadeDuration)
+            let fadeOut = SKAction.fadeOut(withDuration: gameConfiguration.fadeDuration)
+            let fadeInOverlay = SKAction.fadeIn(withDuration: gameConfiguration.fadeDuration)
             balls.forEach { $0.run(fadeOut) }; breathingCueLabel.run(fadeOut)
             fadeOverlayNode.run(fadeInOverlay)
-        } else if currentArousalLevel >= breathingFadeOutThreshold && breathingVisualsFaded {
+        } else if currentArousalLevel >= gameConfiguration.breathingFadeOutThreshold && breathingVisualsFaded {
             fadeInBreathingVisuals()
         }
     }
@@ -440,8 +432,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
          guard fadeOverlayNode != nil else { return }
          print("DIAGNOSTIC: Fading in breathing visuals...")
          breathingVisualsFaded = false
-         let fadeIn = SKAction.fadeIn(withDuration: fadeDuration)
-         let fadeOutOverlay = SKAction.fadeOut(withDuration: fadeDuration)
+         let fadeIn = SKAction.fadeIn(withDuration: gameConfiguration.fadeDuration)
+         let fadeOutOverlay = SKAction.fadeOut(withDuration: gameConfiguration.fadeDuration)
          balls.forEach { $0.run(fadeIn) }; breathingCueLabel.run(fadeIn)
          fadeOverlayNode.run(fadeOutOverlay)
     }
@@ -460,20 +452,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     private func runBreathingCycleAction() {
         let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
-        let inhaleAction = SKAction.customAction(withDuration: breathingInhaleDuration) { _, elapsedTime in
-            let fraction = elapsedTime / CGFloat(self.breathingInhaleDuration)
-            let currentRadius = self.breathingCircleMinRadius + (self.breathingCircleMaxRadius - self.breathingCircleMinRadius) * fraction
+        let inhaleAction = SKAction.customAction(withDuration: gameConfiguration.breathingInhaleDuration) { _, elapsedTime in
+            let fraction = elapsedTime / CGFloat(self.gameConfiguration.breathingInhaleDuration)
+            let currentRadius = self.gameConfiguration.breathingCircleMinRadius + (self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius) * fraction
             let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
         }; inhaleAction.timingMode = .easeInEaseOut
-        let hold1Visual = SKAction.wait(forDuration: breathingHoldAfterInhaleDuration)
-        let exhaleAction = SKAction.customAction(withDuration: breathingExhaleDuration) { _, elapsedTime in
-            let fraction = elapsedTime / CGFloat(self.breathingExhaleDuration)
-            let currentRadius = self.breathingCircleMaxRadius - (self.breathingCircleMaxRadius - self.breathingCircleMinRadius) * fraction
+        let hold1Visual = SKAction.wait(forDuration: gameConfiguration.breathingHoldAfterInhaleDuration)
+        let exhaleAction = SKAction.customAction(withDuration: gameConfiguration.breathingExhaleDuration) { _, elapsedTime in
+            let fraction = elapsedTime / CGFloat(self.gameConfiguration.breathingExhaleDuration)
+            let currentRadius = self.gameConfiguration.breathingCircleMaxRadius - (self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius) * fraction
             let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
         }; exhaleAction.timingMode = .easeInEaseOut
-        let hold2Visual = SKAction.wait(forDuration: breathingHoldAfterExhaleDuration)
+        let hold2Visual = SKAction.wait(forDuration: gameConfiguration.breathingHoldAfterExhaleDuration)
         let setInhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.inhale) }
         let setHold1Cue = SKAction.run { [weak self] in self?.updateBreathingPhase(.holdAfterInhale) }
         let setExhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.exhale) }
@@ -526,50 +518,57 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let engine = hapticEngine else { return }
         var allBreathingEvents: [CHHapticEvent] = []
         var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
+        let inhaleDuration = gameConfiguration.breathingInhaleDuration
+        let hold1Duration = gameConfiguration.breathingHoldAfterInhaleDuration
+        let exhaleDuration = gameConfiguration.breathingExhaleDuration
+        let hapticIntensity = gameConfiguration.breathingHapticIntensity
+        let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
+        let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
+        let accelFactor = gameConfiguration.breathingHapticAccelFactor
 
         // Inhale Phase
         var relativeTime: TimeInterval = 0; var currentDelayFactor: Double = 1.0
-        let baseInhaleDelay = breathingInhaleDuration / 23.0
-        let sharpnessRangeInhale = breathingHapticSharpnessMax - breathingHapticSharpnessMin
-        while relativeTime < breathingInhaleDuration - 0.01 {
+        let baseInhaleDelay = inhaleDuration / 23.0
+        let sharpnessRangeInhale = sharpnessMax - sharpnessMin
+        while relativeTime < inhaleDuration - 0.01 {
             let absoluteTime = phaseStartTime + relativeTime; inhaleEventTimes.append(absoluteTime)
-            let fraction = relativeTime / breathingInhaleDuration
-            let sharpness = breathingHapticSharpnessMax - (sharpnessRangeInhale * Float(fraction))
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: breathingHapticIntensity)
+            let fraction = relativeTime / inhaleDuration
+            let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
+            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
             let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
             allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-            let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += breathingHapticAccelFactor
+            let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += accelFactor
         }
         let minimumDelay = inhaleEventTimes.count > 1 ? (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
-        phaseStartTime += breathingInhaleDuration
+        phaseStartTime += inhaleDuration
 
         // Hold After Inhale Phase
         relativeTime = 0
-        while relativeTime < breathingHoldAfterInhaleDuration - 0.01 {
+        while relativeTime < hold1Duration - 0.01 {
             let absoluteTime = phaseStartTime + relativeTime
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: breathingHapticIntensity)
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: breathingHapticSharpnessMin)
+            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
+            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
             allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
             relativeTime += minimumDelay
         }
-        phaseStartTime += breathingHoldAfterInhaleDuration
+        phaseStartTime += hold1Duration
 
         // Exhale Phase
         relativeTime = 0
-        let baseExhaleDelay = breathingExhaleDuration / 23.0
+        let baseExhaleDelay = exhaleDuration / 23.0
         let numSteps = inhaleEventTimes.count
-        let maxFactor = 1.0 + breathingHapticAccelFactor * Double(numSteps)
+        let maxFactor = 1.0 + accelFactor * Double(numSteps)
         currentDelayFactor = maxFactor
-        let sharpnessRangeExhale = breathingHapticSharpnessMax - breathingHapticSharpnessMin
-        while relativeTime < breathingExhaleDuration - 0.01 {
+        let sharpnessRangeExhale = sharpnessMax - sharpnessMin
+        while relativeTime < exhaleDuration - 0.01 {
              let absoluteTime = phaseStartTime + relativeTime
-             let fraction = relativeTime / breathingExhaleDuration
-             let sharpness = breathingHapticSharpnessMin + (sharpnessRangeExhale * Float(fraction))
-             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: breathingHapticIntensity)
+             let fraction = relativeTime / exhaleDuration
+             let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
+             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
              let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
-             relativeTime += delay; currentDelayFactor -= breathingHapticAccelFactor
+             relativeTime += delay; currentDelayFactor -= accelFactor
              if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
         }
         // No Hold2 Events
@@ -600,7 +599,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- Timer Setup ---
     private func setupTimer() {
         precisionTimer = PrecisionTimer();
-        precisionTimer?.frequency = self.timerFrequency
+        precisionTimer?.frequency = self.currentTimerFrequency
         precisionTimer?.onVisualTick = { [weak self] in self?.handleVisualTick() }
         precisionTimer?.onHapticTick = { [weak self] t in self?.handleHapticTick(visualTickTime: t) }; precisionTimer?.onAudioTick = { [weak self] t in self?.handleAudioTick(visualTickTime: t) }
     }
@@ -610,8 +609,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .tracking || currentState == .breathing else { return }
         guard !balls.isEmpty else { return }
         guard let _ = balls.first?.strokeColor else { return }
-        let cycleDuration = 1.0 / timerFrequency
-        let onDuration = cycleDuration * self.visualPulseOnDurationRatio
+        let cycleDuration = 1.0 / currentTimerFrequency
+        let onDuration = cycleDuration * gameConfiguration.visualPulseOnDurationRatio
         guard onDuration > 0.001 else { return }
         for ball in balls {
             let setBorderOn = SKAction.run { ball.lineWidth = Ball.pulseLineWidth }

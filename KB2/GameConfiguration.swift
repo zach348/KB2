@@ -1,16 +1,16 @@
 // NeuroGlide/GameConfiguration.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 Part 5: Adjusted ID Duration Range
+// Updated: [Current Date] - Step 11 FIX 3: Reversed Target Count Mapping
 // Role: Centralized configuration settings for the game parameters.
 
 import Foundation
 import CoreGraphics // For CGFloat
-import SpriteKit // For SKColor
+import SpriteKit // For SKColor if needed later
 
 struct GameConfiguration {
 
     // --- General ---
-    let numberOfBalls: Int = 10
+    let numberOfBalls: Int = 10 // Total balls in scene
 
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
@@ -27,25 +27,26 @@ struct GameConfiguration {
     // Rhythmic Pulse Frequency
     let minTimerFrequencyAtTrackingThreshold: Double = 6.0  // Hz
     let maxTimerFrequencyAtTrackingThreshold: Double = 20.0 // Hz
-    // Target Count
-    let maxTargetsAtLowTrackingArousal: Int = 5
-    let minTargetsAtHighTrackingArousal: Int = 1
-    // Target Shift Intervals
-    let targetShiftIntervalMin_LowArousal: TimeInterval = 35.0
-    let targetShiftIntervalMax_LowArousal: TimeInterval = 65.0
-    let targetShiftIntervalMin_HighArousal: TimeInterval = 2.5
-    let targetShiftIntervalMax_HighArousal: TimeInterval = 6.0
-    // Identification Intervals
-    let identificationIntervalMin_LowArousal: TimeInterval = 30.0
-    let identificationIntervalMax_LowArousal: TimeInterval = 50.0
-    let identificationIntervalMin_HighArousal: TimeInterval = 8.0
-    let identificationIntervalMax_HighArousal: TimeInterval = 12.0
-    // MODIFIED: Identification Duration Range Adjusted
-    let maxIdentificationDurationAtLowArousal: TimeInterval = 10.0 // More time at low arousal
-    let minIdentificationDurationAtHighArousal: TimeInterval = 1.75 // Less time at high arousal
+    // Target Count (Working Memory Load / Attentional Breadth)
+    // MODIFIED: Renamed and values set for reversed mapping
+    let maxTargetsAtLowTrackingArousal: Int = 5 // Max targets when arousal is at trackingArousalThresholdLow
+    let minTargetsAtHighTrackingArousal: Int = 1 // Min targets when arousal is at trackingArousalThresholdHigh (1.0)
+
+    // Tracking/ID Intervals (Base values, variability added later)
+    let targetShiftInterval: TimeInterval = 5.0
+    let identificationInterval: TimeInterval = 10.0
+    let identificationDuration: TimeInterval = 5.0 // Base duration (could be mapped too)
+
+    // --- TODO: Add ranges/factors for predictability and other parameters ---
+    // let targetShiftPredictabilityFactor: CGFloat = ...
+    // let identificationPredictabilityFactor: CGFloat = ...
+    // let minIdentificationDuration: TimeInterval = ...
+    // let maxIdentificationDuration: TimeInterval = ...
+    // let lowArousalTargetColor: SKColor = ...
+    // let highArousalTargetColor: SKColor = ...
 
     // --- Breathing Task ---
-    let breathingTimerFrequency: Double = 3.0
+    let breathingTimerFrequency: Double = 3.0 // Hz during breathing
     let breathingInhaleDuration: TimeInterval = 4.0
     let breathingHoldAfterInhaleDuration: TimeInterval = 1.5
     let breathingExhaleDuration: TimeInterval = 6.0
@@ -55,6 +56,7 @@ struct GameConfiguration {
     let transitionSpeedFactor: CGFloat = 0.8
     let breathingMinTransitionSpeed: CGFloat = 50.0
     let maxTransitionDuration: TimeInterval = 4.0
+    // Breathing Haptics
     let breathingHapticIntensity: Float = 0.8
     let breathingHapticSharpnessMin: Float = 0.35
     let breathingHapticSharpnessMax: Float = 0.8
