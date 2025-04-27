@@ -74,6 +74,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var activeParticleEmitters: [Ball: SKEmitterNode] = [:]
     private var correctTapPlayer: AVAudioPlayer?
     private var groupCompletePlayer: AVAudioPlayer?
+    private var incorrectTapPlayer: AVAudioPlayer?
+    private var targetShiftPlayer: AVAudioPlayer?
 
     // --- Haptic Engine ---
     private var hapticEngine: CHHapticEngine?
@@ -148,13 +150,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         stopBreathingAnimation()
         stopHapticEngine(); stopAudioEngine()
         correctTapPlayer?.stop(); groupCompletePlayer?.stop() // Stop feedback sounds
+        incorrectTapPlayer?.stop(); targetShiftPlayer?.stop() // Stop new feedback sounds
         self.removeAction(forKey: "flashSequenceCompletion"); self.removeAction(forKey: breathingAnimationActionKey)
+        self.removeAction(forKey: "targetShiftSoundSequence") // Stop sound sequence
         balls.forEach { $0.removeFromParent() }; balls.removeAll()
         scoreLabel.removeFromParent(); stateLabel.removeFromParent(); countdownLabel.removeFromParent(); arousalLabel.removeFromParent(); breathingCueLabel.removeFromParent()
         fadeOverlayNode.removeFromParent()
         breathingHapticPlayer = nil; hapticPlayer = nil
         correctTapEmitterTemplate = nil; activeParticleEmitters.removeAll() // Clear feedback assets
         correctTapPlayer = nil; groupCompletePlayer = nil
+        incorrectTapPlayer = nil; targetShiftPlayer = nil // Clear new feedback assets
         precisionTimer = nil; hapticEngine = nil; customAudioEngine = nil; audioPlayerNode = nil; audioBuffer = nil
         print("GameScene cleaned up resources.")
         print("--- GameScene: willMove(from:) Finished ---")
@@ -236,14 +241,43 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         if flashNewTargets && !newlyAssignedTargets.isEmpty {
             self.isFlashSequenceRunning = true
-            newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: gameConfiguration.flashColor) }
-            let flashEndTime = CACurrentMediaTime() + Ball.flashDuration
+
+            // Start visual flash on each ball
+            let numberOfFlashes = 6 // Default used in Ball.flashAsNewTarget
+            newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: gameConfiguration.flashColor, flashes: numberOfFlashes) }
+
+            // --- Start CONCURRENT sound sequence on the SCENE --- 
+            let flashDuration = Ball.flashDuration
+            if numberOfFlashes > 0 && flashDuration > 0 {
+                let singlePhaseDuration = flashDuration / Double(numberOfFlashes * 2)
+                let waitBetweenSounds = singlePhaseDuration * 2
+
+                let playSoundAction = SKAction.run { [weak self] in
+                    guard let self = self else { return }
+                    let normalizedFeedbackArousal = self.calculateNormalizedFeedbackArousal()
+                    if normalizedFeedbackArousal > 0, let player = self.targetShiftPlayer {
+                        player.volume = self.gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
+                        player.currentTime = 0 // Rewind
+                        player.play()
+                        // print("DIAGNOSTIC: Played target shift sound (in sequence) with volume: \(player.volume)")
+                    }
+                }
+                let waitAction = SKAction.wait(forDuration: waitBetweenSounds)
+                let soundSequence = SKAction.repeat(SKAction.sequence([playSoundAction, waitAction]), count: 3)
+
+                // Stop previous sequence if any, then run the new one
+                self.removeAction(forKey: "targetShiftSoundSequence")
+                self.run(soundSequence, withKey: "targetShiftSoundSequence")
+            } 
+            // ---------------------------------------------------
+
+            let flashEndTime = CACurrentMediaTime() + flashDuration
             self.flashCooldownEndTime = flashEndTime + gameConfiguration.flashCooldownDuration
-             let waitAction = SKAction.wait(forDuration: Ball.flashDuration)
-             let clearSequenceFlagAction = SKAction.run { [weak self] in
-                 self?.isFlashSequenceRunning = false
-             }
-             self.run(SKAction.sequence([waitAction, clearSequenceFlagAction]), withKey: "flashSequenceCompletion")
+            let waitAction = SKAction.wait(forDuration: flashDuration)
+            let clearSequenceFlagAction = SKAction.run { [weak self] in
+                self?.isFlashSequenceRunning = false
+            }
+            self.run(SKAction.sequence([waitAction, clearSequenceFlagAction]), withKey: "flashSequenceCompletion")
         }
     }
 
@@ -342,26 +376,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .identifying else { return }
         print("DEBUG: handleBallTap called for \(ball.name ?? "Unknown"). IsTarget: \(ball.isTarget), IsHidden: \(ball.isVisuallyHidden)") // DEBUG
 
+        // --- Calculate Feedback Salience based on Arousal (Used by all feedback in this function) ---
+        let normalizedFeedbackArousal = calculateNormalizedFeedbackArousal()
+        // ---------------------------------------------------------------------------------------
+
         // Check if the ball is currently hidden visually and hasn't already been correctly identified (no emitter attached)
         if ball.isVisuallyHidden && activeParticleEmitters[ball] == nil {
             if ball.isTarget {
                 print("DEBUG: Correct tap on hidden target.")
                 targetsFoundThisRound += 1
                 ball.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) // Reveal it
-
-                // --- Calculate Feedback Salience based on Arousal ---
-                let minArousal = gameConfiguration.feedbackMinArousalThreshold
-                let maxArousal = gameConfiguration.feedbackMaxArousalThreshold
-                var normalizedFeedbackArousal: CGFloat = 0.0
-                if currentArousalLevel >= minArousal {
-                    let arousalRange = maxArousal - minArousal
-                    if arousalRange > 0 {
-                        normalizedFeedbackArousal = min(1.0, (currentArousalLevel - minArousal) / arousalRange)
-                    } else if currentArousalLevel >= maxArousal {
-                        normalizedFeedbackArousal = 1.0 // Handle edge case where min == max
-                    }
-                }
-                // -----------------------------------------------------
 
                 // --- Add Visual Feedback (Particle Emitter) ---
                 if normalizedFeedbackArousal > 0, let template = correctTapEmitterTemplate {
@@ -402,6 +426,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             } else {
                 // Tapped a hidden distractor
                 print("DEBUG: Incorrect tap on hidden distractor.")
+
+                // --- Play Audio Feedback (Incorrect Tap) ---
+                if normalizedFeedbackArousal > 0, let player = incorrectTapPlayer {
+                    player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
+                    player.currentTime = 0 // Rewind
+                    player.play()
+                    // print("DIAGNOSTIC: Played incorrect tap sound with volume: \(player.volume)")
+                }
+                // -------------------------------------------
+
                 endIdentificationPhase(success: false)
             }
         } else {
@@ -517,6 +551,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         if currentState == .identifying { endIdentificationPhase(success: false) }
         // stopTrackingTimers() // No longer needed
+        self.removeAction(forKey: "targetShiftSoundSequence") // Stop shift sound sequence if running
 
         currentState = .breathing; currentBreathingPhase = .idle
         updateParametersFromArousal(); updateUI(); breathingVisualsFaded = false
@@ -844,6 +879,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Prepare Audio Players
         correctTapPlayer = prepareAudioPlayer(filename: gameConfiguration.correctTapSoundFileName)
         groupCompletePlayer = prepareAudioPlayer(filename: gameConfiguration.groupCompleteSoundFileName)
+        incorrectTapPlayer = prepareAudioPlayer(filename: gameConfiguration.incorrectTapSoundFileName)
+        targetShiftPlayer = prepareAudioPlayer(filename: gameConfiguration.targetShiftSoundFileName)
     }
 
     private func prepareAudioPlayer(filename: String) -> AVAudioPlayer? {
@@ -870,6 +907,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         } catch {
             print("ERROR: Could not create AVAudioPlayer for \(filename): \(error.localizedDescription)")
             return nil
+        }
+    }
+
+    // --- Helper Function for Feedback Arousal Mapping ---
+    private func calculateNormalizedFeedbackArousal() -> CGFloat {
+        let minArousal = gameConfiguration.feedbackMinArousalThreshold
+        let maxArousal = gameConfiguration.feedbackMaxArousalThreshold
+        guard currentArousalLevel >= minArousal else { return 0.0 }
+
+        let arousalRange = maxArousal - minArousal
+        if arousalRange > 0 {
+            return min(1.0, (currentArousalLevel - minArousal) / arousalRange)
+        } else {
+            // Handle edge case where min == max
+            return (currentArousalLevel >= maxArousal) ? 1.0 : 0.0
         }
     }
 }

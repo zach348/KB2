@@ -79,6 +79,8 @@ struct GameConfiguration {
     let correctTapParticleEffectFileName: String = "CorrectTapEffect.sks" // Ensure this file exists
     let correctTapSoundFileName: String = "correct_sound" // Base name, assumes extension
     let groupCompleteSoundFileName: String = "streak_sound" // Base name, assumes extension
+    let incorrectTapSoundFileName: String = "wrong_sound" // Base name, assumes extension
+    let targetShiftSoundFileName: String = "radar_blip"   // Base name, assumes extension
     let feedbackMinArousalThreshold: CGFloat = 0.5 // Arousal level below which feedback is zero
     let feedbackMaxArousalThreshold: CGFloat = 1.0 // Arousal level at which feedback is maximum
     // Particle Feedback Mapping
