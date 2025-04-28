@@ -527,27 +527,40 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         let nextIndex = (currentIndex == 0) ? (gameConfiguration.arousalSteps.count - 1) : (currentIndex - 1)
         currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
-
-        // --- ADDED: Update Breathing Timings if Needed ---
-        // Check if we are in the breathing state and update dynamic parameters
-        if currentState == .breathing {
-            updateDynamicBreathingParameters()
-        }
-        // --- END ADDED ---
     }
     private func updateParametersFromArousal() {
+
+        // --- Global Parameter Updates (Applied regardless of state unless overridden) ---
+
+        // --- Frequency Calculation (Global, Non-Linear) ---
+        let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
+        let normalizedPosition = pow(Float(clampedArousal), 2.0) // Quadratic curve (x^2)
+        let minFreq = gameConfiguration.minTimerFrequency
+        let maxFreq = gameConfiguration.maxTimerFrequency
+        let freqRange = maxFreq - minFreq
+        let targetFrequency = minFreq + freqRange * Double(normalizedPosition)
+
+        // --- Audio Pitch Calculation (Still Linear 0.0-1.0) ---
+        let audioFreqRange = maxAudioFrequency - minAudioFrequency
+        self.currentTargetAudioFrequency = minAudioFrequency + (audioFreqRange * Float(clampedArousal))
+
+        // --- State-Specific Overrides & Calculations ---
         switch currentState {
         case .tracking, .identifying:
+            // Apply calculated frequency
+            self.currentTimerFrequency = targetFrequency
+
+            // --- Motion, Colors, Intervals etc. based on arousal in TRACKING RANGE (0.35-1.0) ---
             let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
-            guard trackingRange > 0 else { return }
-            let clampedArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
-            let normalizedTrackingArousal = (clampedArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
+            var normalizedTrackingArousal: CGFloat = 0.0
+            if trackingRange > 0 {
+                let clampedTrackingArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
+                normalizedTrackingArousal = (clampedTrackingArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
+            }
             let speedRange = gameConfiguration.maxTargetSpeedAtTrackingThreshold - gameConfiguration.minTargetSpeedAtTrackingThreshold
             motionSettings.targetMeanSpeed = gameConfiguration.minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
             let sdRange = gameConfiguration.maxTargetSpeedSDAtTrackingThreshold - gameConfiguration.minTargetSpeedSDAtTrackingThreshold
             motionSettings.targetSpeedSD = gameConfiguration.minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
-            let freqRange = gameConfiguration.maxTimerFrequencyAtTrackingThreshold - gameConfiguration.minTimerFrequencyAtTrackingThreshold
-            self.currentTimerFrequency = gameConfiguration.minTimerFrequencyAtTrackingThreshold + (freqRange * normalizedTrackingArousal)
             let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
             let calculatedTargetCount = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal) - (targetCountRange * normalizedTrackingArousal)
             self.currentTargetCount = max(gameConfiguration.minTargetsAtHighTrackingArousal, min(gameConfiguration.maxTargetsAtLowTrackingArousal, Int(calculatedTargetCount.rounded())))
@@ -567,32 +580,41 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             activeTargetColor = interpolateColor(from: gameConfiguration.targetColor_LowArousal, to: gameConfiguration.targetColor_HighArousal, t: normalizedTrackingArousal)
             activeDistractorColor = interpolateColor(from: gameConfiguration.distractorColor_LowArousal, to: gameConfiguration.distractorColor_HighArousal, t: normalizedTrackingArousal)
             if currentState == .tracking { for ball in balls { ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor) } }
+
+            // Ensure dynamic breathing params NOT updated here
+            needsHapticPatternUpdate = false // Reset flag if we transition out of breathing
+
         case .breathing:
-            self.currentTimerFrequency = gameConfiguration.breathingTimerFrequency
-            // --- MODIFIED: Update dynamic breathing params instead of resetting others ---
+            // Apply calculated frequency
+            self.currentTimerFrequency = targetFrequency
+
+            // Update dynamic breathing parameters (which might flag haptic update)
             updateDynamicBreathingParameters()
-            // Also ensure motion stops etc.
+
+            // Ensure motion stops & colors are low arousal
             motionSettings.targetMeanSpeed = 0
             motionSettings.targetSpeedSD = 0
-            // Keep colors low arousal
             activeTargetColor = gameConfiguration.targetColor_LowArousal
             activeDistractorColor = gameConfiguration.distractorColor_LowArousal
-            // --- END MODIFIED ---
+
         case .paused:
-             self.currentTimerFrequency = 1.0; motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
-             self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
-             self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
-             activeTargetColor = gameConfiguration.targetColor_LowArousal
-             activeDistractorColor = gameConfiguration.distractorColor_LowArousal
+            // Override frequency to fixed paused value
+            self.currentTimerFrequency = 1.0;
+            // Ensure motion stops & parameters reset to low arousal defaults
+            motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
+            self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
+            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
+            activeTargetColor = gameConfiguration.targetColor_LowArousal
+            activeDistractorColor = gameConfiguration.distractorColor_LowArousal
+            // Ensure dynamic breathing params NOT updated here
+             needsHapticPatternUpdate = false // Reset flag if we pause
         }
+
+        // --- Apply Updated Timer Frequency --- 
+        // (Do this *after* the switch to ensure the correct value is applied)
         precisionTimer?.frequency = self.currentTimerFrequency
 
-        // --- ADDED: Calculate Target Audio Frequency ---
-        let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
-        let freqRange = maxAudioFrequency - minAudioFrequency
-        self.currentTargetAudioFrequency = minAudioFrequency + (freqRange * Float(clampedArousal))
-        // --- END ADDED ---
-
+        // --- Update UI --- 
         updateUI()
     }
 
