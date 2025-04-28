@@ -27,8 +27,8 @@ struct GameConfiguration {
     let minTargetSpeedSDAtTrackingThreshold: CGFloat = 20.0
     let maxTargetSpeedSDAtTrackingThreshold: CGFloat = 150.0
     // Rhythmic Pulse Frequency
-    let minTimerFrequencyAtTrackingThreshold: Double = 6.0  // Hz
-    let maxTimerFrequencyAtTrackingThreshold: Double = 20.0 // Hz
+    let minTimerFrequency: Double = 1.5  // Hz (at arousal 0.0)
+    let maxTimerFrequency: Double = 16.0 // Hz (at arousal 1.0)
     // Target Count
     let maxTargetsAtLowTrackingArousal: Int = 5
     let minTargetsAtHighTrackingArousal: Int = 1
@@ -57,7 +57,6 @@ struct GameConfiguration {
     // --- TODO: Add ranges/factors for predictability ---
 
     // --- Breathing Task ---
-    let breathingTimerFrequency: Double = 3.0 // Hz during breathing
     let breathingInhaleDuration: TimeInterval = 4.0
     let breathingHoldAfterInhaleDuration: TimeInterval = 1.5
     let breathingExhaleDuration: TimeInterval = 6.0
