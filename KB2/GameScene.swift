@@ -75,6 +75,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var currentBreathingExhaleDuration: TimeInterval = GameConfiguration().breathingExhaleDuration
     private var currentBreathingHold2Duration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
     private var needsHapticPatternUpdate: Bool = false
+    // --- ADDED: Flag for deferred visual duration update ---
+    private var needsVisualDurationUpdate: Bool = false
     // --- END ADDED ---
 
     // --- Feedback Properties ---
@@ -729,6 +731,32 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         breathingCueLabel.isHidden = true
     }
     private func runBreathingCycleAction() {
+        // --- ADDED: Apply deferred VISUAL duration updates at the START of the cycle ---
+        if needsVisualDurationUpdate {
+            print("DIAGNOSTIC: Applying deferred visual duration update at start of cycle.")
+            // Recalculate target durations based on the *current* arousal level
+            let breathingArousalRange = gameConfiguration.trackingArousalThresholdLow
+            if breathingArousalRange > 0 {
+                 let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
+                 let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange
+
+                 let minInhale: TimeInterval = 3.5 // TODO: Refactor these magic numbers
+                 let maxInhale: TimeInterval = 5.0
+                 let minExhale: TimeInterval = 5.0
+                 let maxExhale: TimeInterval = 6.5
+
+                 let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
+                 let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
+
+                 currentBreathingInhaleDuration = targetInhaleDuration
+                 currentBreathingExhaleDuration = targetExhaleDuration
+                 // Holds remain constant for now
+                 print("DIAGNOSTIC: Updated visual durations - Inhale: \(String(format: "%.2f", currentBreathingInhaleDuration)), Exhale: \(String(format: "%.2f", currentBreathingExhaleDuration))")
+             }
+             needsVisualDurationUpdate = false // Reset the flag
+        }
+        // --- END ADDED ---
+
         let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
         let inhaleAction = SKAction.customAction(withDuration: currentBreathingInhaleDuration) { _, elapsedTime in
             let fraction = elapsedTime / CGFloat(self.currentBreathingInhaleDuration)
@@ -903,18 +931,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
         let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
 
+        // --- INTENTIONALLY PLACING DURATION CHECK HERE ---
         // Check if change exceeds tolerance
         let tolerance: TimeInterval = 0.1
         if abs(targetInhaleDuration - currentBreathingInhaleDuration) > tolerance || abs(targetExhaleDuration - currentBreathingExhaleDuration) > tolerance {
-            print("DIAGNOSTIC: Breathing duration change detected. Updating...")
-            currentBreathingInhaleDuration = targetInhaleDuration
-            currentBreathingExhaleDuration = targetExhaleDuration
-            // Keep holds constant for now
-            // currentBreathingHold1Duration = ...
-            // currentBreathingHold2Duration = ...
-
-            // Flag that haptic pattern needs update at end of cycle
-            needsHapticPatternUpdate = true
+            print("DIAGNOSTIC: Breathing duration change detected. Flagging for update...")
+            // --- MODIFIED: Don't update durations directly, just set flags ---
+            // currentBreathingInhaleDuration = targetInhaleDuration
+            // currentBreathingExhaleDuration = targetExhaleDuration
+            needsVisualDurationUpdate = true // Flag for visual update at next cycle start
+            needsHapticPatternUpdate = true // Flag for haptic update at end of current cycle
+            // --- END MODIFIED ---
         }
     }
     // --- END ADDED ---
@@ -1074,6 +1101,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
         guard audioReady, let initialEngine = customAudioEngine, let initialPlayerNode = audioPlayerNode, let initialBuffer = audioBuffer else { return }
         guard initialEngine.isRunning else { return }
+        // --- FIX: Use CACurrentMediaTime() --- 
         let audioStartTime = visualTickTime + audioOffset; let currentTime = CACurrentMediaTime(); let delayUntilStartTime = max(0, audioStartTime - currentTime)
         DispatchQueue.main.asyncAfter(deadline: .now() + delayUntilStartTime) { [weak self] in
             guard let self = self else { return }
