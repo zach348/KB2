@@ -374,16 +374,44 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .identifying else { return }
         print("--- Ending Identification Phase (Success: \(success)) ---"); stopIdentificationTimeout()
 
-        // --- Remove Active Particle Emitters ---
-        for (_, emitter) in activeParticleEmitters {
-            emitter.removeFromParent()
-        }
-        activeParticleEmitters.removeAll()
+        // --- REMOVED: Emitter cleanup moved to after delay ---
+        // for (_, emitter) in activeParticleEmitters {
+        //     emitter.removeFromParent()
+        // }
+        // activeParticleEmitters.removeAll()
         // --------------------------------------
 
         if success { print("Correct!"); score += 1 } else { print("Incorrect/Timeout.") }
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
-        balls.forEach { ball in ball.physicsBody?.isDynamic = true; ball.physicsBody?.velocity = ball.storedVelocity ?? .zero; ball.storedVelocity = nil }; physicsWorld.speed = 1
+        
+        // --- MODIFIED: Delay motion resumption ---
+        let delayAction = SKAction.wait(forDuration: 1.0) // MODIFIED: Increased delay to 1.0s
+        let resumeMotionAction = SKAction.run { [weak self] in
+            guard let self = self else { return }
+
+            // --- ADDED: Clean up emitters before resuming motion ---
+            print("--- Cleaning up emitters after delay ---") // Diagnostic
+            for (_, emitter) in self.activeParticleEmitters {
+                emitter.removeFromParent()
+            }
+            self.activeParticleEmitters.removeAll()
+            // --- END ADDED ---
+
+            // Resume physics and apply stored velocity
+            self.balls.forEach { ball in 
+                ball.physicsBody?.isDynamic = true
+                ball.physicsBody?.velocity = ball.storedVelocity ?? .zero
+                ball.storedVelocity = nil 
+            }
+            self.physicsWorld.speed = 1
+            print("--- Resumed Motion after Delay ---") // Diagnostic
+        }
+        
+        // Run the sequence on the scene
+        self.run(SKAction.sequence([delayAction, resumeMotionAction]))
+        // --- END MODIFIED ---
+
+        // These happen immediately, before the delay starts
         currentState = .tracking
         updateUI()
         startTrackingTimers()
