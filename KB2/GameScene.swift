@@ -408,7 +408,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         
         // Run the sequence on the scene
-        self.run(SKAction.sequence([delayAction, resumeMotionAction]))
+        self.run(SKAction.sequence([delayAction, resumeMotionAction]), withKey: "resumeMotionAfterID")
         // --- END MODIFIED ---
 
         // These happen immediately, before the delay starts
@@ -650,15 +650,28 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- State Transition Logic ---
     private func checkStateTransition(oldValue: CGFloat, newValue: CGFloat) {
-        if (currentState == .tracking || currentState == .identifying) && newValue < gameConfiguration.trackingArousalThresholdLow && oldValue >= gameConfiguration.trackingArousalThresholdLow {
+        // Only allow transition to .breathing from .tracking
+        if currentState == .tracking && newValue < gameConfiguration.trackingArousalThresholdLow && oldValue >= gameConfiguration.trackingArousalThresholdLow {
             transitionToBreathingState()
         }
         else if currentState == .breathing && newValue >= gameConfiguration.trackingArousalThresholdLow && oldValue < gameConfiguration.trackingArousalThresholdLow {
             transitionToTrackingState()
         }
+        // If in .identifying and arousal drops below threshold, set a flag to check after returning to .tracking
+        else if currentState == .identifying && newValue < gameConfiguration.trackingArousalThresholdLow && oldValue >= gameConfiguration.trackingArousalThresholdLow {
+            // Set a flag to check after returning to .tracking
+            identificationCheckNeeded = true
+        }
     }
     private func transitionToBreathingState() {
-        guard currentState == .tracking || currentState == .identifying else { return }
+        // --- ADDED: Cancel any pending motion resumption from ID phase --- 
+        self.removeAction(forKey: "resumeMotionAfterID")
+        // -------------------------------------------------------------
+        
+        guard currentState == .tracking else { 
+            print("ERROR: Attempted to transition to breathing from invalid state: \(currentState)") // Added error check
+            return 
+        }
         print("--- Transitioning to Breathing State (Arousal: \(String(format: "%.2f", currentArousalLevel))) ---")
         var calculatedMaxDuration: TimeInterval = 0.5
         if currentState == .tracking && !balls.isEmpty {
@@ -713,6 +726,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         fadeInBreathingVisuals()
         updateParametersFromArousal()
         updateUI()
+        
+        // --- ADDED: Explicitly resume physics simulation ---
+        self.physicsWorld.speed = 1
+        // -------------------------------------------------
+        
         for ball in balls {
             ball.physicsBody?.isDynamic = true
             ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
@@ -1184,6 +1202,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if timeUntilNextIDCheck <= 0 {
                 identificationCheckNeeded = true
                 resetIDTimer()
+            }
+
+            // Check if we need to transition to .breathing after returning from .identifying
+            if identificationCheckNeeded && currentArousalLevel < gameConfiguration.trackingArousalThresholdLow {
+                transitionToBreathingState()
+                identificationCheckNeeded = false
             }
         }
 
