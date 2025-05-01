@@ -54,11 +54,8 @@ class GameSceneTests: XCTestCase {
     func testStateTransitionToTracking() {
         gameScene.didMove(to: mockView)
         gameScene.currentState = .breathing
-        
-        // Set arousal level above threshold
-        gameScene.currentArousalLevel = 0.4
-        
-        // Verify state transition
+        gameScene.currentArousalLevel = 0.2 // below threshold
+        gameScene.currentArousalLevel = 0.4 // above threshold, should trigger transition
         XCTAssertEqual(gameScene.currentState, .tracking)
     }
     
