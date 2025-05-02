@@ -1145,60 +1145,42 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     private func handleAudioTick(visualTickTime: CFTimeInterval) {
         guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
-        guard audioReady, let initialEngine = customAudioEngine, let initialPlayerNode = audioPlayerNode else { return }
+        guard audioReady, let initialEngine = customAudioEngine, let initialPlayerNode = audioPlayerNode, let initialBuffer = audioBuffer else { return }
         guard initialEngine.isRunning else { return }
-        
-        // Special handling only for the specific problematic range
-        let isInProblematicRange = currentArousalLevel >= 0.68 && currentArousalLevel <= 0.78
-        
-        let audioStartTime = visualTickTime + audioOffset
-        let currentTime = CACurrentMediaTime()
-        let delayUntilStartTime = max(0, audioStartTime - currentTime)
-        
+        // --- FIX: Use CACurrentMediaTime() --- 
+        let audioStartTime = visualTickTime + audioOffset; let currentTime = CACurrentMediaTime(); let delayUntilStartTime = max(0, audioStartTime - currentTime)
         DispatchQueue.main.asyncAfter(deadline: .now() + delayUntilStartTime) { [weak self] in
             guard let self = self else { return }
-            guard (self.currentState == .tracking || self.currentState == .identifying || self.currentState == .breathing), 
-                  self.audioReady else { return }
+            guard (self.currentState == .tracking || self.currentState == .identifying || self.currentState == .breathing), self.audioReady else { return }
 
-            // Only stop audio in the problematic range to avoid continuous tones at high arousal
-            if isInProblematicRange {
-                self.audioPlayerNode?.stop()
-            }
-
-            // Regenerate buffer if frequency changed or we're in the problematic range
-            var bufferToPlay = self.audioBuffer
-            let needsNewBuffer = self.currentBufferFrequency == nil || 
-                                 abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 ||
-                                 isInProblematicRange // Always regenerate in problematic range
-            
-            if needsNewBuffer {
-                if let newBuffer = self.generateAudioBuffer(frequency: self.currentTargetAudioFrequency, 
-                                                          arousalLevel: self.currentArousalLevel) {
-                    self.audioBuffer = newBuffer
-                    self.currentBufferFrequency = self.currentTargetAudioFrequency
-                    bufferToPlay = newBuffer
+            // --- MODIFIED: Regenerate buffer if frequency changed ---
+            var bufferToPlay = self.audioBuffer // Start with the existing buffer
+            if self.currentBufferFrequency == nil || abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 /* Tolerance */ {
+                // print("DIAGNOSTIC: Regenerating audio buffer for frequency: \(self.currentTargetAudioFrequency) Hz")
+                if let newBuffer = self.generateAudioBuffer(frequency: self.currentTargetAudioFrequency, arousalLevel: self.currentArousalLevel) {
+                    self.audioBuffer = newBuffer          // Update the stored buffer
+                    self.currentBufferFrequency = self.currentTargetAudioFrequency // Update the tracking frequency
+                    bufferToPlay = newBuffer              // Use the new buffer for this tick
                 } else {
                     print("ERROR: Failed to regenerate audio buffer for frequency \(self.currentTargetAudioFrequency)")
+                    // Keep using the old buffer if regeneration fails
                 }
             }
-            
-            // Use different scheduling options based on arousal level
-            guard let buffer = bufferToPlay,
-                  let playerNode = self.audioPlayerNode,
-                  self.customAudioEngine?.isRunning == true else { return }
-            
-            // Use different buffer options based on arousal level
-            let bufferOptions: AVAudioPlayerNodeBufferOptions = isInProblematicRange ? 
-                                                                .interruptsAtLoop : 
-                                                                .interrupts
-            
-            playerNode.scheduleBuffer(buffer, at: nil, options: bufferOptions) { 
-                // Buffer completed
+            // --- END MODIFIED ---
+
+            // --- MODIFIED: Ensure engine/node/buffer still valid and schedule the potentially updated buffer ---
+            guard let currentEngine = self.customAudioEngine, currentEngine.isRunning,
+                  let currentPlayerNode = self.audioPlayerNode, // No need to check identity anymore
+                  let buffer = bufferToPlay // Use the potentially updated buffer
+            else {
+                 print("DIAGNOSTIC: Audio tick aborted - engine/node/buffer invalid after potential regeneration check.")
+                 return
             }
-            
-            if !playerNode.isPlaying {
-                playerNode.play()
-            }
+            // --- END MODIFIED ---
+
+            // Schedule and play
+            currentPlayerNode.scheduleBuffer(buffer, at: nil, options: .interrupts) { /* Completion handler */ }
+            if !currentPlayerNode.isPlaying { currentPlayerNode.play() }
         }
     }
 
