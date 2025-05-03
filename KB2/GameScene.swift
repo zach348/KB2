@@ -14,194 +14,6 @@ enum GameState { case tracking, identifying, paused, breathing }
 // --- Breathing Phase Enum ---
 enum BreathingPhase { case idle, inhale, holdAfterInhale, exhale, holdAfterExhale }
 
-// --- PreciseAudioPulser Class ---
-class PreciseAudioPulser {
-    private let engine = AVAudioEngine()
-    private let mixer = AVAudioMixerNode()
-    private var sourceNode: AVAudioSourceNode?
-    private var format: AVAudioFormat
-    private var sampleRate: Double
-    
-    // Audio parameters
-    private var frequency: Float = 440.0
-    private var amplitude: Float = 0.5
-    private var squarenessFactor: Float = 0.0
-    
-    // Timing parameters
-    private var pulseFrequency: Double = 5.0
-    private var pulseDuration: Double = 0.05
-    private var isPlaying = false
-    private var shouldPulse = true
-    
-    // Phase tracking for oscillators
-    private var phase: Float = 0.0
-    private var pulsePhase: Double = 0.0
-    private var lastPulseTime: Double = 0.0
-    
-    init?() {
-        print("Initializing PreciseAudioPulser...")
-        
-        // Setup audio session
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playback, mode: .default)
-            try audioSession.setActive(true)
-        } catch {
-            print("Failed to set up audio session: \(error.localizedDescription)")
-            return nil
-        }
-        
-        // Create a standard mono format at 44.1kHz
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1) else {
-            print("Failed to create audio format")
-            return nil
-        }
-        
-        self.format = format
-        self.sampleRate = format.sampleRate
-        
-        // Configure engine
-        engine.attach(mixer)
-        engine.connect(mixer, to: engine.mainMixerNode, format: format)
-        
-        // Create source node with more verbose logging
-        sourceNode = AVAudioSourceNode { [weak self] _, frameTimeStamp, frameCount, audioBufferList -> OSStatus in
-            guard let self = self else { 
-                print("Self was nil in render block")
-                return noErr 
-            }
-            
-            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            guard ablPointer.count > 0 else {
-                print("No buffers in audio buffer list")
-                return noErr
-            }
-            
-            // Get the current time from the audio clock for precise timing
-            let sampleTime = Double(frameTimeStamp.pointee.mSampleTime)
-            let currentSampleTime = sampleTime / self.sampleRate
-            
-            // Calculate pulse state - determine if we should be generating sound right now
-            let pulsePeriod = 1.0 / self.pulseFrequency
-            let pulseOnTime = self.pulseDuration
-            
-            // Modulo arithmetic to determine position in pulse cycle
-            let cyclePosition = currentSampleTime.truncatingRemainder(dividingBy: pulsePeriod)
-            let isInPulseWindow = cyclePosition < pulseOnTime
-            
-            // Fill buffer
-            if let channelData = ablPointer[0].mData?.assumingMemoryBound(to: Float.self) {
-                let omega = 2.0 * Float.pi * self.frequency / Float(self.sampleRate)
-                
-                // Calculate harmonic frequencies and amplitudes for square-wave approximation
-                let omega3 = 3.0 * omega
-                let amp3 = (self.amplitude / 3.0) * self.squarenessFactor
-                
-                let omega5 = 5.0 * omega
-                let amp5 = (self.amplitude / 5.0) * self.squarenessFactor
-                
-                let omega7 = 7.0 * omega
-                let amp7 = (self.amplitude / 7.0) * self.squarenessFactor
-                
-                for frame in 0..<Int(frameCount) {
-                    // Only generate sound during pulse window if pulsing is enabled
-                    let outputAmplitude: Float = (isInPulseWindow && self.shouldPulse) ? 1.0 : 0.0
-                    
-                    // Generate the waveform with fundamental and harmonics
-                    let sample1 = sin(self.phase) * self.amplitude
-                    let sample3 = sin(self.phase * 3) * amp3
-                    let sample5 = sin(self.phase * 5) * amp5
-                    let sample7 = sin(self.phase * 7) * amp7
-                    
-                    // Combine all harmonics and apply pulse amplitude
-                    let totalSample = (sample1 + sample3 + sample5 + sample7) * outputAmplitude
-                    
-                    // Store the sample
-                    channelData[frame] = totalSample
-                    
-                    // Increment phase
-                    self.phase += omega
-                    if self.phase > 2.0 * Float.pi {
-                        self.phase -= 2.0 * Float.pi
-                    }
-                }
-            }
-            
-            return noErr
-        }
-        
-        if let source = sourceNode {
-            engine.attach(source)
-            engine.connect(source, to: mixer, format: format)
-            
-            // Set volume to make sure we're audible
-            mixer.outputVolume = 1.0
-            engine.mainMixerNode.outputVolume = 1.0
-            
-            // Prepare engine
-            engine.prepare()
-            print("PreciseAudioPulser prepared successfully")
-        } else {
-            print("Failed to create source node")
-            return nil
-        }
-    }
-    
-    func start() {
-        guard !isPlaying else { 
-            print("PreciseAudioPulser already started")
-            return 
-        }
-        
-        do {
-            try engine.start()
-            isPlaying = true
-            print("PreciseAudioPulser started successfully")
-        } catch {
-            print("Could not start audio engine: \(error.localizedDescription)")
-        }
-    }
-    
-    func stop() {
-        guard isPlaying else { 
-            print("PreciseAudioPulser already stopped")
-            return 
-        }
-        
-        engine.stop()
-        isPlaying = false
-        print("PreciseAudioPulser stopped")
-    }
-    
-    func updateFrequency(_ newFrequency: Float) {
-        self.frequency = newFrequency
-        // print("Updated frequency to \(newFrequency) Hz")
-    }
-    
-    func updateAmplitude(_ newAmplitude: Float) {
-        self.amplitude = max(0.0, min(1.0, newAmplitude))
-        // print("Updated amplitude to \(amplitude)")
-    }
-    
-    func updateSquarenessFactor(_ newFactor: Float) {
-        self.squarenessFactor = max(0.0, min(1.0, newFactor))
-        // print("Updated squareness to \(squarenessFactor)")
-    }
-    
-    func updatePulseFrequency(_ newFrequency: Double) {
-        self.pulseFrequency = max(0.1, newFrequency)
-        // Adjust pulse duration based on frequency to maintain 50% duty cycle
-        // but never let it get too short at high frequencies
-        self.pulseDuration = min(0.05, 0.5 / self.pulseFrequency)
-        // print("Updated pulse frequency to \(pulseFrequency) Hz, duration: \(pulseDuration)s")
-    }
-    
-    func enablePulsing(_ enable: Bool) {
-        self.shouldPulse = enable
-        print("Pulsing \(enable ? "enabled" : "disabled")")
-    }
-}
-
 // --- VHA Audio Buffer Cache ---
 class VHAAudioBufferCache {
     private var bufferCache: [String: AVAudioPCMBuffer] = [:]
@@ -1005,10 +817,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             self.currentTimerFrequency = 1.0;
             // Ensure motion stops & parameters reset to low arousal defaults
             motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
-            self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
-            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
-            activeTargetColor = gameConfiguration.targetColor_LowArousal
-            activeDistractorColor = gameConfiguration.distractorColor_LowArousal
+             self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
+             self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
+             activeTargetColor = gameConfiguration.targetColor_LowArousal
+             activeDistractorColor = gameConfiguration.distractorColor_LowArousal
             // Ensure dynamic breathing params NOT updated here
              needsHapticPatternUpdate = false // Reset flag if we pause
         }
@@ -1267,65 +1079,65 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- MODIFIED: Parameterized function to generate pattern ---
     private func generateBreathingHapticPattern(inhaleDuration: TimeInterval, hold1Duration: TimeInterval, exhaleDuration: TimeInterval, hold2Duration: TimeInterval) -> CHHapticPattern? {
          guard let engine = hapticEngine else { return nil }
-         var allBreathingEvents: [CHHapticEvent] = []
-         var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
+        var allBreathingEvents: [CHHapticEvent] = []
+        var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
 
-         let hapticIntensity = gameConfiguration.breathingHapticIntensity
-         let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
-         let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
-         let accelFactor = gameConfiguration.breathingHapticAccelFactor
+        let hapticIntensity = gameConfiguration.breathingHapticIntensity
+        let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
+        let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
+        let accelFactor = gameConfiguration.breathingHapticAccelFactor
 
-         // Inhale Phase
-         var relativeTime: TimeInterval = 0; var currentDelayFactor: Double = 1.0
-         let baseInhaleDelay = inhaleDuration / 23.0
-         let sharpnessRangeInhale = sharpnessMax - sharpnessMin
-         while relativeTime < inhaleDuration - 0.01 {
-             let absoluteTime = phaseStartTime + relativeTime; inhaleEventTimes.append(absoluteTime)
-             let fraction = relativeTime / inhaleDuration
-             let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
+        // Inhale Phase
+        var relativeTime: TimeInterval = 0; var currentDelayFactor: Double = 1.0
+        let baseInhaleDelay = inhaleDuration / 23.0
+        let sharpnessRangeInhale = sharpnessMax - sharpnessMin
+        while relativeTime < inhaleDuration - 0.01 {
+            let absoluteTime = phaseStartTime + relativeTime; inhaleEventTimes.append(absoluteTime)
+            let fraction = relativeTime / inhaleDuration
+            let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
+            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
+            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+            allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
+            let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += accelFactor
+        }
+        let minimumDelay = inhaleEventTimes.count > 1 ? (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
+        phaseStartTime += inhaleDuration
+
+        // Hold After Inhale Phase
+        relativeTime = 0
+        while relativeTime < hold1Duration - 0.01 {
+            let absoluteTime = phaseStartTime + relativeTime
+            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
+            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
+            allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
+            relativeTime += minimumDelay
+        }
+        phaseStartTime += hold1Duration
+
+        // Exhale Phase
+        relativeTime = 0
+        let baseExhaleDelay = exhaleDuration / 23.0
+        let numSteps = inhaleEventTimes.count
+        let maxFactor = 1.0 + accelFactor * Double(numSteps)
+        currentDelayFactor = maxFactor
+        let sharpnessRangeExhale = sharpnessMax - sharpnessMin
+        while relativeTime < exhaleDuration - 0.01 {
+             let absoluteTime = phaseStartTime + relativeTime
+             let fraction = relativeTime / exhaleDuration
+             let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-             let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += accelFactor
-         }
-         let minimumDelay = inhaleEventTimes.count > 1 ? (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
-         phaseStartTime += inhaleDuration
+             let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
+             relativeTime += delay; currentDelayFactor -= accelFactor
+             if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
+        }
+        // No Hold2 Events
 
-         // Hold After Inhale Phase
-         relativeTime = 0
-         while relativeTime < hold1Duration - 0.01 {
-             let absoluteTime = phaseStartTime + relativeTime
-             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-             let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
-             allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-             relativeTime += minimumDelay
-         }
-         phaseStartTime += hold1Duration
-
-         // Exhale Phase
-         relativeTime = 0
-         let baseExhaleDelay = exhaleDuration / 23.0
-         let numSteps = inhaleEventTimes.count
-         let maxFactor = 1.0 + accelFactor * Double(numSteps)
-         currentDelayFactor = maxFactor
-         let sharpnessRangeExhale = sharpnessMax - sharpnessMin
-         while relativeTime < exhaleDuration - 0.01 {
-              let absoluteTime = phaseStartTime + relativeTime
-              let fraction = relativeTime / exhaleDuration
-              let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
-              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-              let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
-              relativeTime += delay; currentDelayFactor -= accelFactor
-              if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
-         }
-         // No Hold2 Events
-
-         allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
+        allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
          guard !allBreathingEvents.isEmpty else { return nil }
-         do {
-             let breathingPattern = try CHHapticPattern(events: allBreathingEvents, parameters: [])
+        do {
+            let breathingPattern = try CHHapticPattern(events: allBreathingEvents, parameters: [])
              return breathingPattern
          } catch { print("Error creating breathing haptic pattern: \(error.localizedDescription)"); return nil }
      }
@@ -1409,23 +1221,26 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if let pulser = audioPulser {
                 print("PreciseAudioPulser created successfully")
                 
-                // Set initial values
-                pulser.updateFrequency(self.currentTargetAudioFrequency)
-                
-                // Calculate amplitude based on arousal (same as original)
+                // --- RE-APPLY FIX: Use the combined update method --- 
                 let minAmplitude: Float = 0.3
                 let maxAmplitude: Float = 0.7
                 let amplitudeRange = maxAmplitude - minAmplitude
-                let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
+                // Use currentArousalLevel directly as it's available in this scope
+                let clampedArousal = max(0.0, min(currentArousalLevel, 1.0)) 
                 let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
-                
-                pulser.updateAmplitude(calculatedAmplitude)
-                pulser.updateSquarenessFactor(Float(clampedArousal))
-                pulser.updatePulseFrequency(self.currentTimerFrequency)
-                
-                // Make sure pulsing is enabled
-                pulser.enablePulsing(true)
-                
+                let squareness = Float(clampedArousal)
+                // Ensure currentTimerFrequency is initialized before use here
+                let pulseRate = self.currentTimerFrequency * 0.8 
+
+                // Replace individual calls with the single combined call
+                pulser.updateParameters(
+                    frequency: self.currentTargetAudioFrequency, 
+                    amplitude: calculatedAmplitude, 
+                    squarenessFactor: squareness, 
+                    pulseRate: pulseRate
+                )
+                // --- END RE-APPLY FIX ---
+
                 // Start the audio engine immediately
                 pulser.start()
                 
@@ -1559,7 +1374,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             print("DIAGNOSTIC: startAudioEngine - Aborted. Ready:\(audioReady), Engine:\(self.customAudioEngine != nil)."); 
             return 
         }
-        if engine.isRunning { return }
+         if engine.isRunning { return }
         do { 
             try engine.start() 
         } catch { 
@@ -1782,6 +1597,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             return (currentArousalLevel >= maxArousal) ? 1.0 : 0.0
         }
     }
+
+    // --- ADDED: Session Management Properties --- 
+    var sessionMode: Bool = false
+    var sessionDuration: TimeInterval = 0
+    var sessionStartTime: TimeInterval = 0
+    var initialArousalLevel: CGFloat = 0.95 // Default start arousal for session
+    // --- END ADDED ---
+
+    // --- Session UI Components ---
+    private var isEndingIdentification: Bool = false
 }
 
 // --- Ball class needs to be SKShapeNode ---
