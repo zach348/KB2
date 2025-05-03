@@ -14,6 +14,310 @@ enum GameState { case tracking, identifying, paused, breathing }
 // --- Breathing Phase Enum ---
 enum BreathingPhase { case idle, inhale, holdAfterInhale, exhale, holdAfterExhale }
 
+// --- PreciseAudioPulser Class ---
+class PreciseAudioPulser {
+    private let engine = AVAudioEngine()
+    private let mixer = AVAudioMixerNode()
+    private var sourceNode: AVAudioSourceNode?
+    private var format: AVAudioFormat
+    private var sampleRate: Double
+    
+    // Audio parameters
+    private var frequency: Float = 440.0
+    private var amplitude: Float = 0.5
+    private var squarenessFactor: Float = 0.0
+    
+    // Timing parameters
+    private var pulseFrequency: Double = 5.0
+    private var pulseDuration: Double = 0.05
+    private var isPlaying = false
+    private var shouldPulse = true
+    
+    // Phase tracking for oscillators
+    private var phase: Float = 0.0
+    private var pulsePhase: Double = 0.0
+    private var lastPulseTime: Double = 0.0
+    
+    init?() {
+        print("Initializing PreciseAudioPulser...")
+        
+        // Setup audio session
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playback, mode: .default)
+            try audioSession.setActive(true)
+        } catch {
+            print("Failed to set up audio session: \(error.localizedDescription)")
+            return nil
+        }
+        
+        // Create a standard mono format at 44.1kHz
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1) else {
+            print("Failed to create audio format")
+            return nil
+        }
+        
+        self.format = format
+        self.sampleRate = format.sampleRate
+        
+        // Configure engine
+        engine.attach(mixer)
+        engine.connect(mixer, to: engine.mainMixerNode, format: format)
+        
+        // Create source node with more verbose logging
+        sourceNode = AVAudioSourceNode { [weak self] _, frameTimeStamp, frameCount, audioBufferList -> OSStatus in
+            guard let self = self else { 
+                print("Self was nil in render block")
+                return noErr 
+            }
+            
+            let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferList)
+            guard ablPointer.count > 0 else {
+                print("No buffers in audio buffer list")
+                return noErr
+            }
+            
+            // Get the current time from the audio clock for precise timing
+            let sampleTime = Double(frameTimeStamp.pointee.mSampleTime)
+            let currentSampleTime = sampleTime / self.sampleRate
+            
+            // Calculate pulse state - determine if we should be generating sound right now
+            let pulsePeriod = 1.0 / self.pulseFrequency
+            let pulseOnTime = self.pulseDuration
+            
+            // Modulo arithmetic to determine position in pulse cycle
+            let cyclePosition = currentSampleTime.truncatingRemainder(dividingBy: pulsePeriod)
+            let isInPulseWindow = cyclePosition < pulseOnTime
+            
+            // Fill buffer
+            if let channelData = ablPointer[0].mData?.assumingMemoryBound(to: Float.self) {
+                let omega = 2.0 * Float.pi * self.frequency / Float(self.sampleRate)
+                
+                // Calculate harmonic frequencies and amplitudes for square-wave approximation
+                let omega3 = 3.0 * omega
+                let amp3 = (self.amplitude / 3.0) * self.squarenessFactor
+                
+                let omega5 = 5.0 * omega
+                let amp5 = (self.amplitude / 5.0) * self.squarenessFactor
+                
+                let omega7 = 7.0 * omega
+                let amp7 = (self.amplitude / 7.0) * self.squarenessFactor
+                
+                for frame in 0..<Int(frameCount) {
+                    // Only generate sound during pulse window if pulsing is enabled
+                    let outputAmplitude: Float = (isInPulseWindow && self.shouldPulse) ? 1.0 : 0.0
+                    
+                    // Generate the waveform with fundamental and harmonics
+                    let sample1 = sin(self.phase) * self.amplitude
+                    let sample3 = sin(self.phase * 3) * amp3
+                    let sample5 = sin(self.phase * 5) * amp5
+                    let sample7 = sin(self.phase * 7) * amp7
+                    
+                    // Combine all harmonics and apply pulse amplitude
+                    let totalSample = (sample1 + sample3 + sample5 + sample7) * outputAmplitude
+                    
+                    // Store the sample
+                    channelData[frame] = totalSample
+                    
+                    // Increment phase
+                    self.phase += omega
+                    if self.phase > 2.0 * Float.pi {
+                        self.phase -= 2.0 * Float.pi
+                    }
+                }
+            }
+            
+            return noErr
+        }
+        
+        if let source = sourceNode {
+            engine.attach(source)
+            engine.connect(source, to: mixer, format: format)
+            
+            // Set volume to make sure we're audible
+            mixer.outputVolume = 1.0
+            engine.mainMixerNode.outputVolume = 1.0
+            
+            // Prepare engine
+            engine.prepare()
+            print("PreciseAudioPulser prepared successfully")
+        } else {
+            print("Failed to create source node")
+            return nil
+        }
+    }
+    
+    func start() {
+        guard !isPlaying else { 
+            print("PreciseAudioPulser already started")
+            return 
+        }
+        
+        do {
+            try engine.start()
+            isPlaying = true
+            print("PreciseAudioPulser started successfully")
+        } catch {
+            print("Could not start audio engine: \(error.localizedDescription)")
+        }
+    }
+    
+    func stop() {
+        guard isPlaying else { 
+            print("PreciseAudioPulser already stopped")
+            return 
+        }
+        
+        engine.stop()
+        isPlaying = false
+        print("PreciseAudioPulser stopped")
+    }
+    
+    func updateFrequency(_ newFrequency: Float) {
+        self.frequency = newFrequency
+        // print("Updated frequency to \(newFrequency) Hz")
+    }
+    
+    func updateAmplitude(_ newAmplitude: Float) {
+        self.amplitude = max(0.0, min(1.0, newAmplitude))
+        // print("Updated amplitude to \(amplitude)")
+    }
+    
+    func updateSquarenessFactor(_ newFactor: Float) {
+        self.squarenessFactor = max(0.0, min(1.0, newFactor))
+        // print("Updated squareness to \(squarenessFactor)")
+    }
+    
+    func updatePulseFrequency(_ newFrequency: Double) {
+        self.pulseFrequency = max(0.1, newFrequency)
+        // Adjust pulse duration based on frequency to maintain 50% duty cycle
+        // but never let it get too short at high frequencies
+        self.pulseDuration = min(0.05, 0.5 / self.pulseFrequency)
+        // print("Updated pulse frequency to \(pulseFrequency) Hz, duration: \(pulseDuration)s")
+    }
+    
+    func enablePulsing(_ enable: Bool) {
+        self.shouldPulse = enable
+        print("Pulsing \(enable ? "enabled" : "disabled")")
+    }
+}
+
+// --- VHA Audio Buffer Cache ---
+class VHAAudioBufferCache {
+    private var bufferCache: [String: AVAudioPCMBuffer] = [:]
+    private let format: AVAudioFormat
+    private let sampleRate: Float
+    private let bufferDuration: Float = 0.1 // Same as original implementation
+    private let granularity: Float = 1.0 // Frequency granularity in Hz
+    
+    init?(format: AVAudioFormat) {
+        guard format.sampleRate > 0 else { return nil }
+        self.format = format
+        self.sampleRate = Float(format.sampleRate)
+    }
+    
+    func precomputeBuffers(minFrequency: Float, maxFrequency: Float, arousalLevels: [CGFloat]) {
+        print("Pre-computing audio buffers...")
+        
+        // Clear existing cache
+        bufferCache.removeAll()
+        
+        // Pre-compute buffers for all arousal levels
+        for arousal in arousalLevels {
+            // Calculate frequency for this arousal level (same as original implementation)
+            let audioFreqRange = maxFrequency - minFrequency
+            let frequency = minFrequency + (audioFreqRange * Float(arousal))
+            
+            // Round to granularity to limit number of buffers
+            let roundedFrequency = round(frequency / granularity) * granularity
+            
+            // Generate key for this frequency/arousal combination
+            let key = cacheKey(frequency: roundedFrequency, arousal: arousal)
+            
+            // Only generate if not already in cache
+            if bufferCache[key] == nil {
+                if let buffer = generateBuffer(frequency: roundedFrequency, arousal: arousal) {
+                    bufferCache[key] = buffer
+                }
+            }
+        }
+        
+        print("Completed pre-computing \(bufferCache.count) audio buffers")
+    }
+    
+    func getBuffer(frequency: Float, arousal: CGFloat) -> AVAudioPCMBuffer? {
+        // Round to granularity
+        let roundedFrequency = round(frequency / granularity) * granularity
+        let key = cacheKey(frequency: roundedFrequency, arousal: arousal)
+        
+        // Return cached buffer if available
+        if let cachedBuffer = bufferCache[key] {
+            return cachedBuffer
+        }
+        
+        // If not in cache, generate on demand as fallback
+        print("Cache miss for frequency: \(frequency), arousal: \(arousal)")
+        if let buffer = generateBuffer(frequency: frequency, arousal: arousal) {
+            bufferCache[key] = buffer
+            return buffer
+        }
+        
+        return nil
+    }
+    
+    private func cacheKey(frequency: Float, arousal: CGFloat) -> String {
+        return "\(frequency)_\(Int(arousal * 100))"
+    }
+    
+    private func generateBuffer(frequency: Float, arousal: CGFloat) -> AVAudioPCMBuffer? {
+        let frameCount = AVAudioFrameCount(sampleRate * bufferDuration)
+        guard frameCount > 0 else { return nil }
+        
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
+        buffer.frameLength = frameCount
+        
+        guard let channelData = buffer.floatChannelData?[0] else { return nil }
+        
+        let angularFrequency = 2 * .pi * frequency / sampleRate
+        
+        // Calculate amplitude based on arousal (same as original implementation)
+        let minAmplitude: Float = 0.3
+        let maxAmplitude: Float = 0.7
+        let amplitudeRange = maxAmplitude - minAmplitude
+        let clampedArousal = max(0.0, min(arousal, 1.0))
+        let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
+        
+        // Square wave approximation via odd harmonics (same as original implementation)
+        let squarenessFactor = Float(clampedArousal)
+        
+        let angularFreq3 = 3.0 * angularFrequency
+        let amplitude3 = (calculatedAmplitude / 3.0) * squarenessFactor
+        
+        let angularFreq5 = 5.0 * angularFrequency
+        let amplitude5 = (calculatedAmplitude / 5.0) * squarenessFactor
+        
+        let angularFreq7 = 7.0 * angularFrequency
+        let amplitude7 = (calculatedAmplitude / 7.0) * squarenessFactor
+        
+        for frame in 0..<Int(frameCount) {
+            let time = Float(frame)
+            // Sum fundamental and scaled odd harmonics
+            let fundamentalValue = sin(time * angularFrequency) * calculatedAmplitude
+            let harmonic3Value = sin(time * angularFreq3) * amplitude3
+            let harmonic5Value = sin(time * angularFreq5) * amplitude5
+            let harmonic7Value = sin(time * angularFreq7) * amplitude7
+            
+            channelData[frame] = fundamentalValue + harmonic3Value + harmonic5Value + harmonic7Value
+        }
+        
+        return buffer
+    }
+    
+    func clearCache() {
+        bufferCache.removeAll()
+    }
+}
+
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Configuration ---
@@ -103,6 +407,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var currentBufferFrequency: Float? = nil
     private let minAudioFrequency: Float = 200.0
     private let maxAudioFrequency: Float = 1000.0
+    // --- ADDED: Audio Buffer Cache ---
+    private var audioBufferCache: VHAAudioBufferCache?
+    // --- END ADDED ---
+    
+    // --- ADDED: Precise Audio Pulser ---
+    private var audioPulser: PreciseAudioPulser?
+    private var usingPreciseAudio: Bool = true  // Flag to control which audio system to use
+    // --- END ADDED ---
 
     // --- Rhythmic Pulse Properties ---
     private var currentTimerFrequency: Double = 5.0 {
@@ -162,7 +474,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         precisionTimer?.stop(); // stopTrackingTimers();
         stopIdentificationTimeout()
         stopBreathingAnimation()
-        stopHapticEngine(); stopAudioEngine()
+        
+        // Stop audio first before cleaning up other resources
+        print("Stopping audio engines...")
+        if usingPreciseAudio {
+            audioPulser?.stop()
+        } else {
+            stopAudioEngine()
+        }
+        
+        stopHapticEngine()
+        
         correctTapPlayer?.stop(); groupCompletePlayer?.stop() // Stop feedback sounds
         incorrectTapPlayer?.stop(); targetShiftPlayer?.stop() // Stop new feedback sounds
         self.removeAction(forKey: "flashSequenceCompletion"); self.removeAction(forKey: breathingAnimationActionKey)
@@ -174,7 +496,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         correctTapEmitterTemplate = nil; activeParticleEmitters.removeAll() // Clear feedback assets
         correctTapPlayer = nil; groupCompletePlayer = nil
         incorrectTapPlayer = nil; targetShiftPlayer = nil // Clear new feedback assets
+        
+        // --- ADDED: Clean up audio buffer cache ---
+        audioBufferCache?.clearCache()
+        audioBufferCache = nil
+        // --- END ADDED ---
+        
+        // --- ADDED: Clean up audio pulser ---
+        audioPulser = nil
+        // --- END ADDED ---
+        
         precisionTimer = nil; hapticEngine = nil; customAudioEngine = nil; audioPlayerNode = nil; audioBuffer = nil
+        
+        // Deactivate audio session
+        do {
+            try AVAudioSession.sharedInstance().setActive(false)
+        } catch {
+            print("Error deactivating audio session: \(error.localizedDescription)")
+        }
+        
         print("GameScene cleaned up resources.")
         print("--- GameScene: willMove(from:) Finished ---")
     }
@@ -573,6 +913,39 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // --- Audio Pitch Calculation (Still Linear 0.0-1.0) ---
         let audioFreqRange = maxAudioFrequency - minAudioFrequency
         self.currentTargetAudioFrequency = minAudioFrequency + (audioFreqRange * Float(clampedArousal))
+        
+        // --- MODIFIED: Update audio based on system type ---
+        if usingPreciseAudio {
+            // Update PreciseAudioPulser parameters
+            if let pulser = audioPulser {
+                // Update audio frequency
+                pulser.updateFrequency(self.currentTargetAudioFrequency)
+                
+                // Update amplitude and timbre
+                let minAmplitude: Float = 0.3
+                let maxAmplitude: Float = 0.7
+                let amplitudeRange = maxAmplitude - minAmplitude
+                let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
+                
+                pulser.updateAmplitude(calculatedAmplitude)
+                pulser.updateSquarenessFactor(Float(clampedArousal))
+                
+                // Update pulse frequency from timer frequency
+                pulser.updatePulseFrequency(self.currentTimerFrequency)
+            }
+        } else {
+            // Traditional cache-based system
+            if let cache = self.audioBufferCache {
+                // Create a low-priority background task to fetch the buffer
+                DispatchQueue.global(qos: .background).async { [weak self] in
+                    guard let self = self else { return }
+                    _ = cache.getBuffer(frequency: self.currentTargetAudioFrequency, 
+                                      arousal: self.currentArousalLevel)
+                    // No need to store the result, just ensure it's in cache
+                }
+            }
+        }
+        // --- END MODIFIED ---
 
         // --- State-Specific Overrides & Calculations ---
         switch currentState {
@@ -1026,6 +1399,46 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Audio Setup ---
     private func setupAudio() {
+        print("Setting up audio with usingPreciseAudio=\(usingPreciseAudio)")
+        
+        // --- ADDED: Initialize PreciseAudioPulser ---
+        if usingPreciseAudio {
+            print("Attempting to create PreciseAudioPulser...")
+            audioPulser = PreciseAudioPulser()
+            
+            if let pulser = audioPulser {
+                print("PreciseAudioPulser created successfully")
+                
+                // Set initial values
+                pulser.updateFrequency(self.currentTargetAudioFrequency)
+                
+                // Calculate amplitude based on arousal (same as original)
+                let minAmplitude: Float = 0.3
+                let maxAmplitude: Float = 0.7
+                let amplitudeRange = maxAmplitude - minAmplitude
+                let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
+                let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
+                
+                pulser.updateAmplitude(calculatedAmplitude)
+                pulser.updateSquarenessFactor(Float(clampedArousal))
+                pulser.updatePulseFrequency(self.currentTimerFrequency)
+                
+                // Make sure pulsing is enabled
+                pulser.enablePulsing(true)
+                
+                // Start the audio engine immediately
+                pulser.start()
+                
+                audioReady = true
+                print("PreciseAudioPulser initialized and started successfully")
+                return
+            } else {
+                print("ERROR: Failed to create PreciseAudioPulser, falling back to traditional method")
+                usingPreciseAudio = false
+            }
+        }
+        
+        // Traditional method as fallback
         customAudioEngine = AVAudioEngine(); audioPlayerNode = AVAudioPlayerNode()
         guard let engine = customAudioEngine, let playerNode = audioPlayerNode else { audioReady = false; return }
         do {
@@ -1034,13 +1447,48 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             audioFormat = AVAudioFormat(standardFormatWithSampleRate: 44100.0, channels: 1)
             guard let format = audioFormat else { audioReady = false; return }
 
-            // --- MODIFIED: Generate initial buffer using helper ---
-            self.audioBuffer = generateAudioBuffer(frequency: self.currentTargetAudioFrequency, arousalLevel: self.currentArousalLevel)
+            // --- MODIFIED: Initialize buffer cache and precompute buffers ---
+            self.audioBufferCache = VHAAudioBufferCache(format: format)
+            
+            if let cache = self.audioBufferCache {
+                // Precompute buffers for all arousal levels
+                let arousalStep = 0.01 // 1% increments for smooth coverage
+                var arousalLevels: [CGFloat] = []
+                
+                // Generate array of arousal levels with finer granularity in the problem range
+                for level in stride(from: 0.0, through: 1.0, by: arousalStep) {
+                    arousalLevels.append(level)
+                }
+                
+                // Add extra points in the problem range (0.67-0.78)
+                for level in stride(from: 0.67, through: 0.78, by: 0.005) {
+                    arousalLevels.append(level)
+                }
+                
+                // Remove duplicates and sort
+                arousalLevels = Array(Set(arousalLevels)).sorted()
+                
+                // Precompute all buffers
+                cache.precomputeBuffers(minFrequency: self.minAudioFrequency, 
+                                      maxFrequency: self.maxAudioFrequency,
+                                      arousalLevels: arousalLevels)
+                
+                // Get initial buffer for current frequency
+                self.audioBuffer = cache.getBuffer(frequency: self.currentTargetAudioFrequency, 
+                                                  arousal: self.currentArousalLevel)
+                self.currentBufferFrequency = self.currentTargetAudioFrequency
+            } else {
+                // Fallback to old method if cache creation fails
+                print("ERROR: Failed to initialize audio buffer cache")
+                self.audioBuffer = generateAudioBuffer(frequency: self.currentTargetAudioFrequency, 
+                                                     arousalLevel: self.currentArousalLevel)
+                self.currentBufferFrequency = self.currentTargetAudioFrequency
+            }
+            
             guard self.audioBuffer != nil else {
                 print("ERROR: Initial audio buffer generation failed.")
                 audioReady = false; return
             }
-            self.currentBufferFrequency = self.currentTargetAudioFrequency // Track frequency of initial buffer
             // --- END MODIFIED ---
 
             engine.connect(playerNode, to: engine.mainMixerNode, format: format)
@@ -1101,12 +1549,34 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         return buffer
     }
     private func startAudioEngine() {
-         guard audioReady, let engine = customAudioEngine else { print("DIAGNOSTIC: startAudioEngine - Aborted. Ready:\(audioReady), Engine:\(self.customAudioEngine != nil)."); return }
-         if engine.isRunning { return }
-         do { try engine.start() } catch { print("DIAGNOSTIC: startAudioEngine - Error: \(error.localizedDescription)"); audioReady = false }
+        if usingPreciseAudio {
+            audioPulser?.start()
+            return
+        }
+         
+        // Traditional method
+        guard audioReady, let engine = customAudioEngine else { 
+            print("DIAGNOSTIC: startAudioEngine - Aborted. Ready:\(audioReady), Engine:\(self.customAudioEngine != nil)."); 
+            return 
+        }
+        if engine.isRunning { return }
+        do { 
+            try engine.start() 
+        } catch { 
+            print("DIAGNOSTIC: startAudioEngine - Error: \(error.localizedDescription)"); 
+            audioReady = false 
+        }
     }
     private func stopAudioEngine() {
-        guard let engine = customAudioEngine else { return }; if engine.isRunning { engine.stop() }; audioReady = false
+        if usingPreciseAudio {
+            audioPulser?.stop()
+            return
+        }
+        
+        // Traditional method
+        guard let engine = customAudioEngine else { return }
+        if engine.isRunning { engine.stop() }
+        audioReady = false
     }
 
     // --- Timer Setup ---
@@ -1145,6 +1615,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     private func handleAudioTick(visualTickTime: CFTimeInterval) {
         guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
+        
+        if usingPreciseAudio {
+            // For PreciseAudioPulser we don't need to do anything here
+            // The pulser handles timing internally based on audio hardware clock
+            return
+        }
+        
+        // Traditional method
         guard audioReady, let initialEngine = customAudioEngine, let initialPlayerNode = audioPlayerNode, let initialBuffer = audioBuffer else { return }
         guard initialEngine.isRunning else { return }
         // --- FIX: Use CACurrentMediaTime() --- 
@@ -1153,17 +1631,31 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             guard let self = self else { return }
             guard (self.currentState == .tracking || self.currentState == .identifying || self.currentState == .breathing), self.audioReady else { return }
 
-            // --- MODIFIED: Regenerate buffer if frequency changed ---
+            // --- MODIFIED: Use cached buffer instead of regenerating ---
             var bufferToPlay = self.audioBuffer // Start with the existing buffer
-            if self.currentBufferFrequency == nil || abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 /* Tolerance */ {
-                // print("DIAGNOSTIC: Regenerating audio buffer for frequency: \(self.currentTargetAudioFrequency) Hz")
-                if let newBuffer = self.generateAudioBuffer(frequency: self.currentTargetAudioFrequency, arousalLevel: self.currentArousalLevel) {
-                    self.audioBuffer = newBuffer          // Update the stored buffer
-                    self.currentBufferFrequency = self.currentTargetAudioFrequency // Update the tracking frequency
-                    bufferToPlay = newBuffer              // Use the new buffer for this tick
-                } else {
-                    print("ERROR: Failed to regenerate audio buffer for frequency \(self.currentTargetAudioFrequency)")
-                    // Keep using the old buffer if regeneration fails
+            
+            if let cache = self.audioBufferCache {
+                // Get buffer from cache
+                if let cachedBuffer = cache.getBuffer(frequency: self.currentTargetAudioFrequency, 
+                                                    arousal: self.currentArousalLevel) {
+                    // Only update the stored buffer reference if frequency changed
+                    if self.currentBufferFrequency == nil || 
+                       abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 {
+                        self.audioBuffer = cachedBuffer
+                        self.currentBufferFrequency = self.currentTargetAudioFrequency
+                    }
+                    bufferToPlay = cachedBuffer
+                }
+            } else {
+                // Fallback to old method if cache is unavailable
+                if self.currentBufferFrequency == nil || 
+                   abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 {
+                    if let newBuffer = self.generateAudioBuffer(frequency: self.currentTargetAudioFrequency, 
+                                                              arousalLevel: self.currentArousalLevel) {
+                        self.audioBuffer = newBuffer
+                        self.currentBufferFrequency = self.currentTargetAudioFrequency
+                        bufferToPlay = newBuffer
+                    }
                 }
             }
             // --- END MODIFIED ---
