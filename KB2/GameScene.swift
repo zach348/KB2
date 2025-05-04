@@ -135,6 +135,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- Configuration ---
     private let gameConfiguration = GameConfiguration()
 
+    // --- Session Management Properties ---
+    var sessionMode: Bool = false
+    var sessionDuration: TimeInterval = 0
+    var sessionStartTime: TimeInterval = 0
+    var initialArousalLevel: CGFloat = 0.95
+    
+    // --- ADDED: Throttling properties for arousal updates ---
+    private var lastArousalUpdateTime: TimeInterval = 0
+    private let arousalUpdateInterval: TimeInterval = 0.25 // 4 times per second
+    // --- END ADDED ---
+
     // --- Properties ---
     private var currentState: GameState = .tracking
     private var _currentArousalLevel: CGFloat = 0.75 // Backing variable
@@ -271,6 +282,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupFeedbackAssets() // Load particles and sounds
         if hapticsReady { startHapticEngine() }
         if audioReady { startAudioEngine() }
+        
+        // Initialize session if in session mode
+        if sessionMode {
+            sessionStartTime = CACurrentMediaTime()
+            _currentArousalLevel = initialArousalLevel // Set initial arousal directly
+            print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
+        }
+        
         updateParametersFromArousal()
         createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
@@ -347,6 +366,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         arousalLabel.position = CGPoint(x: frame.maxX - 20, y: frame.maxY - safeAreaTopInset - 30); arousalLabel.horizontalAlignmentMode = .right; addChild(arousalLabel)
         breathingCueLabel.fontName = "HelveticaNeue-Bold"; breathingCueLabel.fontSize = 36; breathingCueLabel.fontColor = .white
         breathingCueLabel.position = CGPoint(x: frame.midX, y: frame.midY + 50); breathingCueLabel.horizontalAlignmentMode = .center; breathingCueLabel.isHidden = true; addChild(breathingCueLabel)
+        
+        // Add session progress bar if in session mode
+        if sessionMode {
+            setupSessionProgressBar()
+        }
     }
     // MODIFIED: Disable user interaction on overlay
     private func setupFadeOverlay() {
@@ -366,6 +390,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         case .identifying: stateLabel.text = "Identify!"; stateLabel.fontColor = .red; countdownLabel.isHidden = false; breathingCueLabel.isHidden = true
         case .breathing: stateLabel.text = "Breathing"; stateLabel.fontColor = .systemBlue; countdownLabel.isHidden = true; breathingCueLabel.isHidden = false
         case .paused: stateLabel.text = "Paused"; stateLabel.fontColor = .gray; countdownLabel.isHidden = true; breathingCueLabel.isHidden = true
+        }
+        
+        // Update session progress if in session mode
+        if sessionMode {
+            updateSessionProgressBar()
         }
     }
 
@@ -1496,6 +1525,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if lastUpdateTime == 0 { lastUpdateTime = currentTime }
         let dt = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
+        
+        // Update arousal for session mode
+        if sessionMode {
+            updateArousalForSession()
+        }
 
         if currentState == .tracking {
             timeUntilNextShift -= dt
@@ -1598,15 +1632,120 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
-    // --- ADDED: Session Management Properties --- 
-    var sessionMode: Bool = false
-    var sessionDuration: TimeInterval = 0
-    var sessionStartTime: TimeInterval = 0
-    var initialArousalLevel: CGFloat = 0.95 // Default start arousal for session
-    // --- END ADDED ---
+    // --- Session Management Methods ---
+    private func calculateArousalForProgress(_ progress: Double) -> CGFloat {
+        // Constants for exponential decay formula: A(p) = A_end + (A_start - A_end) * e^(-k*p)
+        let startArousal = initialArousalLevel
+        let endArousal: CGFloat = 0.0
+        let decayConstant: Double = 5.0 // Controls how quickly arousal drops, higher = faster initial drop
+        
+        // Apply exponential decay formula
+        let calculatedArousal = endArousal + (startArousal - endArousal) * CGFloat(exp(-decayConstant * progress))
+        
+        // Ensure the value is properly clamped
+        return max(0.0, min(1.0, calculatedArousal))
+    }
 
-    // --- Session UI Components ---
+    private func updateArousalForSession() {
+        guard sessionMode else { return }
+        
+        // Throttle updates to improve performance
+        let currentTime = CACurrentMediaTime()
+        // Only update if enough time has passed since the last update
+        guard (currentTime - lastArousalUpdateTime) >= arousalUpdateInterval else { return }
+        
+        // Update the timestamp for next check
+        lastArousalUpdateTime = currentTime
+        
+        let elapsedTime = currentTime - sessionStartTime
+        let progress = min(1.0, elapsedTime / sessionDuration)
+        
+        // Calculate target arousal based on exponential decay
+        let targetArousal = calculateArousalForProgress(progress)
+        
+        // Apply arousal change more smoothly
+        let arousalDifference = targetArousal - currentArousalLevel
+        if abs(arousalDifference) > 0.001 {
+            // Apply gradual change rather than jumping directly to target
+            let newArousal = currentArousalLevel + (arousalDifference * 0.05)  // 5% step toward target
+            currentArousalLevel = newArousal
+        }
+    }
+    
+    // --- Session UI Methods ---
+    private func setupSessionProgressBar() {
+        // Create container for progress bar
+        let barWidth = frame.width * 0.8
+        let barHeight: CGFloat = 8
+        let barPath = CGPath(roundedRect: CGRect(x: -barWidth/2, y: -barHeight/2, width: barWidth, height: barHeight), cornerWidth: 4, cornerHeight: 4, transform: nil)
+        
+        sessionProgressBar = SKShapeNode(path: barPath)
+        sessionProgressBar?.position = CGPoint(x: frame.midX, y: frame.maxY - safeAreaTopInset - 70)
+        sessionProgressBar?.fillColor = .darkGray
+        sessionProgressBar?.strokeColor = .gray
+        sessionProgressBar?.lineWidth = 1
+        sessionProgressBar?.zPosition = 100
+        addChild(sessionProgressBar!)
+        
+        // Create fill for progress bar
+        let fillPath = CGPath(roundedRect: CGRect(x: 0, y: -barHeight/2, width: 0, height: barHeight), cornerWidth: 4, cornerHeight: 4, transform: nil)
+        sessionProgressFill = SKShapeNode(path: fillPath)
+        sessionProgressFill?.position = CGPoint(x: -barWidth/2, y: 0)
+        sessionProgressFill?.fillColor = .systemBlue
+        sessionProgressFill?.strokeColor = .clear
+        sessionProgressFill?.zPosition = 101
+        sessionProgressBar?.addChild(sessionProgressFill!)
+        
+        // Add time remaining label
+        sessionTimeLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
+        sessionTimeLabel?.fontSize = 14
+        sessionTimeLabel?.fontColor = .white
+        sessionTimeLabel?.position = CGPoint(x: 0, y: -20)
+        sessionTimeLabel?.horizontalAlignmentMode = .center
+        sessionTimeLabel?.text = formatTimeRemaining(sessionDuration)
+        sessionProgressBar?.addChild(sessionTimeLabel!)
+    }
+    
+    private func updateSessionProgressBar() {
+        guard sessionMode, let progressFill = sessionProgressFill, let timeLabel = sessionTimeLabel else { return }
+        
+        let currentTime = CACurrentMediaTime()
+        let elapsedTime = currentTime - sessionStartTime
+        let progress = min(1.0, elapsedTime / sessionDuration)
+        let timeRemaining = max(0, sessionDuration - elapsedTime)
+        
+        // Update progress bar fill
+        let barWidth = (sessionProgressBar?.frame.width ?? 100)
+        let fillWidth = barWidth * CGFloat(progress)
+        
+        let barHeight: CGFloat = 8
+        let fillPath = CGPath(roundedRect: CGRect(x: 0, y: -barHeight/2, width: fillWidth, height: barHeight), cornerWidth: 4, cornerHeight: 4, transform: nil)
+        progressFill.path = fillPath
+        
+        // Update time remaining label
+        timeLabel.text = formatTimeRemaining(timeRemaining)
+        
+        // Change color based on progress
+        if progress < 0.33 {
+            progressFill.fillColor = .systemBlue
+        } else if progress < 0.66 {
+            progressFill.fillColor = .systemGreen
+        } else {
+            progressFill.fillColor = .systemIndigo
+        }
+    }
+    
+    private func formatTimeRemaining(_ timeInSeconds: TimeInterval) -> String {
+        let minutes = Int(timeInSeconds) / 60
+        let seconds = Int(timeInSeconds) % 60
+        return String(format: "%d:%02d remaining", minutes, seconds)
+    }
+
+    // --- Additional Properties ---
     private var isEndingIdentification: Bool = false
+    private var sessionProgressBar: SKShapeNode?
+    private var sessionProgressFill: SKShapeNode?
+    private var sessionTimeLabel: SKLabelNode?
 }
 
 // --- Ball class needs to be SKShapeNode ---
