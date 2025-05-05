@@ -553,24 +553,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func stopIdentificationTimeout() { self.removeAction(forKey: identificationTimeoutActionKey); countdownLabel.isHidden = true }
     private func endIdentificationPhase(success: Bool) {
         guard currentState == .identifying else { return }
-        print("--- Ending Identification Phase (Success: \(success)) ---"); stopIdentificationTimeout()
-
-        // --- REMOVED: Emitter cleanup moved to after delay ---
-        // for (_, emitter) in activeParticleEmitters {
-        //     emitter.removeFromParent()
-        // }
-        // activeParticleEmitters.removeAll()
-        // --------------------------------------
+        // --- FIX: Prevent double execution --- 
+        guard !isEndingIdentification else { 
+            print("DIAGNOSTIC: endIdentificationPhase called again while already ending. Ignoring.")
+            return
+        }
+        isEndingIdentification = true // Set flag immediately
+        // -----------------------------------
+        print("--- Ending Identification Phase (Success: \(success)) ---")
+        // stopIdentificationTimeout() // Already called by handleBallTap
 
         if success { print("Correct!"); score += 1 } else { print("Incorrect/Timeout.") }
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
         
-        // --- MODIFIED: Delay motion resumption ---
-        let delayAction = SKAction.wait(forDuration: 1.0) // MODIFIED: Increased delay to 1.0s
+        // --- MODIFIED: Delay motion resumption --- 
+        let delayAction = SKAction.wait(forDuration: 1.0)
         let resumeMotionAction = SKAction.run { [weak self] in
             guard let self = self else { return }
 
-            // --- ADDED: Clean up emitters before resuming motion ---
+            // --- ADDED: Clean up emitters before resuming motion --- 
             print("--- Cleaning up emitters after delay ---") // Diagnostic
             for (_, emitter) in self.activeParticleEmitters {
                 emitter.removeFromParent()
@@ -586,16 +587,28 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
             self.physicsWorld.speed = 1
             print("--- Resumed Motion after Delay ---") // Diagnostic
+            
+            // --- MOVED: Start tracking timers AFTER motion resumes --- 
+            self.currentState = .tracking
+            self.updateUI()
+            self.startTrackingTimers()
+            // --- END MOVED --- 
+            
+            // Reset the ending flag *after* all resumption logic is complete
+            self.isEndingIdentification = false 
         }
         
         // Run the sequence on the scene
-        self.run(SKAction.sequence([delayAction, resumeMotionAction]), withKey: "resumeMotionAfterID")
+        // Use a unique key to ensure it runs even if called rapidly
+        let sequenceKey = "resumeMotionAfterID_\(CACurrentMediaTime())" 
+        self.run(SKAction.sequence([delayAction, resumeMotionAction]), withKey: sequenceKey)
         // --- END MODIFIED ---
 
-        // These happen immediately, before the delay starts
-        currentState = .tracking
-        updateUI()
-        startTrackingTimers()
+        // --- REMOVED: State change and timer start moved to the delayed action --- 
+        // currentState = .tracking 
+        // updateUI()
+        // startTrackingTimers()
+        // --- END REMOVED --- 
     }
 
     // --- Touch Handling ---
@@ -1634,16 +1647,30 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Session Management Methods ---
     private func calculateArousalForProgress(_ progress: Double) -> CGFloat {
-        // Constants for exponential decay formula: A(p) = A_end + (A_start - A_end) * e^(-k*p)
+        // Get the breathing threshold from the game configuration
+        let breathingThreshold = gameConfiguration.trackingArousalThresholdLow
         let startArousal = initialArousalLevel
         let endArousal: CGFloat = 0.0
-        let decayConstant: Double = 5.0 // Controls how quickly arousal drops, higher = faster initial drop
         
-        // Apply exponential decay formula
-        let calculatedArousal = endArousal + (startArousal - endArousal) * CGFloat(exp(-decayConstant * progress))
+        // MODIFIED: New curve that spends more time in higher arousal states
+        // Use a two-phase approach - linear for first half, exponential for second half
         
-        // Ensure the value is properly clamped
-        return max(0.0, min(1.0, calculatedArousal))
+        if progress < 0.5 {
+            // First half: Linear decline from startArousal to breathingThreshold
+            // Normalize progress to 0-1 range within this phase
+            let normalizedProgress = progress * 2.0
+            return startArousal - normalizedProgress * (startArousal - breathingThreshold)
+        } else {
+            // Second half: Exponential decline from breathingThreshold to endArousal
+            // Normalize progress to 0-1 range within this phase
+            let normalizedProgress = (progress - 0.5) * 2.0
+            
+            // Use a moderate decay constant for the second half
+            let decayConstant: Double = 3.0
+            let factor = CGFloat(exp(-decayConstant * normalizedProgress))
+            
+            return endArousal + (breathingThreshold - endArousal) * factor
+        }
     }
 
     private func updateArousalForSession() {
