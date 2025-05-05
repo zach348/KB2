@@ -1647,30 +1647,28 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Session Management Methods ---
     private func calculateArousalForProgress(_ progress: Double) -> CGFloat {
-        // Get the breathing threshold from the game configuration
-        let breathingThreshold = gameConfiguration.trackingArousalThresholdLow
+        // Use a Power Curve: A(p) = A_start * (1 - p)^n
+        // Where n is calculated to make A(0.5) = breathingThreshold
+        
         let startArousal = initialArousalLevel
-        let endArousal: CGFloat = 0.0
+        let endArousal: CGFloat = 0.0 // Target end arousal
+        let breathingThreshold = gameConfiguration.trackingArousalThresholdLow
+        let targetProgress: Double = 0.5 // Progress at which to hit the threshold
+
+        // Calculate the exponent 'n' needed to hit the threshold at the target progress
+        // Formula derivation: threshold = start * (1 - targetProgress)^n
+        // threshold / start = (1 - targetProgress)^n
+        // log(threshold / start) = n * log(1 - targetProgress)
+        // n = log(threshold / start) / log(1 - targetProgress)
+        let n = log(breathingThreshold / startArousal) / log(1.0 - targetProgress)
         
-        // MODIFIED: New curve that spends more time in higher arousal states
-        // Use a two-phase approach - linear for first half, exponential for second half
+        // Apply the power curve formula
+        // Ensure progress doesn't exceed 1.0 to avoid issues with pow()
+        let clampedProgress = min(progress, 1.0)
+        let calculatedArousal = startArousal * CGFloat(pow(1.0 - clampedProgress, n))
         
-        if progress < 0.5 {
-            // First half: Linear decline from startArousal to breathingThreshold
-            // Normalize progress to 0-1 range within this phase
-            let normalizedProgress = progress * 2.0
-            return startArousal - normalizedProgress * (startArousal - breathingThreshold)
-        } else {
-            // Second half: Exponential decline from breathingThreshold to endArousal
-            // Normalize progress to 0-1 range within this phase
-            let normalizedProgress = (progress - 0.5) * 2.0
-            
-            // Use a moderate decay constant for the second half
-            let decayConstant: Double = 3.0
-            let factor = CGFloat(exp(-decayConstant * normalizedProgress))
-            
-            return endArousal + (breathingThreshold - endArousal) * factor
-        }
+        // Clamp the result between endArousal and startArousal
+        return max(endArousal, min(startArousal, calculatedArousal))
     }
 
     private func updateArousalForSession() {
