@@ -133,7 +133,7 @@ class VHAAudioBufferCache {
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Configuration ---
-    private let gameConfiguration = GameConfiguration()
+    internal let gameConfiguration = GameConfiguration()
 
     // --- Session Management Properties ---
     var sessionMode: Bool = false
@@ -147,9 +147,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- END ADDED ---
 
     // --- Properties ---
-    private var currentState: GameState = .tracking
-    private var _currentArousalLevel: CGFloat = 0.75 // Backing variable
-    private var currentArousalLevel: CGFloat {
+    internal var currentState: GameState = .tracking
+    internal var _currentArousalLevel: CGFloat = 0.75 // Backing variable
+    internal var currentArousalLevel: CGFloat {
         get { return _currentArousalLevel }
         set {
             let oldValue = _currentArousalLevel
@@ -179,12 +179,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var currentMaxShiftInterval: TimeInterval = 10.0
     private var currentMinIDInterval: TimeInterval = 10.0
     private var currentMaxIDInterval: TimeInterval = 15.0
-    private var balls: [Ball] = []
+    internal var balls: [Ball] = []
     private var motionSettings = MotionSettings()
-    private var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
-    private var currentIdentificationDuration: TimeInterval = GameConfiguration().identificationDuration
-    private var activeTargetColor: SKColor = GameConfiguration().targetColor_LowArousal
-    private var activeDistractorColor: SKColor = GameConfiguration().distractorColor_LowArousal
+    internal var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
+    internal var currentIdentificationDuration: TimeInterval = GameConfiguration().identificationDuration
+    internal var activeTargetColor: SKColor = GameConfiguration().targetColor_LowArousal
+    internal var activeDistractorColor: SKColor = GameConfiguration().distractorColor_LowArousal
     private var targetsToFind: Int = 0
     private var targetsFoundThisRound: Int = 0
     private var score: Int = 0
@@ -198,10 +198,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var fadeOverlayNode: SKSpriteNode!
 
     // --- ADDED: Properties for Dynamic Breathing Durations ---
-    private var currentBreathingInhaleDuration: TimeInterval = GameConfiguration().breathingInhaleDuration
-    private var currentBreathingHold1Duration: TimeInterval = GameConfiguration().breathingHoldAfterInhaleDuration
-    private var currentBreathingExhaleDuration: TimeInterval = GameConfiguration().breathingExhaleDuration
-    private var currentBreathingHold2Duration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
+    internal var currentBreathingInhaleDuration: TimeInterval = GameConfiguration().breathingInhaleDuration
+    internal var currentBreathingHold1Duration: TimeInterval = GameConfiguration().breathingHoldAfterInhaleDuration
+    internal var currentBreathingExhaleDuration: TimeInterval = GameConfiguration().breathingExhaleDuration
+    internal var currentBreathingHold2Duration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
     private var needsHapticPatternUpdate: Bool = false
     // --- ADDED: Flag for deferred visual duration update ---
     private var needsVisualDurationUpdate: Bool = false
@@ -424,7 +424,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Target Shift Logic ---
     // MODIFIED: Removed flashNewTargets parameter, flashing is now default if new targets are assigned.
-    private func assignNewTargets() {
+    internal func assignNewTargets() {
         guard currentTargetCount <= balls.count, !balls.isEmpty else {
             return
         }

@@ -108,9 +108,18 @@ class Ball: SKShapeNode {
     // --- Physics Setup ---
     private func setupPhysics() {
         self.physicsBody = SKPhysicsBody(circleOfRadius: Ball.defaultRadius)
-        self.physicsBody?.isDynamic = true; self.physicsBody?.affectedByGravity = false; self.physicsBody?.allowsRotation = false
-        self.physicsBody?.friction = 0.0; self.physicsBody?.restitution = 1.0
-        self.physicsBody?.linearDamping = 0.0; self.physicsBody?.angularDamping = 0.0
+        self.physicsBody?.isDynamic = true
+        self.physicsBody?.affectedByGravity = false
+        self.physicsBody?.allowsRotation = false
+        self.physicsBody?.friction = 0.0
+        self.physicsBody?.restitution = 1.0
+        self.physicsBody?.linearDamping = 0.0
+        self.physicsBody?.angularDamping = 0.0
+        
+        // Set up collision detection with proper bitmasks
+        self.physicsBody?.categoryBitMask = 1
+        self.physicsBody?.collisionBitMask = 1
+        self.physicsBody?.contactTestBitMask = 1
     }
 
     // --- Movement ---
