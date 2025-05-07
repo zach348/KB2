@@ -38,17 +38,16 @@ class GameViewController: UIViewController {
 //            }
 //        }
 
-        // Option 2: Simpler direct creation (if you delete GameScene.sks or prefer code-only)
-        
+        // MODIFIED: Present the StartScreen first instead of GameScene
         if let view = self.view as! SKView? {
-            let scene = GameScene(size: view.bounds.size) // Create scene directly
-            scene.scaleMode = .aspectFill // Or .resizeFill, .fill
-            view.presentScene(scene)
+            let startScreen = StartScreen(size: view.bounds.size)
+            startScreen.scaleMode = .aspectFill
+            
+            view.presentScene(startScreen)
             view.ignoresSiblingOrder = true
             view.showsFPS = true
             view.showsNodeCount = true
         }
-        
     }
     
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {

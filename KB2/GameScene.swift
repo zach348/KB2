@@ -1,7 +1,7 @@
 // NeuroGlide/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 FIX 10 (COMPLETE FILE - Debug ID Taps)
-// Role: Main scene. Debugging ID tap registration.
+// Updated: [Current Date] - Step 12 - Clean Debug Logging
+// Role: Main scene.
 
 import SpriteKit
 import GameplayKit
@@ -135,6 +135,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- Configuration ---
     private let gameConfiguration = GameConfiguration()
 
+    // --- Session Management Properties ---
+    var sessionMode: Bool = false
+    var sessionDuration: TimeInterval = 0
+    var sessionStartTime: TimeInterval = 0
+    var initialArousalLevel: CGFloat = 0.95
+    
+    // --- ADDED: Throttling properties for arousal updates ---
+    private var lastArousalUpdateTime: TimeInterval = 0
+    private let arousalUpdateInterval: TimeInterval = 0.25 // 4 times per second
+    // --- END ADDED ---
+
     // --- Properties ---
     private var currentState: GameState = .tracking
     private var _currentArousalLevel: CGFloat = 0.75 // Backing variable
@@ -161,6 +172,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var isFlashSequenceRunning: Bool = false
     private var flashCooldownEndTime: TimeInterval = 0.0
     private var identificationCheckNeeded: Bool = false
+    private var targetCountForNextIDRound: Int? = nil // ADDED: Snapshot for target count for the upcoming ID round
     private var timeUntilNextShift: TimeInterval = 0
     private var timeUntilNextIDCheck: TimeInterval = 0
     private var currentMinShiftInterval: TimeInterval = 5.0
@@ -271,6 +283,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupFeedbackAssets() // Load particles and sounds
         if hapticsReady { startHapticEngine() }
         if audioReady { startAudioEngine() }
+        
+        // Initialize session if in session mode
+        if sessionMode {
+            sessionStartTime = CACurrentMediaTime()
+            _currentArousalLevel = initialArousalLevel // Set initial arousal directly
+            print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
+        }
+        
         updateParametersFromArousal()
         createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
@@ -347,6 +367,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         arousalLabel.position = CGPoint(x: frame.maxX - 20, y: frame.maxY - safeAreaTopInset - 30); arousalLabel.horizontalAlignmentMode = .right; addChild(arousalLabel)
         breathingCueLabel.fontName = "HelveticaNeue-Bold"; breathingCueLabel.fontSize = 36; breathingCueLabel.fontColor = .white
         breathingCueLabel.position = CGPoint(x: frame.midX, y: frame.midY + 50); breathingCueLabel.horizontalAlignmentMode = .center; breathingCueLabel.isHidden = true; addChild(breathingCueLabel)
+        
+        // Add session progress bar if in session mode
+        if sessionMode {
+            setupSessionProgressBar()
+        }
     }
     // MODIFIED: Disable user interaction on overlay
     private func setupFadeOverlay() {
@@ -366,6 +391,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         case .identifying: stateLabel.text = "Identify!"; stateLabel.fontColor = .red; countdownLabel.isHidden = false; breathingCueLabel.isHidden = true
         case .breathing: stateLabel.text = "Breathing"; stateLabel.fontColor = .systemBlue; countdownLabel.isHidden = true; breathingCueLabel.isHidden = false
         case .paused: stateLabel.text = "Paused"; stateLabel.fontColor = .gray; countdownLabel.isHidden = true; breathingCueLabel.isHidden = true
+        }
+        
+        // Update session progress if in session mode
+        if sessionMode {
+            updateSessionProgressBar()
         }
     }
 
@@ -388,14 +418,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
              newBall.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
              balls.append(newBall); addChild(newBall)
          }
-         if !balls.isEmpty { assignNewTargets(flashNewTargets: false) }
+         if !balls.isEmpty { assignNewTargets() } // MODIFIED: Removed flashNewTargets param
     }
     private func applyInitialImpulses() { balls.forEach { $0.applyRandomImpulse() } }
 
     // --- Target Shift Logic ---
-    private func assignNewTargets(flashNewTargets: Bool) {
-        guard currentTargetCount <= balls.count, !balls.isEmpty else { return }
+    // MODIFIED: Removed flashNewTargets parameter, flashing is now default if new targets are assigned.
+    private func assignNewTargets() {
+        guard currentTargetCount <= balls.count, !balls.isEmpty else {
+            return
+        }
         let shuffledBalls = balls.shuffled(); var newlyAssignedTargets: [Ball] = []; var assignmentsMade = 0
+        
+        // This loop determines which balls *should* be targets based on currentTargetCount
+        // and updates their isTarget state and appearance.
         for (index, ball) in shuffledBalls.enumerated() {
             let shouldBeTarget = index < currentTargetCount
             if ball.isTarget != shouldBeTarget {
@@ -405,7 +441,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 if shouldBeTarget { newlyAssignedTargets.append(ball) }
             }
         }
-        if flashNewTargets && !newlyAssignedTargets.isEmpty {
+
+        // Snapshot the currentTargetCount that will be used for the next ID round, based on THIS assignment pass.
+        // This is done regardless of whether we flash, as this count reflects the current state of targets.
+        self.targetCountForNextIDRound = self.currentTargetCount
+
+        // Always flash if there are newly assigned targets (targets that were just turned ON)
+        if !newlyAssignedTargets.isEmpty {
             self.isFlashSequenceRunning = true
 
             // --- Calculate Flash Color based on Arousal --- 
@@ -418,32 +460,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let baseFlashColor = gameConfiguration.flashColor // e.g., White
             let lowArousalFlashColor = self.activeDistractorColor
             let currentFlashColor = interpolateColor(from: lowArousalFlashColor, to: baseFlashColor, t: normalizedTrackingArousal)
-            // print("DIAGNOSTIC: Arousal \(String(format: "%.2f", currentArousalLevel)), Norm: \(String(format: "%.2f", normalizedTrackingArousal)), FlashColor: \(currentFlashColor.description)")
-            // -----------------------------------------------
 
             // --- Calculate Number of Flashes based on Arousal (Inverse mapping) ---
             let minFlashes: CGFloat = 3.0
             let maxFlashes: CGFloat = 6.0
             let calculatedFloatFlashes = maxFlashes + (minFlashes - maxFlashes) * normalizedTrackingArousal
             let numberOfFlashes = max(Int(minFlashes), min(Int(maxFlashes), Int(calculatedFloatFlashes.rounded())))
-            // print("DIAGNOSTIC: Calculated Flashes: \(numberOfFlashes)")
-            // ------------------------------------------------------------------
 
-            // Start visual flash on each ball using the calculated flash color and count
-            // --- MODIFIED: Pass calculated numberOfFlashes --- 
             newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: currentFlashColor, flashes: numberOfFlashes) }
-            // -------------------------------------------------
 
-            // --- Start CONCURRENT sound sequence on the SCENE --- 
             let flashDuration = Ball.flashDuration
             if numberOfFlashes > 0 && flashDuration > 0 {
-                 // Duration calculation needs to account for the variable number of flashes
-                 // Total duration = flashDuration, so each on/off phase duration is flashDuration / (numberOfFlashes * 2)
-                // Base duration for one ON-OFF cycle 
                 let baseCycleDuration = flashDuration / Double(numberOfFlashes)
-                // Apply speed factor to get the actual cycle duration
                 let adjustedCycleDuration = max(0.002, baseCycleDuration * gameConfiguration.flashSpeedFactor)
-                let waitBetweenSounds = adjustedCycleDuration // Wait for one full adjusted cycle
+                let waitBetweenSounds = adjustedCycleDuration
 
                 let playSoundAction = SKAction.run { [weak self] in
                     guard let self = self else { return }
@@ -452,33 +482,27 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                         player.volume = self.gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
                         player.currentTime = 0 // Rewind
                         player.play()
-                        // print("DIAGNOSTIC: Played target shift sound (in sequence) with volume: \(player.volume)")
                     }
                 }
                 let waitAction = SKAction.wait(forDuration: waitBetweenSounds)
-                // --- MODIFIED: Use calculated numberOfFlashes for sound repeat count --- 
                 let soundSequence = SKAction.repeat(SKAction.sequence([playSoundAction, waitAction]), count: numberOfFlashes) 
-                // -------------------------------------------------------------------
-
-                // Stop previous sequence if any, then run the new one
                 self.removeAction(forKey: "targetShiftSoundSequence")
                 self.run(soundSequence, withKey: "targetShiftSoundSequence")
             } 
-            // ---------------------------------------------------
 
-            // --- MODIFIED: Calculate actual duration based on factor ---
-            // The total duration of the flashing is reduced by the speed factor.
             let actualFlashSequenceDuration = flashDuration * gameConfiguration.flashSpeedFactor
             let flashEndTime = CACurrentMediaTime() + actualFlashSequenceDuration
-            // ---------------------------------------------------------
             self.flashCooldownEndTime = flashEndTime + gameConfiguration.flashCooldownDuration
-             // --- MODIFIED: Wait for the adjusted duration --- 
-             let waitAction = SKAction.wait(forDuration: actualFlashSequenceDuration)
-             // -------------------------------------------
+             let waitEndFlash = SKAction.wait(forDuration: actualFlashSequenceDuration)
              let clearSequenceFlagAction = SKAction.run { [weak self] in
                 self?.isFlashSequenceRunning = false
             }
-            self.run(SKAction.sequence([waitAction, clearSequenceFlagAction]), withKey: "flashSequenceCompletion")
+            self.run(SKAction.sequence([waitEndFlash, clearSequenceFlagAction]), withKey: "flashSequenceCompletion")
+        } else if assignmentsMade > 0 {
+            // Ensure isFlashSequenceRunning is false if we are not flashing.
+            self.isFlashSequenceRunning = false 
+        } else {
+            self.isFlashSequenceRunning = false
         }
     }
 
@@ -497,17 +521,32 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Identification Phase Logic ---
     private func startIdentificationPhase() {
-        print("--- Starting Identification Phase ---")
+        isEndingIdentification = false
         currentState = .identifying; updateUI()
         physicsWorld.speed = 0; balls.forEach { ball in ball.storedVelocity = ball.physicsBody?.velocity; ball.physicsBody?.velocity = .zero; ball.physicsBody?.isDynamic = false }
+        
+        let previousTargetsToFindValue = targetsToFind
         targetsToFind = 0; targetsFoundThisRound = 0
-        guard !balls.isEmpty else { endIdentificationPhase(success: false); return }
-        self.targetsToFind = self.currentTargetCount
-        // Hide using the *current* active distractor color
-        print("DIAGNOSTIC: Hiding balls with distractor color: \(activeDistractorColor.description)")
-        for ball in balls { ball.hideIdentity(hiddenColor: self.activeDistractorColor) } // Pass active color
+
+        guard !balls.isEmpty else {
+            endIdentificationPhase(success: false);
+            return
+        }
+        
+        // Use the snapshotted value if available, otherwise fallback to currentTargetCount
+        let countToUse = self.targetCountForNextIDRound ?? self.currentTargetCount
+        let source = self.targetCountForNextIDRound != nil ? "snapshot (targetCountForNextIDRound)" : "fallback (self.currentTargetCount)"
+        self.targetsToFind = countToUse
+        
+        // Reset the snapshot after using it
+        self.targetCountForNextIDRound = nil
+
+        for ball in balls { ball.hideIdentity(hiddenColor: self.activeDistractorColor) } 
+        
         let waitBeforeCountdown = SKAction.wait(forDuration: gameConfiguration.identificationStartDelay)
-        let startCountdownAction = SKAction.run { [weak self] in self?.startIdentificationTimeout() }
+        let startCountdownAction = SKAction.run { [weak self] in 
+            self?.startIdentificationTimeout() 
+        }
         self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
     }
     private func startIdentificationTimeout() {
@@ -521,28 +560,33 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let timeoutAction = SKAction.run { [weak self] in print("--- Identification Timeout! ---"); self?.endIdentificationPhase(success: false) }
         self.run(.sequence([countdownAction, timeoutAction]), withKey: identificationTimeoutActionKey)
     }
-    private func stopIdentificationTimeout() { self.removeAction(forKey: identificationTimeoutActionKey); countdownLabel.isHidden = true }
+    private func stopIdentificationTimeout() {
+        let actionWasPresent = self.action(forKey: identificationTimeoutActionKey) != nil
+        self.removeAction(forKey: identificationTimeoutActionKey);
+        countdownLabel.isHidden = true
+    }
     private func endIdentificationPhase(success: Bool) {
-        guard currentState == .identifying else { return }
-        print("--- Ending Identification Phase (Success: \(success)) ---"); stopIdentificationTimeout()
+        guard currentState == .identifying else {
+            return
+        }
+        // --- FIX: Prevent double execution --- 
+        guard !isEndingIdentification else { 
+            return
+        }
+        isEndingIdentification = true // Set flag immediately
+        // -----------------------------------
 
-        // --- REMOVED: Emitter cleanup moved to after delay ---
-        // for (_, emitter) in activeParticleEmitters {
-        //     emitter.removeFromParent()
-        // }
-        // activeParticleEmitters.removeAll()
-        // --------------------------------------
-
-        if success { print("Correct!"); score += 1 } else { print("Incorrect/Timeout.") }
+        if success { score += 1 } 
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
         
-        // --- MODIFIED: Delay motion resumption ---
-        let delayAction = SKAction.wait(forDuration: 1.0) // MODIFIED: Increased delay to 1.0s
+        // --- MODIFIED: Delay motion resumption --- 
+        let delayAction = SKAction.wait(forDuration: 1.0)
         let resumeMotionAction = SKAction.run { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else {
+                return
+            }
 
-            // --- ADDED: Clean up emitters before resuming motion ---
-            print("--- Cleaning up emitters after delay ---") // Diagnostic
+            // --- ADDED: Clean up emitters before resuming motion --- 
             for (_, emitter) in self.activeParticleEmitters {
                 emitter.removeFromParent()
             }
@@ -556,17 +600,22 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 ball.storedVelocity = nil 
             }
             self.physicsWorld.speed = 1
-            print("--- Resumed Motion after Delay ---") // Diagnostic
+            
+            // --- MOVED: Start tracking timers AFTER motion resumes --- 
+            self.currentState = .tracking
+            self.updateUI()
+            self.startTrackingTimers()
+            // --- END MOVED --- 
+            
+            // Reset the ending flag *after* all resumption logic is complete
+            self.isEndingIdentification = false 
         }
         
         // Run the sequence on the scene
-        self.run(SKAction.sequence([delayAction, resumeMotionAction]), withKey: "resumeMotionAfterID")
+        // Use a unique key to ensure it runs even if called rapidly
+        let sequenceKey = "resumeMotionAfterID_\(CACurrentMediaTime())" 
+        self.run(SKAction.sequence([delayAction, resumeMotionAction]), withKey: sequenceKey)
         // --- END MODIFIED ---
-
-        // These happen immediately, before the delay starts
-        currentState = .tracking
-        updateUI()
-        startTrackingTimers()
     }
 
     // --- Touch Handling ---
@@ -615,8 +664,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     // MODIFIED: Use isVisuallyHidden flag instead of color comparison
     private func handleBallTap(_ ball: Ball) {
-        guard currentState == .identifying else { return }
-        print("DEBUG: handleBallTap called for \(ball.name ?? "Unknown"). IsTarget: \(ball.isTarget), IsHidden: \(ball.isVisuallyHidden)") // DEBUG
+        guard currentState == .identifying else {
+            return
+        }
 
         // --- Calculate Feedback Salience based on Arousal (Used by all feedback in this function) ---
         let normalizedFeedbackArousal = calculateNormalizedFeedbackArousal()
@@ -625,7 +675,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Check if the ball is currently hidden visually and hasn't already been correctly identified (no emitter attached)
         if ball.isVisuallyHidden && activeParticleEmitters[ball] == nil {
             if ball.isTarget {
-                print("DEBUG: Correct tap on hidden target.")
                 targetsFoundThisRound += 1
                 ball.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) // Reveal it
 
@@ -638,7 +687,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     emitter.targetNode = self // Particles should move relative to the scene
                     ball.addChild(emitter) // Attach to the ball
                     activeParticleEmitters[ball] = emitter // Track it
-                    // print("DIAGNOSTIC: Added particle emitter to \(ball.name ?? "Unknown") with birthRate: \(emitter.particleBirthRate)")
                 }
                 // -----------------------------------------------
 
@@ -647,42 +695,43 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
                     player.currentTime = 0 // Rewind
                     player.play()
-                    // print("DIAGNOSTIC: Played correct tap sound with volume: \(player.volume)")
                 }
                 // -------------------------------------------
 
                 // --- Check for Round Completion ---
                 if targetsFoundThisRound >= targetsToFind {
-                    // --- Play Audio Feedback (Group Complete) ---
-                    if normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
-                        player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
-                        player.currentTime = 0 // Rewind
-                        player.play()
-                        // print("DIAGNOSTIC: Played group complete sound with volume: \(player.volume)")
-                    }
-                    // --------------------------------------------
-                    endIdentificationPhase(success: true)
+                     // --- Play Audio Feedback (Group Complete) ---   // <<< RESTORED BLOCK
+                     if normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
+                         player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
+                         player.currentTime = 0 // Rewind
+                         player.play()
+                     }
+                     // --------------------------------------------   // <<< END RESTORED BLOCK
+                    // --- FIX: Stop the timeout immediately upon success --- 
+                    stopIdentificationTimeout() // Prevent race condition
+                    // -----------------------------------------------------
+                    endIdentificationPhase(success: true) // Ends with success
                 }
                 // -----------------------------------
 
             } else {
                 // Tapped a hidden distractor
-                print("DEBUG: Incorrect tap on hidden distractor.")
 
                 // --- Play Audio Feedback (Incorrect Tap) ---
                 if normalizedFeedbackArousal > 0, let player = incorrectTapPlayer {
                     player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
                     player.currentTime = 0 // Rewind
                     player.play()
-                    // print("DIAGNOSTIC: Played incorrect tap sound with volume: \(player.volume)")
                 }
                 // -------------------------------------------
 
+                // --- FIX: Also stop timeout on incorrect tap --- 
+                stopIdentificationTimeout() // Stop timer immediately
+                // ---------------------------------------------
                 endIdentificationPhase(success: false)
             }
         } else {
             // Ball was likely already revealed or tapped incorrectly before
-            print("DEBUG: Tap on already revealed or previously tapped ball.")
             // Optional: Add penalty for tapping revealed ball? For now, do nothing.
         }
     }
@@ -711,7 +760,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
     }
     private func updateParametersFromArousal() {
-
         // --- Global Parameter Updates (Applied regardless of state unless overridden) ---
 
         // --- Frequency Calculation (Global, Non-Linear) ---
@@ -772,13 +820,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 let clampedTrackingArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
                 normalizedTrackingArousal = (clampedTrackingArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
             }
+
             let speedRange = gameConfiguration.maxTargetSpeedAtTrackingThreshold - gameConfiguration.minTargetSpeedAtTrackingThreshold
             motionSettings.targetMeanSpeed = gameConfiguration.minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
             let sdRange = gameConfiguration.maxTargetSpeedSDAtTrackingThreshold - gameConfiguration.minTargetSpeedSDAtTrackingThreshold
             motionSettings.targetSpeedSD = gameConfiguration.minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
             let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
             let calculatedTargetCount = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal) - (targetCountRange * normalizedTrackingArousal)
+            let oldTargetCount = self.currentTargetCount
             self.currentTargetCount = max(gameConfiguration.minTargetsAtHighTrackingArousal, min(gameConfiguration.maxTargetsAtLowTrackingArousal, Int(calculatedTargetCount.rounded())))
+
             let idDurationRange = gameConfiguration.maxIdentificationDurationAtLowArousal - gameConfiguration.minIdentificationDurationAtHighArousal
             self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal - (idDurationRange * normalizedTrackingArousal)
             self.currentIdentificationDuration = max(0.1, self.currentIdentificationDuration)
@@ -854,7 +905,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // -------------------------------------------------------------
         
         guard currentState == .tracking else { 
-            print("ERROR: Attempted to transition to breathing from invalid state: \(currentState)") // Added error check
             return 
         }
         print("--- Transitioning to Breathing State (Arousal: \(String(format: "%.2f", currentArousalLevel))) ---")
@@ -905,11 +955,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     private func transitionToTrackingState() {
         guard currentState == .breathing else { return }
-        print("--- Transitioning to Tracking State (Arousal: \(String(format: "%.2f", currentArousalLevel))) ---")
         stopBreathingAnimation();
         currentState = .tracking; currentBreathingPhase = .idle
         fadeInBreathingVisuals()
-        updateParametersFromArousal()
+        updateParametersFromArousal() // This will set currentTargetCount based on new arousal
         updateUI()
         
         // --- ADDED: Explicitly resume physics simulation ---
@@ -920,7 +969,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             ball.physicsBody?.isDynamic = true
             ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
         }
-        assignNewTargets(flashNewTargets: false)
+        assignNewTargets() // MODIFIED: Removed flashNewTargets param. This will use updated currentTargetCount and flash.
         applyInitialImpulses()
         startTrackingTimers() // Reset manual timers
     }
@@ -928,7 +977,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .breathing else { return }
         guard fadeOverlayNode != nil else { return }
         if currentArousalLevel < gameConfiguration.breathingFadeOutThreshold && !breathingVisualsFaded {
-            print("DIAGNOSTIC: Fading out breathing visuals...")
             breathingVisualsFaded = true
             let fadeOut = SKAction.fadeOut(withDuration: gameConfiguration.fadeDuration)
             let fadeInOverlay = SKAction.fadeIn(withDuration: gameConfiguration.fadeDuration)
@@ -941,7 +989,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func fadeInBreathingVisuals() {
          guard breathingVisualsFaded else { return }
          guard fadeOverlayNode != nil else { return }
-         print("DIAGNOSTIC: Fading in breathing visuals...")
          breathingVisualsFaded = false
          let fadeIn = SKAction.fadeIn(withDuration: gameConfiguration.fadeDuration)
          let fadeOutOverlay = SKAction.fadeOut(withDuration: gameConfiguration.fadeDuration)
@@ -1496,14 +1543,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if lastUpdateTime == 0 { lastUpdateTime = currentTime }
         let dt = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
+        
+        // Update arousal for session mode
+        if sessionMode {
+            // Note: updateArousalForSession itself contains throttling logic
+            updateArousalForSession()
+        }
 
         if currentState == .tracking {
             timeUntilNextShift -= dt
             timeUntilNextIDCheck -= dt
 
             if timeUntilNextShift <= 0 && !isFlashSequenceRunning {
-                assignNewTargets(flashNewTargets: true)
-                resetShiftTimer()
+                assignNewTargets() // MODIFIED: Removed flashNewTargets param
+                resetShiftTimer() 
             }
 
             if timeUntilNextIDCheck <= 0 {
@@ -1512,16 +1565,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
 
             // Check if we need to transition to .breathing after returning from .identifying
+            // This was previously inside the `if identificationCheckNeeded` block, but it's a general state check.
             if identificationCheckNeeded && currentArousalLevel < gameConfiguration.trackingArousalThresholdLow {
                 transitionToBreathingState()
-                identificationCheckNeeded = false
+                identificationCheckNeeded = false // Reset the flag as we are acting on it by changing state
             }
         }
 
+        // This block handles initiating the ID phase if it's needed and conditions are met.
+        // It is separate from the `currentState == .tracking` block because `identificationCheckNeeded` can be set
+        // and then persist even if other state changes or updates occur before ID can start.
         if identificationCheckNeeded {
             if currentState == .tracking && !isFlashSequenceRunning && currentTime >= flashCooldownEndTime {
                 startIdentificationPhase()
-                identificationCheckNeeded = false
+                identificationCheckNeeded = false // Reset the flag as we are starting the ID phase
             }
         }
 
@@ -1598,15 +1655,132 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
-    // --- ADDED: Session Management Properties --- 
-    var sessionMode: Bool = false
-    var sessionDuration: TimeInterval = 0
-    var sessionStartTime: TimeInterval = 0
-    var initialArousalLevel: CGFloat = 0.95 // Default start arousal for session
-    // --- END ADDED ---
+    // --- Session Management Methods ---
+    private func calculateArousalForProgress(_ progress: Double) -> CGFloat {
+        // Use a Power Curve: A(p) = A_start * (1 - p)^n
+        // Where n is calculated to make A(0.5) = breathingThreshold
+        
+        let startArousal = initialArousalLevel
+        let endArousal: CGFloat = 0.0 // Target end arousal
+        let breathingThreshold = gameConfiguration.trackingArousalThresholdLow
+        let targetProgress: Double = 0.5 // Progress at which to hit the threshold
 
-    // --- Session UI Components ---
+        // Calculate the exponent 'n' needed to hit the threshold at the target progress
+        // Formula derivation: threshold = start * (1 - targetProgress)^n
+        // threshold / start = (1 - targetProgress)^n
+        // log(threshold / start) = n * log(1 - targetProgress)
+        // n = log(threshold / start) / log(1 - targetProgress)
+        let n = log(breathingThreshold / startArousal) / log(1.0 - targetProgress)
+        
+        // Apply the power curve formula
+        // Ensure progress doesn't exceed 1.0 to avoid issues with pow()
+        let clampedProgress = min(progress, 1.0)
+        let calculatedArousal = startArousal * CGFloat(pow(1.0 - clampedProgress, n))
+        
+        // Clamp the result between endArousal and startArousal
+        return max(endArousal, min(startArousal, calculatedArousal))
+    }
+
+    private func updateArousalForSession() {
+        guard sessionMode else { return }
+        
+        // Throttle updates to improve performance
+        let currentTime = CACurrentMediaTime()
+        // Only update if enough time has passed since the last update
+        guard (currentTime - lastArousalUpdateTime) >= arousalUpdateInterval else { return }
+        
+        // Update the timestamp for next check
+        lastArousalUpdateTime = currentTime
+        
+        let elapsedTime = currentTime - sessionStartTime
+        let progress = min(1.0, elapsedTime / sessionDuration)
+        
+        // Calculate target arousal based on exponential decay
+        let targetArousal = calculateArousalForProgress(progress)
+        
+        // Apply arousal change more smoothly
+        let arousalDifference = targetArousal - currentArousalLevel
+        if abs(arousalDifference) > 0.001 {
+            // Apply gradual change rather than jumping directly to target
+            let newArousal = currentArousalLevel + (arousalDifference * 0.05)  // 5% step toward target
+            currentArousalLevel = newArousal
+        }
+    }
+    
+    // --- Session UI Methods ---
+    private func setupSessionProgressBar() {
+        // Create container for progress bar
+        let barWidth = frame.width * 0.8
+        let barHeight: CGFloat = 8
+        let barPath = CGPath(roundedRect: CGRect(x: -barWidth/2, y: -barHeight/2, width: barWidth, height: barHeight), cornerWidth: 4, cornerHeight: 4, transform: nil)
+        
+        sessionProgressBar = SKShapeNode(path: barPath)
+        sessionProgressBar?.position = CGPoint(x: frame.midX, y: frame.maxY - safeAreaTopInset - 70)
+        sessionProgressBar?.fillColor = .darkGray
+        sessionProgressBar?.strokeColor = .gray
+        sessionProgressBar?.lineWidth = 1
+        sessionProgressBar?.zPosition = 100
+        addChild(sessionProgressBar!)
+        
+        // Create fill for progress bar
+        let fillPath = CGPath(roundedRect: CGRect(x: 0, y: -barHeight/2, width: 0, height: barHeight), cornerWidth: 4, cornerHeight: 4, transform: nil)
+        sessionProgressFill = SKShapeNode(path: fillPath)
+        sessionProgressFill?.position = CGPoint(x: -barWidth/2, y: 0)
+        sessionProgressFill?.fillColor = .systemBlue
+        sessionProgressFill?.strokeColor = .clear
+        sessionProgressFill?.zPosition = 101
+        sessionProgressBar?.addChild(sessionProgressFill!)
+        
+        // Add time remaining label
+        sessionTimeLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
+        sessionTimeLabel?.fontSize = 14
+        sessionTimeLabel?.fontColor = .white
+        sessionTimeLabel?.position = CGPoint(x: 0, y: -20)
+        sessionTimeLabel?.horizontalAlignmentMode = .center
+        sessionTimeLabel?.text = formatTimeRemaining(sessionDuration)
+        sessionProgressBar?.addChild(sessionTimeLabel!)
+    }
+    
+    private func updateSessionProgressBar() {
+        guard sessionMode, let progressFill = sessionProgressFill, let timeLabel = sessionTimeLabel else { return }
+        
+        let currentTime = CACurrentMediaTime()
+        let elapsedTime = currentTime - sessionStartTime
+        let progress = min(1.0, elapsedTime / sessionDuration)
+        let timeRemaining = max(0, sessionDuration - elapsedTime)
+        
+        // Update progress bar fill
+        let barWidth = (sessionProgressBar?.frame.width ?? 100)
+        let fillWidth = barWidth * CGFloat(progress)
+        
+        let barHeight: CGFloat = 8
+        let fillPath = CGPath(roundedRect: CGRect(x: 0, y: -barHeight/2, width: fillWidth, height: barHeight), cornerWidth: 4, cornerHeight: 4, transform: nil)
+        progressFill.path = fillPath
+        
+        // Update time remaining label
+        timeLabel.text = formatTimeRemaining(timeRemaining)
+        
+        // Change color based on progress
+        if progress < 0.33 {
+            progressFill.fillColor = .systemBlue
+        } else if progress < 0.66 {
+            progressFill.fillColor = .systemGreen
+        } else {
+            progressFill.fillColor = .systemIndigo
+        }
+    }
+    
+    private func formatTimeRemaining(_ timeInSeconds: TimeInterval) -> String {
+        let minutes = Int(timeInSeconds) / 60
+        let seconds = Int(timeInSeconds) % 60
+        return String(format: "%d:%02d remaining", minutes, seconds)
+    }
+
+    // --- Additional Properties ---
     private var isEndingIdentification: Bool = false
+    private var sessionProgressBar: SKShapeNode?
+    private var sessionProgressFill: SKShapeNode?
+    private var sessionTimeLabel: SKLabelNode?
 }
 
 // --- Ball class needs to be SKShapeNode ---
