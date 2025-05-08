@@ -258,11 +258,10 @@ class VHAManager {
         }
     }
     
-    func updateBreathingHaptics() {
+    private func updateBreathingHaptics() {
         guard hapticsReady, let engine = hapticEngine else { return }
 
-        print("DIAGNOSTIC: Updating breathing haptic pattern...")
-        
+        // Removed diagnostic logging for updating breathing pattern
         // Stop the current player
         try? breathingHapticPlayer?.stop(atTime: CHHapticTimeImmediate)
         breathingHapticPlayer = nil // Release old player
@@ -283,10 +282,12 @@ class VHAManager {
             breathingHapticPlayer = try engine.makePlayer(with: newPattern)
             // Try starting immediately - might cause slight jump if called mid-cycle
             try? breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
-            print("DIAGNOSTIC: Successfully updated and started new breathing haptic player.")
+            // Removed diagnostic logging for successful haptic player update
         } catch {
             print("ERROR: Failed to create or start new breathing haptic player: \(error.localizedDescription)")
         }
+
+        needsHapticPatternUpdate = false // Reset flag
     }
     
     // MARK: - Audio Engine

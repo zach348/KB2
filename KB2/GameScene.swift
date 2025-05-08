@@ -156,7 +156,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let clampedValue = max(0.0, min(newValue, 1.0))
             if clampedValue != _currentArousalLevel {
                 _currentArousalLevel = clampedValue
-                print("DIAGNOSTIC: Arousal Level Changed to \(String(format: "%.2f", _currentArousalLevel))")
                 checkStateTransition(oldValue: oldValue, newValue: _currentArousalLevel)
                 updateParametersFromArousal()
                 checkBreathingFade()
@@ -288,7 +287,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if sessionMode {
             sessionStartTime = CACurrentMediaTime()
             _currentArousalLevel = initialArousalLevel // Set initial arousal directly
-            print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
         }
         
         updateParametersFromArousal()
@@ -900,58 +898,29 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     private func transitionToBreathingState() {
-        // --- ADDED: Cancel any pending motion resumption from ID phase --- 
-        self.removeAction(forKey: "resumeMotionAfterID")
-        // -------------------------------------------------------------
-        
-        guard currentState == .tracking else { 
-            return 
-        }
-        print("--- Transitioning to Breathing State (Arousal: \(String(format: "%.2f", currentArousalLevel))) ---")
-        var calculatedMaxDuration: TimeInterval = 0.5
-        if currentState == .tracking && !balls.isEmpty {
-            let currentMeanSpeed = MotionController.calculateStats(balls: balls).meanSpeed
-            let targetTransitionSpeed = max(gameConfiguration.breathingMinTransitionSpeed, currentMeanSpeed * gameConfiguration.transitionSpeedFactor)
-            let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
-            let targetPositions = MotionController.circlePoints(numPoints: balls.count, center: centerPoint, radius: gameConfiguration.breathingCircleMinRadius)
-            if targetPositions.count == balls.count {
-                var maxDurationForAnyBall: TimeInterval = 0
-                for (index, ball) in balls.enumerated() {
-                    let startPos = ball.position; let endPos = targetPositions[index]
-                    let distance = sqrt(pow(endPos.x - startPos.x, 2) + pow(endPos.y - startPos.y, 2))
-                    if targetTransitionSpeed > 0 { let durationForBall = TimeInterval(distance / targetTransitionSpeed); maxDurationForAnyBall = max(maxDurationForAnyBall, durationForBall) }
-                }
-                calculatedMaxDuration = min(gameConfiguration.maxTransitionDuration, maxDurationForAnyBall)
-                calculatedMaxDuration = max(0.5, calculatedMaxDuration)
+        if currentState != .breathing {
+            currentState = .breathing
+            stopTrackingTimers()
+            // Stop any ongoing identification or flash sequence
+            stopIdentificationTimeout()
+            isFlashSequenceRunning = false
+            
+            // Return balls to their previous positions and update appearance
+            balls.forEach { ball in
+                ball.physicsBody?.isDynamic = false
+                ball.isTarget = false
+                ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
             }
+            
+            // Start breathing animation
+            currentBreathingPhase = .idle
+            startBreathingAnimation()
+            
+            // Start breathing haptics if available
+            setupBreathingHapticPattern()
+            
+            updateUI()
         }
-        let finalTransitionDuration = calculatedMaxDuration
-
-        if currentState == .identifying { endIdentificationPhase(success: false) }
-        // stopTrackingTimers() // No longer needed
-        self.removeAction(forKey: "targetShiftSoundSequence") // Stop shift sound sequence if running
-
-        currentState = .breathing; currentBreathingPhase = .idle
-        updateParametersFromArousal(); updateUI(); breathingVisualsFaded = false
-
-        let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
-        let targetPositions = MotionController.circlePoints(numPoints: balls.count, center: centerPoint, radius: gameConfiguration.breathingCircleMinRadius)
-        guard targetPositions.count == balls.count else { return }
-
-        for (index, ball) in balls.enumerated() {
-            ball.physicsBody?.isDynamic = false; ball.physicsBody?.velocity = .zero; ball.storedVelocity = nil
-            ball.isTarget = false
-            ball.updateAppearance(targetColor: gameConfiguration.targetColor_LowArousal, distractorColor: gameConfiguration.distractorColor_LowArousal)
-            ball.alpha = 1.0
-            let moveAction = SKAction.move(to: targetPositions[index], duration: finalTransitionDuration)
-            moveAction.timingMode = .easeInEaseOut; ball.run(moveAction)
-        }
-        breathingCueLabel.alpha = 1.0; breathingCueLabel.isHidden = false
-        fadeOverlayNode.alpha = 0.0
-
-        let waitFormation = SKAction.wait(forDuration: finalTransitionDuration)
-        let startAnimation = SKAction.run { [weak self] in self?.startBreathingAnimation() }
-        self.run(SKAction.sequence([waitFormation, startAnimation]))
     }
     private func transitionToTrackingState() {
         guard currentState == .breathing else { return }
@@ -1011,7 +980,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func runBreathingCycleAction() {
         // --- ADDED: Apply deferred VISUAL duration updates at the START of the cycle ---
         if needsVisualDurationUpdate {
-            print("DIAGNOSTIC: Applying deferred visual duration update at start of cycle.")
+            // Removed diagnostic logging for deferred visual update
             // Recalculate target durations based on the *current* arousal level
             let breathingArousalRange = gameConfiguration.trackingArousalThresholdLow
             if breathingArousalRange > 0 {
@@ -1029,7 +998,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                  currentBreathingInhaleDuration = targetInhaleDuration
                  currentBreathingExhaleDuration = targetExhaleDuration
                  // Holds remain constant for now
-                 print("DIAGNOSTIC: Updated visual durations - Inhale: \(String(format: "%.2f", currentBreathingInhaleDuration)), Exhale: \(String(format: "%.2f", currentBreathingExhaleDuration))")
+                 // Removed diagnostic logging for updated visual durations
              }
              needsVisualDurationUpdate = false // Reset the flag
         }
@@ -1069,7 +1038,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             [weak self] in
             guard let self = self else { return }
             if self.needsHapticPatternUpdate {
-                print("DIAGNOSTIC: Applying deferred haptic pattern update at end of cycle.")
+                // Removed diagnostic logging for deferred haptic update
                 self.updateBreathingHaptics() // Regenerates and restarts haptics
             }
         }
@@ -1213,7 +1182,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Check if change exceeds tolerance
         let tolerance: TimeInterval = 0.1
         if abs(targetInhaleDuration - currentBreathingInhaleDuration) > tolerance || abs(targetExhaleDuration - currentBreathingExhaleDuration) > tolerance {
-            print("DIAGNOSTIC: Breathing duration change detected. Flagging for update...")
+            // Removed diagnostic logging for breathing duration change
             // --- MODIFIED: Don't update durations directly, just set flags ---
             // currentBreathingInhaleDuration = targetInhaleDuration
             // currentBreathingExhaleDuration = targetExhaleDuration
@@ -1228,7 +1197,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func updateBreathingHaptics() {
         guard hapticsReady, let engine = hapticEngine else { return }
 
-        print("DIAGNOSTIC: Updating breathing haptic pattern...")
+        // Removed diagnostic logging for updating breathing pattern
         // Stop the current player
         try? breathingHapticPlayer?.stop(atTime: CHHapticTimeImmediate)
         breathingHapticPlayer = nil // Release old player
@@ -1247,7 +1216,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             breathingHapticPlayer = try engine.makePlayer(with: newPattern)
             // Try starting immediately - might cause slight jump if called mid-cycle
             try? breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
-             print("DIAGNOSTIC: Successfully updated and started new breathing haptic player.")
+            // Removed diagnostic logging for successful haptic player update
         } catch {
             print("ERROR: Failed to create or start new breathing haptic player: \(error.localizedDescription)")
         }
@@ -1775,6 +1744,65 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var sessionProgressBar: SKShapeNode?
     private var sessionProgressFill: SKShapeNode?
     private var sessionTimeLabel: SKLabelNode?
+
+    // --- Update the breathing animation visuals ---
+    private func updateBreathingVisuals() {
+        switch currentBreathingPhase {
+        case .inhale:
+            breathingCueLabel.text = "Inhale"
+            if needsVisualDurationUpdate {
+                // Removed diagnostic logging for deferred visual duration update
+                needsVisualDurationUpdate = false
+                updateBreathingAnimationDurations()
+            }
+        case .hold1:
+            breathingCueLabel.text = "Hold"
+        case .exhale:
+            breathingCueLabel.text = "Exhale"
+        case .hold2:
+            breathingCueLabel.text = "Hold"
+        case .idle:
+            breathingCueLabel.text = ""
+        }
+    }
+
+    private func updateBreathingAnimationDurations() {
+        // Create a new breathing animation sequence with updated durations
+        if let currentAction = action(forKey: breathingAnimationActionKey) {
+            removeAction(forKey: breathingAnimationActionKey)
+        }
+        
+        // Removed diagnostic logging for updated visual durations
+        
+        startBreathingAnimation() // Restart with new parameters
+    }
+    
+    // --- Breathing State Management ---
+    private func transitionToBreathingState() {
+        if currentState != .breathing {
+            currentState = .breathing
+            stopTrackingTimers()
+            // Stop any ongoing identification or flash sequence
+            stopIdentificationTimeout()
+            isFlashSequenceRunning = false
+            
+            // Return balls to their previous positions and update appearance
+            balls.forEach { ball in
+                ball.physicsBody?.isDynamic = false
+                ball.isTarget = false
+                ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
+            }
+            
+            // Start breathing animation
+            currentBreathingPhase = .idle
+            startBreathingAnimation()
+            
+            // Start breathing haptics if available
+            setupBreathingHapticPattern()
+            
+            updateUI()
+        }
+    }
 }
 
 // --- Ball class needs to be SKShapeNode ---
