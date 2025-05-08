@@ -133,7 +133,7 @@ class VHAAudioBufferCache {
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Configuration ---
-    private let gameConfiguration = GameConfiguration()
+    internal let gameConfiguration = GameConfiguration()
 
     // --- Session Management Properties ---
     var sessionMode: Bool = false
@@ -147,61 +147,61 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- END ADDED ---
 
     // --- Properties ---
-    private var currentState: GameState = .tracking
-    private var _currentArousalLevel: CGFloat = 0.75 // Backing variable
-    private var currentArousalLevel: CGFloat {
+    internal var currentState: GameState = .tracking
+    internal var _currentArousalLevel: CGFloat = 0.75 // Backing variable
+    internal var currentArousalLevel: CGFloat {
         get { return _currentArousalLevel }
         set {
             let oldValue = _currentArousalLevel
             let clampedValue = max(0.0, min(newValue, 1.0))
             if clampedValue != _currentArousalLevel {
                 _currentArousalLevel = clampedValue
-                print("DIAGNOSTIC: Arousal Level Changed to \(String(format: "%.2f", _currentArousalLevel))")
+                //Removed Arousal Level Diagnostic logging
                 checkStateTransition(oldValue: oldValue, newValue: _currentArousalLevel)
                 updateParametersFromArousal()
                 checkBreathingFade()
             }
         }
     }
-    private var currentBreathingPhase: BreathingPhase = .idle
+    internal var currentBreathingPhase: BreathingPhase = .idle
     private var breathingAnimationActionKey = "breathingAnimation"
     private var precisionTimer: PrecisionTimer?
     private var targetShiftTimerActionKey = "targetShiftTimer"
     private var identificationTimerActionKey = "identificationTimer"
     private var identificationTimeoutActionKey = "identificationTimeout"
-    private var isFlashSequenceRunning: Bool = false
+    internal var isFlashSequenceRunning: Bool = false
     private var flashCooldownEndTime: TimeInterval = 0.0
     private var identificationCheckNeeded: Bool = false
-    private var targetCountForNextIDRound: Int? = nil // ADDED: Snapshot for target count for the upcoming ID round
+    internal var targetCountForNextIDRound: Int? = nil // ADDED: Snapshot for target count for the upcoming ID round
     private var timeUntilNextShift: TimeInterval = 0
     private var timeUntilNextIDCheck: TimeInterval = 0
     private var currentMinShiftInterval: TimeInterval = 5.0
     private var currentMaxShiftInterval: TimeInterval = 10.0
     private var currentMinIDInterval: TimeInterval = 10.0
     private var currentMaxIDInterval: TimeInterval = 15.0
-    private var balls: [Ball] = []
+    internal var balls: [Ball] = []
     private var motionSettings = MotionSettings()
-    private var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
-    private var currentIdentificationDuration: TimeInterval = GameConfiguration().identificationDuration
-    private var activeTargetColor: SKColor = GameConfiguration().targetColor_LowArousal
-    private var activeDistractorColor: SKColor = GameConfiguration().distractorColor_LowArousal
-    private var targetsToFind: Int = 0
-    private var targetsFoundThisRound: Int = 0
-    private var score: Int = 0
+    internal var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
+    internal var currentIdentificationDuration: TimeInterval = GameConfiguration().identificationDuration
+    internal var activeTargetColor: SKColor = GameConfiguration().targetColor_LowArousal
+    internal var activeDistractorColor: SKColor = GameConfiguration().distractorColor_LowArousal
+    internal var targetsToFind: Int = 0
+    internal var targetsFoundThisRound: Int = 0
+    internal var score: Int = 0
     private var scoreLabel: SKLabelNode!
     private var stateLabel: SKLabelNode!
     private var countdownLabel: SKLabelNode!
     private var arousalLabel: SKLabelNode!
     private var breathingCueLabel: SKLabelNode!
     private var safeAreaTopInset: CGFloat = 0
-    private var breathingVisualsFaded: Bool = false
+    internal var breathingVisualsFaded: Bool = false
     private var fadeOverlayNode: SKSpriteNode!
 
     // --- ADDED: Properties for Dynamic Breathing Durations ---
-    private var currentBreathingInhaleDuration: TimeInterval = GameConfiguration().breathingInhaleDuration
-    private var currentBreathingHold1Duration: TimeInterval = GameConfiguration().breathingHoldAfterInhaleDuration
-    private var currentBreathingExhaleDuration: TimeInterval = GameConfiguration().breathingExhaleDuration
-    private var currentBreathingHold2Duration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
+    internal var currentBreathingInhaleDuration: TimeInterval = GameConfiguration().breathingInhaleDuration
+    internal var currentBreathingHold1Duration: TimeInterval = GameConfiguration().breathingHoldAfterInhaleDuration
+    internal var currentBreathingExhaleDuration: TimeInterval = GameConfiguration().breathingExhaleDuration
+    internal var currentBreathingHold2Duration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
     private var needsHapticPatternUpdate: Bool = false
     // --- ADDED: Flag for deferred visual duration update ---
     private var needsVisualDurationUpdate: Bool = false
@@ -227,17 +227,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var audioBuffer: AVAudioPCMBuffer?
     private var audioFormat: AVAudioFormat?
     private var audioReady: Bool = false
-    private var currentTargetAudioFrequency: Float = 440.0
+    internal var currentTargetAudioFrequency: Float = 400
     private var currentBufferFrequency: Float? = nil
-    private let minAudioFrequency: Float = 200.0
-    private let maxAudioFrequency: Float = 1000.0
+    internal let minAudioFrequency: Float = 100.0
+    internal let maxAudioFrequency: Float = 600.0
     // --- ADDED: Audio Buffer Cache ---
     private var audioBufferCache: VHAAudioBufferCache?
     // --- END ADDED ---
     
     // --- ADDED: Precise Audio Pulser ---
     private var audioPulser: PreciseAudioPulser?
-    private var usingPreciseAudio: Bool = true  // Flag to control which audio system to use
+    internal var usingPreciseAudio: Bool = true  // Flag to control which audio system to use
     // --- END ADDED ---
 
     // --- Rhythmic Pulse Properties ---
@@ -424,7 +424,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Target Shift Logic ---
     // MODIFIED: Removed flashNewTargets parameter, flashing is now default if new targets are assigned.
-    private func assignNewTargets() {
+    internal func assignNewTargets() {
         guard currentTargetCount <= balls.count, !balls.isEmpty else {
             return
         }
@@ -520,7 +520,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // Removed stop functions
 
     // --- Identification Phase Logic ---
-    private func startIdentificationPhase() {
+    internal func startIdentificationPhase() {
         isEndingIdentification = false
         currentState = .identifying; updateUI()
         physicsWorld.speed = 0; balls.forEach { ball in ball.storedVelocity = ball.physicsBody?.velocity; ball.physicsBody?.velocity = .zero; ball.physicsBody?.isDynamic = false }
@@ -565,7 +565,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         self.removeAction(forKey: identificationTimeoutActionKey);
         countdownLabel.isHidden = true
     }
-    private func endIdentificationPhase(success: Bool) {
+    internal func endIdentificationPhase(success: Bool) {
         guard currentState == .identifying else {
             return
         }
@@ -663,21 +663,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     // MODIFIED: Use isVisuallyHidden flag instead of color comparison
-    private func handleBallTap(_ ball: Ball) {
+    internal func handleBallTap(_ ball: Ball) {
         guard currentState == .identifying else {
             return
         }
-
+        
         // --- Calculate Feedback Salience based on Arousal (Used by all feedback in this function) ---
         let normalizedFeedbackArousal = calculateNormalizedFeedbackArousal()
         // ---------------------------------------------------------------------------------------
-
+        
         // Check if the ball is currently hidden visually and hasn't already been correctly identified (no emitter attached)
         if ball.isVisuallyHidden && activeParticleEmitters[ball] == nil {
             if ball.isTarget {
                 targetsFoundThisRound += 1
                 ball.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) // Reveal it
-
+                
                 // --- Add Visual Feedback (Particle Emitter) ---
                 if normalizedFeedbackArousal > 0, let template = correctTapEmitterTemplate {
                     let emitter = template.copy() as! SKEmitterNode
@@ -689,7 +689,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     activeParticleEmitters[ball] = emitter // Track it
                 }
                 // -----------------------------------------------
-
+                
                 // --- Play Audio Feedback (Correct Tap) ---
                 if normalizedFeedbackArousal > 0, let player = correctTapPlayer {
                     player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
@@ -697,26 +697,26 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     player.play()
                 }
                 // -------------------------------------------
-
+                
                 // --- Check for Round Completion ---
                 if targetsFoundThisRound >= targetsToFind {
-                     // --- Play Audio Feedback (Group Complete) ---   // <<< RESTORED BLOCK
-                     if normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
-                         player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
-                         player.currentTime = 0 // Rewind
-                         player.play()
-                     }
-                     // --------------------------------------------   // <<< END RESTORED BLOCK
+                    // --- Play Audio Feedback (Group Complete) ---   // <<< RESTORED BLOCK
+                    if normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
+                        player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
+                        player.currentTime = 0 // Rewind
+                        player.play()
+                    }
+                    // --------------------------------------------   // <<< END RESTORED BLOCK
                     // --- FIX: Stop the timeout immediately upon success --- 
                     stopIdentificationTimeout() // Prevent race condition
                     // -----------------------------------------------------
                     endIdentificationPhase(success: true) // Ends with success
                 }
                 // -----------------------------------
-
+            
             } else {
                 // Tapped a hidden distractor
-
+                
                 // --- Play Audio Feedback (Incorrect Tap) ---
                 if normalizedFeedbackArousal > 0, let player = incorrectTapPlayer {
                     player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
@@ -724,7 +724,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     player.play()
                 }
                 // -------------------------------------------
-
+                
                 // --- FIX: Also stop timeout on incorrect tap --- 
                 stopIdentificationTimeout() // Stop timer immediately
                 // ---------------------------------------------
@@ -759,7 +759,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let nextIndex = (currentIndex == 0) ? (gameConfiguration.arousalSteps.count - 1) : (currentIndex - 1)
         currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
     }
-    private func updateParametersFromArousal() {
+    internal func updateParametersFromArousal() {
         // --- Global Parameter Updates (Applied regardless of state unless overridden) ---
 
         // --- Frequency Calculation (Global, Non-Linear) ---
@@ -1641,22 +1641,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // --- Helper Function for Feedback Arousal Mapping ---
-    private func calculateNormalizedFeedbackArousal() -> CGFloat {
-        let minArousal = gameConfiguration.feedbackMinArousalThreshold
-        let maxArousal = gameConfiguration.feedbackMaxArousalThreshold
-        guard currentArousalLevel >= minArousal else { return 0.0 }
-
-        let arousalRange = maxArousal - minArousal
-        if arousalRange > 0 {
-            return min(1.0, (currentArousalLevel - minArousal) / arousalRange)
-        } else {
-            // Handle edge case where min == max
-            return (currentArousalLevel >= maxArousal) ? 1.0 : 0.0
-        }
+    internal func calculateNormalizedFeedbackArousal() -> CGFloat {
+        // Calculate a 0-1 value with 0.7 as midpoint (1.0 at 0.9+ arousal, 0.0 at 0.5- arousal)
+        let lowerBound: CGFloat = 0.5
+        let upperBound: CGFloat = 0.9
+        let normalized = (currentArousalLevel - lowerBound) / (upperBound - lowerBound)
+        return min(1.0, max(0.0, normalized))
     }
 
     // --- Session Management Methods ---
-    private func calculateArousalForProgress(_ progress: Double) -> CGFloat {
+    internal func calculateArousalForProgress(_ progress: Double) -> CGFloat {
         // Use a Power Curve: A(p) = A_start * (1 - p)^n
         // Where n is calculated to make A(0.5) = breathingThreshold
         
@@ -1777,7 +1771,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     // --- Additional Properties ---
-    private var isEndingIdentification: Bool = false
+    internal var isEndingIdentification: Bool = false
     private var sessionProgressBar: SKShapeNode?
     private var sessionProgressFill: SKShapeNode?
     private var sessionTimeLabel: SKLabelNode?
