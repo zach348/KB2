@@ -28,7 +28,7 @@ class ArousalManager {
             
             if clampedValue != _currentArousalLevel {
                 _currentArousalLevel = clampedValue
-                print("DIAGNOSTIC: Arousal Level Changed to \(String(format: "%.2f", _currentArousalLevel))")
+                //Removed Arousal Level Diagnostic logging
                 
                 // Notify delegate about the change
                 delegate?.arousalLevelDidChange(from: oldValue, to: _currentArousalLevel)

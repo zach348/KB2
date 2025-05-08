@@ -156,7 +156,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let clampedValue = max(0.0, min(newValue, 1.0))
             if clampedValue != _currentArousalLevel {
                 _currentArousalLevel = clampedValue
-                print("DIAGNOSTIC: Arousal Level Changed to \(String(format: "%.2f", _currentArousalLevel))")
+                //Removed Arousal Level Diagnostic logging
                 checkStateTransition(oldValue: oldValue, newValue: _currentArousalLevel)
                 updateParametersFromArousal()
                 checkBreathingFade()
