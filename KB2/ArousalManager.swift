@@ -28,6 +28,7 @@ class ArousalManager {
             
             if clampedValue != _currentArousalLevel {
                 _currentArousalLevel = clampedValue
+                print("DIAGNOSTIC: Arousal Level Changed to \(String(format: "%.2f", _currentArousalLevel))")
                 
                 // Notify delegate about the change
                 delegate?.arousalLevelDidChange(from: oldValue, to: _currentArousalLevel)
@@ -255,7 +256,7 @@ class ArousalManager {
         let tolerance: TimeInterval = 0.1
         if abs(targetInhaleDuration - breathingInhaleDuration) > tolerance || 
            abs(targetExhaleDuration - breathingExhaleDuration) > tolerance {
-            // Removed diagnostic breathing duration change logging
+            print("DIAGNOSTIC: Breathing duration change detected. Flagging for update...")
             
             // Don't update durations directly, just set flags
             needsVisualDurationUpdate = true // Flag for visual update at next cycle start
