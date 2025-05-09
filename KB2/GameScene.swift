@@ -252,7 +252,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // --- Helper: Delta Time ---
     private var lastUpdateTime: TimeInterval = 0
-
+    
+    // --- Motion Control Throttling ---
+    private var motionControlActionKey = "motionControlAction"
+    
     // --- Initializers ---
     override init(size: CGSize) {
         scoreLabel = SKLabelNode()
@@ -298,6 +301,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         precisionTimer?.start()
         startTrackingTimers(); updateUI()
         flashCooldownEndTime = CACurrentMediaTime()
+        
+        // Start throttled motion control if in tracking state
+        if currentState == .tracking {
+            startThrottledMotionControl()
+        }
+        
         print("--- GameScene: didMove(to:) Finished ---")
     }
 
@@ -306,6 +315,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         precisionTimer?.stop(); // stopTrackingTimers();
         stopIdentificationTimeout()
         stopBreathingAnimation()
+        
+        // Stop throttled motion control
+        stopThrottledMotionControl()
         
         // Stop audio first before cleaning up other resources
         print("Stopping audio engines...")
@@ -462,14 +474,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let currentFlashColor = interpolateColor(from: lowArousalFlashColor, to: baseFlashColor, t: normalizedTrackingArousal)
 
             // --- Calculate Number of Flashes based on Arousal (Inverse mapping) ---
-            let minFlashes: CGFloat = 3.0
+            let minFlashes: CGFloat = 2.0 // Changed from 3.0 to 2.0
             let maxFlashes: CGFloat = 6.0
             let calculatedFloatFlashes = maxFlashes + (minFlashes - maxFlashes) * normalizedTrackingArousal
             let numberOfFlashes = max(Int(minFlashes), min(Int(maxFlashes), Int(calculatedFloatFlashes.rounded())))
+            
+            // --- Calculate Flash Duration based on Arousal (Inverse mapping) ---
+            let minFlashDuration: TimeInterval = 0.75 // High arousal (changed from 1.5)
+            let maxFlashDuration: TimeInterval = 2.0 // Low arousal (changed from 2.5)
+            let calculatedFlashDuration = minFlashDuration + (maxFlashDuration - minFlashDuration) * (1.0 - normalizedTrackingArousal)
+            
+            newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: currentFlashColor, duration: calculatedFlashDuration, flashes: numberOfFlashes) }
 
-            newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: currentFlashColor, flashes: numberOfFlashes) }
-
-            let flashDuration = Ball.flashDuration
+            let flashDuration = calculatedFlashDuration // Use the calculated duration instead of Ball.flashDuration
             if numberOfFlashes > 0 && flashDuration > 0 {
                 let baseCycleDuration = flashDuration / Double(numberOfFlashes)
                 let adjustedCycleDuration = max(0.002, baseCycleDuration * gameConfiguration.flashSpeedFactor)
@@ -607,8 +624,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             self.startTrackingTimers()
             // --- END MOVED --- 
             
+            // Restart throttled motion control
+            self.startThrottledMotionControl()
+            
             // Reset the ending flag *after* all resumption logic is complete
-            self.isEndingIdentification = false 
+            self.isEndingIdentification = false
         }
         
         // Run the sequence on the scene
@@ -907,6 +927,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard currentState == .tracking else { 
             return 
         }
+        
+        // Stop throttled motion control
+        stopThrottledMotionControl()
+        
         print("--- Transitioning to Breathing State (Arousal: \(String(format: "%.2f", currentArousalLevel))) ---")
         var calculatedMaxDuration: TimeInterval = 0.5
         if currentState == .tracking && !balls.isEmpty {
@@ -972,6 +996,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         assignNewTargets() // MODIFIED: Removed flashNewTargets param. This will use updated currentTargetCount and flash.
         applyInitialImpulses()
         startTrackingTimers() // Reset manual timers
+        
+        // Start throttled motion control
+        startThrottledMotionControl()
     }
     private func checkBreathingFade() {
         guard currentState == .breathing else { return }
@@ -1581,16 +1608,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 identificationCheckNeeded = false // Reset the flag as we are starting the ID phase
             }
         }
-
-        if currentState == .tracking && !balls.isEmpty {
-            let stats = MotionController.calculateStats(balls: balls)
-            if Int(currentTime * 60) % 60 == 0 {
-                 print(String(format: "Motion Stats - Mean: %.1f (Tgt: %.1f) | SD: %.1f (Tgt: %.1f)",
-                              stats.meanSpeed, motionSettings.targetMeanSpeed,
-                              stats.speedSD, motionSettings.targetSpeedSD))
-            }
-            MotionController.applyCorrections(balls: balls, settings: motionSettings, scene: self)
-        }
+        
+        // Motion control is now handled via SKAction in startThrottledMotionControl()
     }
 
     // --- Physics Contact Delegate Method ---
@@ -1775,6 +1794,36 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var sessionProgressBar: SKShapeNode?
     private var sessionProgressFill: SKShapeNode?
     private var sessionTimeLabel: SKLabelNode?
+    
+    // --- Motion Control Throttling Methods ---
+    private func startThrottledMotionControl() {
+        // Remove any existing action first
+        self.removeAction(forKey: motionControlActionKey)
+        
+        // Create a repeating action that runs every 0.025 seconds (40Hz)
+        let wait = SKAction.wait(forDuration: 0.025)
+        let update = SKAction.run { [weak self] in
+            guard let self = self, self.currentState == .tracking, !self.balls.isEmpty else { return }
+            
+            let stats = MotionController.calculateStats(balls: self.balls)
+            if Int(CACurrentMediaTime() * 60) % 60 == 0 {
+                print(String(format: "Motion Stats - Mean: %.1f (Tgt: %.1f) | SD: %.1f (Tgt: %.1f)",
+                             stats.meanSpeed, self.motionSettings.targetMeanSpeed,
+                             stats.speedSD, self.motionSettings.targetSpeedSD))
+            }
+            MotionController.applyCorrections(balls: self.balls, settings: self.motionSettings, scene: self)
+        }
+        
+        let sequence = SKAction.sequence([wait, update])
+        let repeatAction = SKAction.repeatForever(sequence)
+        
+        // Run the action on the scene
+        self.run(repeatAction, withKey: motionControlActionKey)
+    }
+    
+    private func stopThrottledMotionControl() {
+        self.removeAction(forKey: motionControlActionKey)
+    }
 }
 
 // --- Ball class needs to be SKShapeNode ---
