@@ -137,7 +137,7 @@ class Ball: SKShapeNode {
     }
 
     // --- Movement ---
-    func applyRandomImpulse(min: CGFloat = 5, max: CGFloat = 10) {
+    func applyRandomImpulse(min: CGFloat = 15, max: CGFloat = 30) {
         let randomDx = CGFloat.random(in: -max...max); let randomDy = CGFloat.random(in: -max...max)
         let impulseVector = CGVector(dx: abs(randomDx) < min ? (randomDx < 0 ? -min : min) : randomDx, dy: abs(randomDy) < min ? (randomDy < 0 ? -min : min) : randomDy)
         guard let body = self.physicsBody else { return }; body.applyImpulse(impulseVector)
