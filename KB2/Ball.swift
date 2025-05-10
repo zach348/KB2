@@ -9,7 +9,7 @@ class Ball: SKShapeNode {
 
     // --- Constants ---
     static let defaultRadius: CGFloat = 25.0
-    static let flashDuration: TimeInterval = 1.5
+    static let defaultFlashDuration: TimeInterval = 1.5 // Default - actual duration will be passed in
     static let pulseLineWidth: CGFloat = 6.0
 
     // --- Properties ---
@@ -70,7 +70,7 @@ class Ball: SKShapeNode {
     }
 
     // --- Flashing Animation ---
-    func flashAsNewTarget(targetColor: SKColor, flashColor: SKColor, duration: TimeInterval = Ball.flashDuration, flashes: Int = 6) {
+    func flashAsNewTarget(targetColor: SKColor, flashColor: SKColor, duration: TimeInterval = Ball.defaultFlashDuration, flashes: Int = 6) {
         self.removeAction(forKey: "flash")
         let originalColor = targetColor
         guard duration > 0, flashes > 0 else {
@@ -88,16 +88,30 @@ class Ball: SKShapeNode {
         let flashOn = SKAction.run { [weak self] in self?.fillColor = flashColor; self?.strokeColor = flashColor }
         let flashOff = SKAction.run { [weak self] in self?.fillColor = originalColor; self?.strokeColor = originalColor }
         
-        // Calculate base wait time per phase (on or off)
-        let baseWaitPerPhase = duration / Double(flashes * 2)
-        // Apply speed factor
-        let adjustedWaitPerPhase = max(0.001, baseWaitPerPhase * configSpeedFactor) // Ensure minimum duration
+        // Calculate total time available per flash
+        let timePerFlash = duration / Double(flashes)
         
-        let waitAction = SKAction.wait(forDuration: adjustedWaitPerPhase)
+        // Allocate 70% of each cycle to flash-on and 30% to flash-off
+        let flashOnRatio: Double = 0.7
+        let flashOffRatio: Double = 1.0 - flashOnRatio
+        
+        // Calculate adjusted durations for on and off phases
+        let onDuration = timePerFlash * flashOnRatio * configSpeedFactor
+        let offDuration = timePerFlash * flashOffRatio * configSpeedFactor
+        
+        // Ensure minimum durations
+        let adjustedOnDuration = max(0.001, onDuration)
+        let adjustedOffDuration = max(0.001, offDuration)
+        
+        let waitActionOn = SKAction.wait(forDuration: adjustedOnDuration)
+        let waitActionOff = SKAction.wait(forDuration: adjustedOffDuration)
         
         var sequence: [SKAction] = []
-        for _ in 0..<flashes { sequence.append(contentsOf: [flashOn, waitAction, flashOff, waitAction]) } // Use adjusted wait
+        for _ in 0..<flashes { 
+            sequence.append(contentsOf: [flashOn, waitActionOn, flashOff, waitActionOff]) 
+        }
         sequence.append(flashOff) // Ensure ends on correct color
+        
         // Flashing means it's not hidden
         let setNotHidden = SKAction.run { [weak self] in self?.isVisuallyHidden = false }
         sequence.append(setNotHidden)
@@ -123,7 +137,7 @@ class Ball: SKShapeNode {
     }
 
     // --- Movement ---
-    func applyRandomImpulse(min: CGFloat = 5, max: CGFloat = 10) {
+    func applyRandomImpulse(min: CGFloat = 15, max: CGFloat = 30) {
         let randomDx = CGFloat.random(in: -max...max); let randomDy = CGFloat.random(in: -max...max)
         let impulseVector = CGVector(dx: abs(randomDx) < min ? (randomDx < 0 ? -min : min) : randomDx, dy: abs(randomDy) < min ? (randomDy < 0 ? -min : min) : randomDy)
         guard let body = self.physicsBody else { return }; body.applyImpulse(impulseVector)
