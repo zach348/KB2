@@ -126,6 +126,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var needsVisualDurationUpdate: Bool = false
     // --- END ADDED ---
     
+    // Add a variable to track if first breathing cycle is completed
+    private var completedFirstBreathingCycle: Bool = false
+    
     //====================================================================================================
     // MARK: - UI ELEMENTS
     //====================================================================================================
@@ -927,6 +930,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func startBreathingAnimation() {
         guard currentState == .breathing else { return }
         currentBreathingPhase = .inhale
+        // Reset the flag when starting a new breathing session
+        completedFirstBreathingCycle = false
         runBreathingCycleAction()
     }
     
@@ -935,6 +940,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         try? breathingHapticPlayer?.stop(atTime: CHHapticTimeImmediate)
         currentBreathingPhase = .idle
         breathingCueLabel.isHidden = true
+        // Reset the flag when stopping
+        completedFirstBreathingCycle = false
     }
     
     private func runBreathingCycleAction() {
@@ -979,10 +986,38 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
         }; exhaleAction.timingMode = .easeInEaseOut
         let hold2Visual = SKAction.wait(forDuration: currentBreathingHold2Duration)
-        let setInhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.inhale) }
-        let setHold1Cue = SKAction.run { [weak self] in self?.updateBreathingPhase(.holdAfterInhale) }
-        let setExhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.exhale) }
-        let setHold2Cue = SKAction.run { [weak self] in self?.updateBreathingPhase(.holdAfterExhale) }
+        let setInhaleCue = SKAction.run { [weak self] in 
+            guard let self = self else { return }
+            self.updateBreathingPhase(.inhale)
+            // Ensure label stays hidden after first cycle
+            if self.completedFirstBreathingCycle {
+                self.breathingCueLabel.isHidden = true
+            }
+        }
+        let setHold1Cue = SKAction.run { [weak self] in 
+            guard let self = self else { return }
+            self.updateBreathingPhase(.holdAfterInhale)
+            // Ensure label stays hidden after first cycle
+            if self.completedFirstBreathingCycle {
+                self.breathingCueLabel.isHidden = true
+            }
+        }
+        let setExhaleCue = SKAction.run { [weak self] in 
+            guard let self = self else { return }
+            self.updateBreathingPhase(.exhale)
+            // Ensure label stays hidden after first cycle
+            if self.completedFirstBreathingCycle {
+                self.breathingCueLabel.isHidden = true
+            }
+        }
+        let setHold2Cue = SKAction.run { [weak self] in 
+            guard let self = self else { return }
+            self.updateBreathingPhase(.holdAfterExhale)
+            // Ensure label stays hidden after first cycle
+            if self.completedFirstBreathingCycle {
+                self.breathingCueLabel.isHidden = true
+            }
+        }
         let restartHaptics = SKAction.run { [weak self] in
              try? self?.breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
         }
@@ -1004,18 +1039,32 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         // --- END ADDED ---
 
-        let runAgain = SKAction.run { [weak self] in self?.runBreathingCycleAction() }
+        let runAgain = SKAction.run { [weak self] in 
+            guard let self = self else { return }
+            // Mark the first cycle as completed before running the next cycle
+            self.completedFirstBreathingCycle = true
+            self.runBreathingCycleAction() 
+        }
         self.run(SKAction.sequence([sequence, applyDeferredHapticUpdate, runAgain]), withKey: breathingAnimationActionKey)
     }
     
     private func updateBreathingPhase(_ newPhase: BreathingPhase) {
         currentBreathingPhase = newPhase
-        switch newPhase {
-        case .idle: breathingCueLabel.text = ""
-        case .inhale: breathingCueLabel.text = "Inhale"
-        case .holdAfterInhale: breathingCueLabel.text = "Hold"
-        case .exhale: breathingCueLabel.text = "Exhale"
-        case .holdAfterExhale: breathingCueLabel.text = "Hold"
+        
+        // Only update the breathing cue label text if this is the first cycle
+        if !completedFirstBreathingCycle {
+            switch newPhase {
+            case .idle: breathingCueLabel.text = ""
+            case .inhale: breathingCueLabel.text = "Inhale"
+            case .holdAfterInhale: breathingCueLabel.text = "Hold"
+            case .exhale: breathingCueLabel.text = "Exhale"
+            case .holdAfterExhale: breathingCueLabel.text = "Hold"
+            }
+            breathingCueLabel.isHidden = false
+        } else {
+            // For cycles after the first one, hide the label and clear the text
+            breathingCueLabel.isHidden = true
+            breathingCueLabel.text = ""
         }
     }
 
