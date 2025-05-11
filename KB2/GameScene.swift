@@ -1,4 +1,4 @@
-// NeuroGlide/GameScene.swift
+// Kalibrate/GameScene.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Step 13 - Refactoring Preparation
 // Role: Main scene.

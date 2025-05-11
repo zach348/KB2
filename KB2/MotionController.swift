@@ -1,4 +1,4 @@
-// NeuroGlide/MotionController.swift
+// Kalibrate/MotionController.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Step 8: Added circlePoints function (COMPLETE FILE)
 // Role: Calculates motion statistics and applies corrections to balls.

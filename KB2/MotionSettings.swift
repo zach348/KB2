@@ -1,4 +1,4 @@
-// NeuroGlide/MotionSettings.swift
+// Kalibrate/MotionSettings.swift
 // Created: [Current Date]
 // Role: Holds target parameters for ball motion control. (COMPLETE FILE)
 

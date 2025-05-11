@@ -1,4 +1,4 @@
-// NeuroGlide/GameConfiguration.swift
+// Kalibrate/GameConfiguration.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Step 11 FIX 8: Revised Arousal Steps, Removed Hidden Color
 // Role: Centralized configuration settings for the game parameters.

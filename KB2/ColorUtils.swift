@@ -1,4 +1,4 @@
-// NeuroGlide/ColorUtils.swift
+// Kalibrate/ColorUtils.swift
 // Created: [Current Date]
 // Role: Utility functions for color manipulation.
 

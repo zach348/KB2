@@ -1,4 +1,4 @@
-// NeuroGlide/Ball.swift
+// Kalibrate/Ball.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Step 11 FIX 9: Added isVisuallyHidden flag
 // Role: Represents a single ball in the tracking task. Inherits from SKShapeNode.
