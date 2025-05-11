@@ -1,4 +1,4 @@
-// NeuroGlide/GameScene.swift
+// Kalibrate/GameScene.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Step 12 - Clean Debug Logging
 // Role: Main scene.

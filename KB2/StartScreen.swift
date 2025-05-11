@@ -32,7 +32,7 @@ class StartScreen: SKScene {
     private func setupUI() {
         // Title
         titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
-        titleLabel.text = "NeuroGlide"
+        titleLabel.text = "Kalibrate"
         titleLabel.fontSize = 36
         titleLabel.fontColor = .white
         titleLabel.position = CGPoint(x: frame.midX, y: frame.maxY - 100)

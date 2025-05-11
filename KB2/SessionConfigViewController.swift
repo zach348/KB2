@@ -35,7 +35,7 @@ class SessionConfigViewController: UIViewController {
         
         // Create title label
         let titleLabel = UILabel()
-        titleLabel.text = "NeuroGlide Session"
+        titleLabel.text = "Kalibrate Session"
         titleLabel.font = UIFont.systemFont(ofSize: 28, weight: .bold)
         titleLabel.textColor = .white
         titleLabel.textAlignment = .center
