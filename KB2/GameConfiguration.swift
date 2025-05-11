@@ -43,8 +43,8 @@ struct GameConfiguration {
     let idIntervalMin_HighArousal: TimeInterval = 10.0
     let idIntervalMax_HighArousal: TimeInterval = 15.0
     // Identification Duration Ranges/Values
-    let maxIdentificationDurationAtLowArousal: TimeInterval = 10.0
-    let minIdentificationDurationAtHighArousal: TimeInterval = 1.75
+    let maxIdentificationDurationAtLowArousal: TimeInterval = 8.0
+    let minIdentificationDurationAtHighArousal: TimeInterval = 0.75
     // Color Similarity / Discriminatory Load
     let targetColor_LowArousal: SKColor = SKColor(red: 0.2, green: 0.6, blue: 1.0, alpha: 1.0) // Bright Blue
     let distractorColor_LowArousal: SKColor = SKColor(red: 0.3, green: 1.0, blue: 0.6, alpha: 1.0) // Bright Green
@@ -74,7 +74,7 @@ struct GameConfiguration {
 
     // --- Identification Task ---
     let identificationStartDelay: TimeInterval = 0.5
-    let identificationDuration: TimeInterval = 5.0 // Base duration
+    let identificationDuration: TimeInterval = 4.625 // Base duration (midpoint of 1.25 and 8.0)
     // --- Feedback Settings ---
     let correctTapParticleEffectFileName: String = "CorrectTapEffect.sks" // Ensure this file exists
     let correctTapSoundFileName: String = "correct_sound" // Base name, assumes extension
