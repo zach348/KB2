@@ -411,37 +411,33 @@ class GameSceneTests: XCTestCase {
     // MARK: - Audio System Tests
     
     func testAudioSystemInitialization() {
-        gameScene.didMove(to: mockView)
+        gameScene.didMove(to: mockView) // This calls updateParametersFromArousal
         
-        // Calculate expected frequency based on arousal level
         let clampedArousal = max(0.0, min(gameScene.currentArousalLevel, 1.0))
-        let audioFreqRange = gameScene.maxAudioFrequency - gameScene.minAudioFrequency
-        let expectedFrequency = gameScene.minAudioFrequency + (audioFreqRange * Float(clampedArousal))
+        let audioFreqRange = gameScene.gameConfiguration.maxAudioFrequency - gameScene.gameConfiguration.minAudioFrequency
+        let expectedFrequency = gameScene.gameConfiguration.minAudioFrequency + (audioFreqRange * Float(clampedArousal))
         
-        // Verify audio frequency matches expectation
-        XCTAssertEqual(gameScene.currentTargetAudioFrequency, expectedFrequency, accuracy: 1.0)
+        // MODIFIED: Assert against the new test-only property
+        XCTAssertNotNil(gameScene.lastCalculatedTargetAudioFrequencyForTests, "lastCalculatedTargetAudioFrequencyForTests should be set after didMove")
+        XCTAssertEqual(gameScene.lastCalculatedTargetAudioFrequencyForTests ?? 0, expectedFrequency, accuracy: 1.0)
         
-        // Verify audio system type
-        XCTAssertEqual(gameScene.usingPreciseAudio, true) // Default setting is true
+        XCTAssertEqual(gameScene.gameConfiguration.usePreciseAudio, true)
     }
     
     func testAudioParameterUpdates() {
         gameScene.didMove(to: mockView)
+        let initialCalculatedFrequency = gameScene.lastCalculatedTargetAudioFrequencyForTests ?? 0
         
-        // Store initial values
-        let initialFrequency = gameScene.currentTargetAudioFrequency
-        
-        // Change arousal level
         let newArousal: CGFloat = 0.25
-        gameScene.currentArousalLevel = newArousal
+        gameScene.currentArousalLevel = newArousal // This setter calls updateParametersFromArousal
         
-        // Calculate expected new frequency
-        let audioFreqRange = gameScene.maxAudioFrequency - gameScene.minAudioFrequency
-        let expectedFrequency = gameScene.minAudioFrequency + (audioFreqRange * Float(newArousal))
+        let audioFreqRange = gameScene.gameConfiguration.maxAudioFrequency - gameScene.gameConfiguration.minAudioFrequency
+        let expectedFrequency = gameScene.gameConfiguration.minAudioFrequency + (audioFreqRange * Float(newArousal))
         
-        // Verify frequency updated
-        XCTAssertEqual(gameScene.currentTargetAudioFrequency, expectedFrequency, accuracy: 1.0)
-        XCTAssertNotEqual(gameScene.currentTargetAudioFrequency, initialFrequency, "Audio frequency should change with arousal")
+        // MODIFIED: Assert against the new test-only property
+        XCTAssertNotNil(gameScene.lastCalculatedTargetAudioFrequencyForTests, "lastCalculatedTargetAudioFrequencyForTests should be set after arousal change")
+        XCTAssertEqual(gameScene.lastCalculatedTargetAudioFrequencyForTests ?? 0, expectedFrequency, accuracy: 1.0)
+        XCTAssertNotEqual(gameScene.lastCalculatedTargetAudioFrequencyForTests ?? 0, initialCalculatedFrequency, "Audio frequency should change with arousal")
     }
     
     // MARK: - Target Assignment Tests

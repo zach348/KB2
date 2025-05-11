@@ -89,6 +89,16 @@ struct GameConfiguration {
     // Audio Feedback Mapping
     let audioFeedbackMaxVolume: Float = 1.0 // Volume at max arousal
 
+    //====================================================================================================
+    // MARK: - AUDIO SYSTEM CONFIGURATION (NEW)
+    //====================================================================================================
+    let usePreciseAudio: Bool = true // Feature flag for PreciseAudioPulser
+    let minAudioFrequency: Float = 100.0 // Min frequency for rhythmic audio
+    let maxAudioFrequency: Float = 600.0 // Max frequency for rhythmic audio
+    let audioMinAmplitude: Float = 0.3   // Min amplitude for audio pulse
+    let audioMaxAmplitude: Float = 0.7   // Max amplitude for audio pulse
+    let audioPulseRateFactor: Double = 0.8 // Factor to derive pulser rate from timer frequency
+
     // --- Visuals ---
     let visualPulseOnDurationRatio: Double = 0.2
     let flashCooldownDuration: TimeInterval = 0.5

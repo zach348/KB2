@@ -1,6 +1,6 @@
 // Kalibrate/GameScene.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 12 - Clean Debug Logging
+// Updated: [Current Date] - Step 13 - Refactoring Preparation
 // Role: Main scene.
 
 import SpriteKit
@@ -8,132 +8,32 @@ import GameplayKit
 import CoreHaptics
 import AVFoundation
 
+//====================================================================================================
+// MARK: - GLOBAL ENUMS
+//====================================================================================================
 // --- Game State Enum ---
 enum GameState { case tracking, identifying, paused, breathing }
 
 // --- Breathing Phase Enum ---
 enum BreathingPhase { case idle, inhale, holdAfterInhale, exhale, holdAfterExhale }
 
-// --- VHA Audio Buffer Cache ---
-class VHAAudioBufferCache {
-    private var bufferCache: [String: AVAudioPCMBuffer] = [:]
-    private let format: AVAudioFormat
-    private let sampleRate: Float
-    private let bufferDuration: Float = 0.1 // Same as original implementation
-    private let granularity: Float = 1.0 // Frequency granularity in Hz
-    
-    init?(format: AVAudioFormat) {
-        guard format.sampleRate > 0 else { return nil }
-        self.format = format
-        self.sampleRate = Float(format.sampleRate)
-    }
-    
-    func precomputeBuffers(minFrequency: Float, maxFrequency: Float, arousalLevels: [CGFloat]) {
-        print("Pre-computing audio buffers...")
-        
-        // Clear existing cache
-        bufferCache.removeAll()
-        
-        // Pre-compute buffers for all arousal levels
-        for arousal in arousalLevels {
-            // Calculate frequency for this arousal level (same as original implementation)
-            let audioFreqRange = maxFrequency - minFrequency
-            let frequency = minFrequency + (audioFreqRange * Float(arousal))
-            
-            // Round to granularity to limit number of buffers
-            let roundedFrequency = round(frequency / granularity) * granularity
-            
-            // Generate key for this frequency/arousal combination
-            let key = cacheKey(frequency: roundedFrequency, arousal: arousal)
-            
-            // Only generate if not already in cache
-            if bufferCache[key] == nil {
-                if let buffer = generateBuffer(frequency: roundedFrequency, arousal: arousal) {
-                    bufferCache[key] = buffer
-                }
-            }
-        }
-        
-        print("Completed pre-computing \(bufferCache.count) audio buffers")
-    }
-    
-    func getBuffer(frequency: Float, arousal: CGFloat) -> AVAudioPCMBuffer? {
-        // Round to granularity
-        let roundedFrequency = round(frequency / granularity) * granularity
-        let key = cacheKey(frequency: roundedFrequency, arousal: arousal)
-        
-        // Return cached buffer if available
-        if let cachedBuffer = bufferCache[key] {
-            return cachedBuffer
-        }
-        
-        // If not in cache, generate on demand as fallback
-        print("Cache miss for frequency: \(frequency), arousal: \(arousal)")
-        if let buffer = generateBuffer(frequency: frequency, arousal: arousal) {
-            bufferCache[key] = buffer
-            return buffer
-        }
-        
-        return nil
-    }
-    
-    private func cacheKey(frequency: Float, arousal: CGFloat) -> String {
-        return "\(frequency)_\(Int(arousal * 100))"
-    }
-    
-    private func generateBuffer(frequency: Float, arousal: CGFloat) -> AVAudioPCMBuffer? {
-        let frameCount = AVAudioFrameCount(sampleRate * bufferDuration)
-        guard frameCount > 0 else { return nil }
-        
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
-        buffer.frameLength = frameCount
-        
-        guard let channelData = buffer.floatChannelData?[0] else { return nil }
-        
-        let angularFrequency = 2 * .pi * frequency / sampleRate
-        
-        // Calculate amplitude based on arousal (same as original implementation)
-        let minAmplitude: Float = 0.3
-        let maxAmplitude: Float = 0.7
-        let amplitudeRange = maxAmplitude - minAmplitude
-        let clampedArousal = max(0.0, min(arousal, 1.0))
-        let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
-        
-        // Square wave approximation via odd harmonics (same as original implementation)
-        let squarenessFactor = Float(clampedArousal)
-        
-        let angularFreq3 = 3.0 * angularFrequency
-        let amplitude3 = (calculatedAmplitude / 3.0) * squarenessFactor
-        
-        let angularFreq5 = 5.0 * angularFrequency
-        let amplitude5 = (calculatedAmplitude / 5.0) * squarenessFactor
-        
-        let angularFreq7 = 7.0 * angularFrequency
-        let amplitude7 = (calculatedAmplitude / 7.0) * squarenessFactor
-        
-        for frame in 0..<Int(frameCount) {
-            let time = Float(frame)
-            // Sum fundamental and scaled odd harmonics
-            let fundamentalValue = sin(time * angularFrequency) * calculatedAmplitude
-            let harmonic3Value = sin(time * angularFreq3) * amplitude3
-            let harmonic5Value = sin(time * angularFreq5) * amplitude5
-            let harmonic7Value = sin(time * angularFreq7) * amplitude7
-            
-            channelData[frame] = fundamentalValue + harmonic3Value + harmonic5Value + harmonic7Value
-        }
-        
-        return buffer
-    }
-    
-    func clearCache() {
-        bufferCache.removeAll()
-    }
-}
+//====================================================================================================
+// MARK: - AUDIO BUFFER CACHE
+//====================================================================================================
+// --- VHA Audio Buffer Cache --- // REMOVED - MOVED TO AudioManager.swift
+// class VHAAudioBufferCache { ... } // REMOVED
 
+//====================================================================================================
+// MARK: - GAME SCENE
+//====================================================================================================
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
+    //====================================================================================================
+    // MARK: - CONFIGURATION & CORE PROPERTIES
+    //====================================================================================================
     // --- Configuration ---
     internal let gameConfiguration = GameConfiguration()
+    private var audioManager: AudioManager! // ADDED
 
     // --- Session Management Properties ---
     var sessionMode: Bool = false
@@ -146,7 +46,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private let arousalUpdateInterval: TimeInterval = 0.25 // 4 times per second
     // --- END ADDED ---
 
-    // --- Properties ---
+    // --- Core Game State Properties ---
     internal var currentState: GameState = .tracking
     internal var _currentArousalLevel: CGFloat = 0.75 // Backing variable
     internal var currentArousalLevel: CGFloat {
@@ -158,45 +58,64 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 _currentArousalLevel = clampedValue
                 //Removed Arousal Level Diagnostic logging
                 checkStateTransition(oldValue: oldValue, newValue: _currentArousalLevel)
-                updateParametersFromArousal()
+                updateParametersFromArousal() // This will now call audioManager.updateAudioParameters
                 checkBreathingFade()
             }
         }
     }
-    internal var currentBreathingPhase: BreathingPhase = .idle
-    private var breathingAnimationActionKey = "breathingAnimation"
-    private var precisionTimer: PrecisionTimer?
-    private var targetShiftTimerActionKey = "targetShiftTimer"
-    private var identificationTimerActionKey = "identificationTimer"
-    private var identificationTimeoutActionKey = "identificationTimeout"
-    internal var isFlashSequenceRunning: Bool = false
-    private var flashCooldownEndTime: TimeInterval = 0.0
-    private var identificationCheckNeeded: Bool = false
-    internal var targetCountForNextIDRound: Int? = nil // ADDED: Snapshot for target count for the upcoming ID round
-    private var timeUntilNextShift: TimeInterval = 0
-    private var timeUntilNextIDCheck: TimeInterval = 0
-    private var currentMinShiftInterval: TimeInterval = 5.0
-    private var currentMaxShiftInterval: TimeInterval = 10.0
-    private var currentMinIDInterval: TimeInterval = 10.0
-    private var currentMaxIDInterval: TimeInterval = 15.0
+    
+    // --- Helper: Delta Time ---
+    private var lastUpdateTime: TimeInterval = 0
+    
+    // --- Motion Control Throttling ---
+    private var motionControlActionKey = "motionControlAction"
+
+    // --- Precision Timer Property ---
+    private var precisionTimer: PrecisionTimer? // ENSURE THIS LINE IS PRESENT
+
+    // --- TESTABILITY: Expose last calculated target audio frequency ---
+    internal var lastCalculatedTargetAudioFrequencyForTests: Float? = nil
+
+    //====================================================================================================
+    // MARK: - TRACKING PHASE PROPERTIES
+    //====================================================================================================
+    // --- Ball & Motion Properties ---
     internal var balls: [Ball] = []
     private var motionSettings = MotionSettings()
     internal var currentTargetCount: Int = GameConfiguration().maxTargetsAtLowTrackingArousal
+    
+    // --- Target Shift Properties ---
+    internal var isFlashSequenceRunning: Bool = false
+    private var flashCooldownEndTime: TimeInterval = 0.0
+    private var timeUntilNextShift: TimeInterval = 0
+    private var currentMinShiftInterval: TimeInterval = 5.0
+    private var currentMaxShiftInterval: TimeInterval = 10.0
+    
+    //====================================================================================================
+    // MARK: - IDENTIFICATION PHASE PROPERTIES
+    //====================================================================================================
+    private var identificationTimerActionKey = "identificationTimer"
+    private var identificationTimeoutActionKey = "identificationTimeout"
+    private var identificationCheckNeeded: Bool = false
+    internal var targetCountForNextIDRound: Int? = nil // ADDED: Snapshot for target count for the upcoming ID round
+    private var timeUntilNextIDCheck: TimeInterval = 0
+    private var currentMinIDInterval: TimeInterval = 10.0
+    private var currentMaxIDInterval: TimeInterval = 15.0
     internal var currentIdentificationDuration: TimeInterval = GameConfiguration().identificationDuration
     internal var activeTargetColor: SKColor = GameConfiguration().targetColor_LowArousal
     internal var activeDistractorColor: SKColor = GameConfiguration().distractorColor_LowArousal
     internal var targetsToFind: Int = 0
     internal var targetsFoundThisRound: Int = 0
     internal var score: Int = 0
-    private var scoreLabel: SKLabelNode!
-    private var stateLabel: SKLabelNode!
-    private var countdownLabel: SKLabelNode!
-    private var arousalLabel: SKLabelNode!
-    private var breathingCueLabel: SKLabelNode!
-    private var safeAreaTopInset: CGFloat = 0
+    internal var isEndingIdentification: Bool = false
+    
+    //====================================================================================================
+    // MARK: - BREATHING PHASE PROPERTIES
+    //====================================================================================================
+    internal var currentBreathingPhase: BreathingPhase = .idle
+    private var breathingAnimationActionKey = "breathingAnimation"
     internal var breathingVisualsFaded: Bool = false
-    private var fadeOverlayNode: SKSpriteNode!
-
+    
     // --- ADDED: Properties for Dynamic Breathing Durations ---
     internal var currentBreathingInhaleDuration: TimeInterval = GameConfiguration().breathingInhaleDuration
     internal var currentBreathingHold1Duration: TimeInterval = GameConfiguration().breathingHoldAfterInhaleDuration
@@ -206,7 +125,26 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- ADDED: Flag for deferred visual duration update ---
     private var needsVisualDurationUpdate: Bool = false
     // --- END ADDED ---
-
+    
+    //====================================================================================================
+    // MARK: - UI ELEMENTS
+    //====================================================================================================
+    private var scoreLabel: SKLabelNode!
+    private var stateLabel: SKLabelNode!
+    private var countdownLabel: SKLabelNode!
+    private var arousalLabel: SKLabelNode!
+    private var breathingCueLabel: SKLabelNode!
+    private var safeAreaTopInset: CGFloat = 0
+    private var fadeOverlayNode: SKSpriteNode!
+    
+    // --- Session UI Elements ---
+    private var sessionProgressBar: SKShapeNode?
+    private var sessionProgressFill: SKShapeNode?
+    private var sessionTimeLabel: SKLabelNode?
+    
+    //====================================================================================================
+    // MARK: - FEEDBACK SYSTEMS
+    //====================================================================================================
     // --- Feedback Properties ---
     private var correctTapEmitterTemplate: SKEmitterNode?
     private var activeParticleEmitters: [Ball: SKEmitterNode] = [:]
@@ -221,26 +159,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var breathingHapticPlayer: CHHapticPatternPlayer?
     private var hapticsReady: Bool = false
 
-    // --- Audio Engine ---
-    private var customAudioEngine: AVAudioEngine?
-    private var audioPlayerNode: AVAudioPlayerNode?
-    private var audioBuffer: AVAudioPCMBuffer?
-    private var audioFormat: AVAudioFormat?
-    private var audioReady: Bool = false
-    internal var currentTargetAudioFrequency: Float = 400
-    private var currentBufferFrequency: Float? = nil
-    internal let minAudioFrequency: Float = 100.0
-    internal let maxAudioFrequency: Float = 600.0
-    // --- ADDED: Audio Buffer Cache ---
-    private var audioBufferCache: VHAAudioBufferCache?
-    // --- END ADDED ---
-    
-    // --- ADDED: Precise Audio Pulser ---
-    private var audioPulser: PreciseAudioPulser?
-    internal var usingPreciseAudio: Bool = true  // Flag to control which audio system to use
-    // --- END ADDED ---
-
-    // --- Rhythmic Pulse Properties ---
+    // --- Rhythmic Pulse Properties --- (Audio related properties moved to AudioManager)
     private var currentTimerFrequency: Double = 5.0 {
          didSet {
              if currentTimerFrequency <= 0 { currentTimerFrequency = 1.0 }
@@ -248,14 +167,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
          }
      }
     public var hapticOffset: TimeInterval = 0.020
-    public var audioOffset: TimeInterval = 0.040
-
-    // --- Helper: Delta Time ---
-    private var lastUpdateTime: TimeInterval = 0
+    public var audioOffset: TimeInterval = 0.040 // This offset is used by GameScene's handleAudioTick
     
-    // --- Motion Control Throttling ---
-    private var motionControlActionKey = "motionControlAction"
-    
+    //====================================================================================================
+    // MARK: - INITIALIZATION
+    //====================================================================================================
     // --- Initializers ---
     override init(size: CGSize) {
         scoreLabel = SKLabelNode()
@@ -276,25 +192,46 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         super.init(coder: aDecoder)
     }
 
+    //====================================================================================================
+    // MARK: - SCENE LIFECYCLE
+    //====================================================================================================
     // --- Scene Lifecycle ---
     override func didMove(to view: SKView) {
         print("--- GameScene: didMove(to:) ---")
         backgroundColor = .darkGray
         safeAreaTopInset = view.safeAreaInsets.top
-        setupPhysicsWorld(); setupWalls(); setupUI(); setupHaptics(); setupAudio()
-        setupFadeOverlay() // Setup overlay
-        setupFeedbackAssets() // Load particles and sounds
-        if hapticsReady { startHapticEngine() }
-        if audioReady { startAudioEngine() }
         
-        // Initialize session if in session mode
+        // Initialize AudioManager
+        // GameScene still manages currentTargetAudioFrequency as it's derived from arousal
+        // and used by updateParametersFromArousal before being passed to AudioManager.
+        // We need an initial value for currentTargetAudioFrequency before first updateParametersFromArousal call.
+        let initialClampedArousal = max(0.0, min(sessionMode ? initialArousalLevel : _currentArousalLevel, 1.0))
+        let initialAudioFreqRange = gameConfiguration.maxAudioFrequency - gameConfiguration.minAudioFrequency // Use GameConfig
+        let initialTargetAudioFreq = gameConfiguration.minAudioFrequency + (initialAudioFreqRange * Float(initialClampedArousal))
+
+        audioManager = AudioManager(
+            gameConfiguration: gameConfiguration,
+            initialArousal: sessionMode ? initialArousalLevel : _currentArousalLevel,
+            initialTimerFrequency: currentTimerFrequency, // Use existing GameScene's currentTimerFrequency
+            initialTargetAudioFrequency: initialTargetAudioFreq
+        )
+
+        setupPhysicsWorld(); setupWalls(); setupUI(); setupHaptics()
+        // setupAudio() // REMOVED - handled by AudioManager init
+        
+        setupFadeOverlay()
+        setupFeedbackAssets()
+        
+        if hapticsReady { startHapticEngine() }
+        audioManager.startEngine() // MODIFIED
+        
         if sessionMode {
             sessionStartTime = CACurrentMediaTime()
-            _currentArousalLevel = initialArousalLevel // Set initial arousal directly
-            print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
+            _currentArousalLevel = initialArousalLevel
+            print("DIAGNOSTIC: Session started with duration \\(sessionDuration) seconds, initial arousal \\(initialArousalLevel)")
         }
         
-        updateParametersFromArousal()
+        updateParametersFromArousal() // This will now also update audioManager
         createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
         setupTimer();
@@ -302,67 +239,47 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         startTrackingTimers(); updateUI()
         flashCooldownEndTime = CACurrentMediaTime()
         
-        // Start throttled motion control if in tracking state
         if currentState == .tracking {
             startThrottledMotionControl()
         }
-        
         print("--- GameScene: didMove(to:) Finished ---")
     }
 
     override func willMove(from view: SKView) {
         print("--- GameScene: willMove(from:) ---")
-        precisionTimer?.stop(); // stopTrackingTimers();
+        precisionTimer?.stop();
         stopIdentificationTimeout()
         stopBreathingAnimation()
-        
-        // Stop throttled motion control
         stopThrottledMotionControl()
         
-        // Stop audio first before cleaning up other resources
         print("Stopping audio engines...")
-        if usingPreciseAudio {
-            audioPulser?.stop()
-        } else {
-            stopAudioEngine()
-        }
+        audioManager.cleanup() // MODIFIED - Calls AudioManager's cleanup
         
         stopHapticEngine()
         
-        correctTapPlayer?.stop(); groupCompletePlayer?.stop() // Stop feedback sounds
-        incorrectTapPlayer?.stop(); targetShiftPlayer?.stop() // Stop new feedback sounds
+        // ... (rest of cleanup code for feedback players, actions, balls, UI, etc.)
+        correctTapPlayer?.stop(); groupCompletePlayer?.stop()
+        incorrectTapPlayer?.stop(); targetShiftPlayer?.stop()
         self.removeAction(forKey: "flashSequenceCompletion"); self.removeAction(forKey: breathingAnimationActionKey)
-        self.removeAction(forKey: "targetShiftSoundSequence") // Stop sound sequence
+        self.removeAction(forKey: "targetShiftSoundSequence")
         balls.forEach { $0.removeFromParent() }; balls.removeAll()
         scoreLabel.removeFromParent(); stateLabel.removeFromParent(); countdownLabel.removeFromParent(); arousalLabel.removeFromParent(); breathingCueLabel.removeFromParent()
         fadeOverlayNode.removeFromParent()
         breathingHapticPlayer = nil; hapticPlayer = nil
-        correctTapEmitterTemplate = nil; activeParticleEmitters.removeAll() // Clear feedback assets
+        correctTapEmitterTemplate = nil; activeParticleEmitters.removeAll()
         correctTapPlayer = nil; groupCompletePlayer = nil
-        incorrectTapPlayer = nil; targetShiftPlayer = nil // Clear new feedback assets
+        incorrectTapPlayer = nil; targetShiftPlayer = nil
         
-        // --- ADDED: Clean up audio buffer cache ---
-        audioBufferCache?.clearCache()
-        audioBufferCache = nil
-        // --- END ADDED ---
-        
-        // --- ADDED: Clean up audio pulser ---
-        audioPulser = nil
-        // --- END ADDED ---
-        
-        precisionTimer = nil; hapticEngine = nil; customAudioEngine = nil; audioPlayerNode = nil; audioBuffer = nil
-        
-        // Deactivate audio session
-        do {
-            try AVAudioSession.sharedInstance().setActive(false)
-        } catch {
-            print("Error deactivating audio session: \(error.localizedDescription)")
-        }
-        
-        print("GameScene cleaned up resources.")
+        precisionTimer = nil; hapticEngine = nil
+        // customAudioEngine, audioPlayerNode, audioBuffer, audioBufferCache, audioPulser are now in AudioManager
+
+        print("GameScene cleaned up non-audio resources.") // Audio cleanup handled by audioManager
         print("--- GameScene: willMove(from:) Finished ---")
     }
 
+    //====================================================================================================
+    // MARK: - SETUP & CONFIGURATION
+    //====================================================================================================
     // --- Physics Setup ---
     private func setupPhysicsWorld() { physicsWorld.gravity = CGVector(dx: 0, dy: 0); physicsWorld.contactDelegate = self }
     private func setupWalls() { let b = SKPhysicsBody(edgeLoopFrom: self.frame); b.friction = 0.0; b.restitution = 1.0; self.physicsBody = b }
@@ -385,7 +302,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             setupSessionProgressBar()
         }
     }
-    // MODIFIED: Disable user interaction on overlay
+    
     private func setupFadeOverlay() {
         fadeOverlayNode.color = .black; fadeOverlayNode.size = self.size
         fadeOverlayNode.position = CGPoint(x: frame.midX, y: frame.midY)
@@ -411,6 +328,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
+    //====================================================================================================
+    // MARK: - BALL MANAGEMENT
+    //====================================================================================================
     // --- Ball Creation ---
     private func createBalls() {
          guard balls.isEmpty else { return }
@@ -432,10 +352,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
          }
          if !balls.isEmpty { assignNewTargets() } // MODIFIED: Removed flashNewTargets param
     }
+    
     private func applyInitialImpulses() { balls.forEach { $0.applyRandomImpulse() } }
 
+    //====================================================================================================
+    // MARK: - TARGET MANAGEMENT
+    //====================================================================================================
     // --- Target Shift Logic ---
-    // MODIFIED: Removed flashNewTargets parameter, flashing is now default if new targets are assigned.
     internal func assignNewTargets() {
         guard currentTargetCount <= balls.count, !balls.isEmpty else {
             return
@@ -502,24 +425,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     }
                 }
                 let waitAction = SKAction.wait(forDuration: waitBetweenSounds)
-                let soundSequence = SKAction.repeat(SKAction.sequence([playSoundAction, waitAction]), count: numberOfFlashes) 
-                self.removeAction(forKey: "targetShiftSoundSequence")
-                self.run(soundSequence, withKey: "targetShiftSoundSequence")
-            } 
+                let soundSequence = SKAction.sequence([playSoundAction, waitAction])
+                let repeatAction = SKAction.repeat(soundSequence, count: numberOfFlashes)
+                self.run(repeatAction, withKey: "targetShiftSoundSequence")
 
             let actualFlashSequenceDuration = flashDuration * gameConfiguration.flashSpeedFactor
             let flashEndTime = CACurrentMediaTime() + actualFlashSequenceDuration
             self.flashCooldownEndTime = flashEndTime + gameConfiguration.flashCooldownDuration
-             let waitEndFlash = SKAction.wait(forDuration: actualFlashSequenceDuration)
+                 let waitEndFlash = SKAction.wait(forDuration: actualFlashSequenceDuration)
              let clearSequenceFlagAction = SKAction.run { [weak self] in
                 self?.isFlashSequenceRunning = false
             }
-            self.run(SKAction.sequence([waitEndFlash, clearSequenceFlagAction]), withKey: "flashSequenceCompletion")
-        } else if assignmentsMade > 0 {
-            // Ensure isFlashSequenceRunning is false if we are not flashing.
-            self.isFlashSequenceRunning = false 
-        } else {
-            self.isFlashSequenceRunning = false
+                let sequence = SKAction.sequence([waitEndFlash, clearSequenceFlagAction])
+                self.run(sequence, withKey: "flashSequenceCompletion")
+            } else {
+                // If parameters are invalid, ensure the sequence ends
+                self.isFlashSequenceRunning = false
+            }
         }
     }
 
@@ -528,15 +450,18 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         resetShiftTimer()
         resetIDTimer()
     }
+    
     private func resetShiftTimer() {
         timeUntilNextShift = TimeInterval.random(in: currentMinShiftInterval...currentMaxShiftInterval)
     }
+    
     private func resetIDTimer() {
         timeUntilNextIDCheck = TimeInterval.random(in: currentMinIDInterval...currentMaxIDInterval)
     }
-    // Removed stop functions
 
-    // --- Identification Phase Logic ---
+    //====================================================================================================
+    // MARK: - IDENTIFICATION PHASE
+    //====================================================================================================
     internal func startIdentificationPhase() {
         isEndingIdentification = false
         currentState = .identifying; updateUI()
@@ -566,6 +491,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
     }
+    
     private func startIdentificationTimeout() {
         stopIdentificationTimeout()
         var remainingTime = currentIdentificationDuration
@@ -577,11 +503,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let timeoutAction = SKAction.run { [weak self] in print("--- Identification Timeout! ---"); self?.endIdentificationPhase(success: false) }
         self.run(.sequence([countdownAction, timeoutAction]), withKey: identificationTimeoutActionKey)
     }
+    
     private func stopIdentificationTimeout() {
         let actionWasPresent = self.action(forKey: identificationTimeoutActionKey) != nil
         self.removeAction(forKey: identificationTimeoutActionKey);
         countdownLabel.isHidden = true
     }
+    
     internal func endIdentificationPhase(success: Bool) {
         guard currentState == .identifying else {
             return
@@ -596,14 +524,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if success { score += 1 } 
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
         
-        // --- MODIFIED: Delay motion resumption --- 
+        // --- MODIFIED: Delay motion resumption ---
         let delayAction = SKAction.wait(forDuration: 1.0)
         let resumeMotionAction = SKAction.run { [weak self] in
             guard let self = self else {
                 return
             }
 
-            // --- ADDED: Clean up emitters before resuming motion --- 
+            // --- ADDED: Clean up emitters before resuming motion ---
             for (_, emitter) in self.activeParticleEmitters {
                 emitter.removeFromParent()
             }
@@ -638,8 +566,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // --- END MODIFIED ---
     }
 
+    //====================================================================================================
+    // MARK: - TOUCH HANDLING
+    //====================================================================================================
     // --- Touch Handling ---
-    // MODIFIED: Changed to use screen position for two-finger taps
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         print("DEBUG: touchesBegan - Count: \(touches.count), State: \(currentState)") // DEBUG
         
@@ -682,22 +612,22 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
         }
     }
-    // MODIFIED: Use isVisuallyHidden flag instead of color comparison
+    
     internal func handleBallTap(_ ball: Ball) {
         guard currentState == .identifying else {
             return
         }
-        
+
         // --- Calculate Feedback Salience based on Arousal (Used by all feedback in this function) ---
         let normalizedFeedbackArousal = calculateNormalizedFeedbackArousal()
         // ---------------------------------------------------------------------------------------
-        
+
         // Check if the ball is currently hidden visually and hasn't already been correctly identified (no emitter attached)
         if ball.isVisuallyHidden && activeParticleEmitters[ball] == nil {
             if ball.isTarget {
                 targetsFoundThisRound += 1
                 ball.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) // Reveal it
-                
+
                 // --- Add Visual Feedback (Particle Emitter) ---
                 if normalizedFeedbackArousal > 0, let template = correctTapEmitterTemplate {
                     let emitter = template.copy() as! SKEmitterNode
@@ -709,7 +639,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     activeParticleEmitters[ball] = emitter // Track it
                 }
                 // -----------------------------------------------
-                
+
                 // --- Play Audio Feedback (Correct Tap) ---
                 if normalizedFeedbackArousal > 0, let player = correctTapPlayer {
                     player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
@@ -717,26 +647,26 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     player.play()
                 }
                 // -------------------------------------------
-                
+
                 // --- Check for Round Completion ---
                 if targetsFoundThisRound >= targetsToFind {
-                    // --- Play Audio Feedback (Group Complete) ---   // <<< RESTORED BLOCK
-                    if normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
-                        player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
-                        player.currentTime = 0 // Rewind
-                        player.play()
-                    }
-                    // --------------------------------------------   // <<< END RESTORED BLOCK
+                     // --- Play Audio Feedback (Group Complete) ---   // <<< RESTORED BLOCK
+                     if normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
+                         player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
+                         player.currentTime = 0 // Rewind
+                         player.play()
+                     }
+                     // --------------------------------------------   // <<< END RESTORED BLOCK
                     // --- FIX: Stop the timeout immediately upon success --- 
                     stopIdentificationTimeout() // Prevent race condition
                     // -----------------------------------------------------
                     endIdentificationPhase(success: true) // Ends with success
                 }
                 // -----------------------------------
-            
+
             } else {
                 // Tapped a hidden distractor
-                
+
                 // --- Play Audio Feedback (Incorrect Tap) ---
                 if normalizedFeedbackArousal > 0, let player = incorrectTapPlayer {
                     player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
@@ -744,7 +674,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     player.play()
                 }
                 // -------------------------------------------
-                
+
                 // --- FIX: Also stop timeout on incorrect tap --- 
                 stopIdentificationTimeout() // Stop timer immediately
                 // ---------------------------------------------
@@ -755,6 +685,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             // Optional: Add penalty for tapping revealed ball? For now, do nothing.
         }
     }
+    
     private func changeOffsetsOnTouch() {
         if hapticOffset == 0.020 { hapticOffset = 0.050; audioOffset = 0.100 }
         else if hapticOffset == 0.050 { hapticOffset = 0.000; audioOffset = 0.040 }
@@ -762,6 +693,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         print("--- Touch (Tracking) --- Offsets -> H:\(String(format: "%.1f", hapticOffset*1000)) A:\(String(format: "%.1f", audioOffset*1000)) ---")
     }
 
+    //====================================================================================================
+    // MARK: - AROUSAL MANAGEMENT
+    //====================================================================================================
     // --- Arousal Handling ---
     private func incrementArousalLevel() {
         let tolerance: CGFloat = 0.01
@@ -771,6 +705,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let nextIndex = (currentIndex + 1) % gameConfiguration.arousalSteps.count
         currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
     }
+    
     private func decrementArousalLevel() {
         let tolerance: CGFloat = 0.01
         guard let currentIndex = gameConfiguration.arousalSteps.firstIndex(where: { $0 >= currentArousalLevel - tolerance }) else {
@@ -779,61 +714,31 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let nextIndex = (currentIndex == 0) ? (gameConfiguration.arousalSteps.count - 1) : (currentIndex - 1)
         currentArousalLevel = gameConfiguration.arousalSteps[nextIndex]
     }
-    internal func updateParametersFromArousal() {
-        // --- Global Parameter Updates (Applied regardless of state unless overridden) ---
 
-        // --- Frequency Calculation (Global, Non-Linear) ---
+    internal func updateParametersFromArousal() {
         let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
-        let normalizedPosition = pow(Float(clampedArousal), 2.0) // Quadratic curve (x^2)
+        let normalizedPosition = pow(Float(clampedArousal), 2.0)
         let minFreq = gameConfiguration.minTimerFrequency
         let maxFreq = gameConfiguration.maxTimerFrequency
         let freqRange = maxFreq - minFreq
-        let targetFrequency = minFreq + freqRange * Double(normalizedPosition)
+        let targetTimerFrequency = minFreq + freqRange * Double(normalizedPosition)
 
-        // --- Audio Pitch Calculation (Still Linear 0.0-1.0) ---
-        let audioFreqRange = maxAudioFrequency - minAudioFrequency
-        self.currentTargetAudioFrequency = minAudioFrequency + (audioFreqRange * Float(clampedArousal))
+        let audioFreqRange = gameConfiguration.maxAudioFrequency - gameConfiguration.minAudioFrequency
+        let newTargetAudioFrequency = gameConfiguration.minAudioFrequency + (audioFreqRange * Float(clampedArousal))
+        self.lastCalculatedTargetAudioFrequencyForTests = newTargetAudioFrequency // Update for tests
         
-        // --- MODIFIED: Update audio based on system type ---
-        if usingPreciseAudio {
-            // Update PreciseAudioPulser parameters
-            if let pulser = audioPulser {
-                // Update audio frequency
-                pulser.updateFrequency(self.currentTargetAudioFrequency)
-                
-                // Update amplitude and timbre
-                let minAmplitude: Float = 0.3
-                let maxAmplitude: Float = 0.7
-                let amplitudeRange = maxAmplitude - minAmplitude
-                let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
-                
-                pulser.updateAmplitude(calculatedAmplitude)
-                pulser.updateSquarenessFactor(Float(clampedArousal))
-                
-                // Update pulse frequency from timer frequency
-                pulser.updatePulseFrequency(self.currentTimerFrequency)
-            }
-        } else {
-            // Traditional cache-based system
-            if let cache = self.audioBufferCache {
-                // Create a low-priority background task to fetch the buffer
-                DispatchQueue.global(qos: .background).async { [weak self] in
-                    guard let self = self else { return }
-                    _ = cache.getBuffer(frequency: self.currentTargetAudioFrequency, 
-                                      arousal: self.currentArousalLevel)
-                    // No need to store the result, just ensure it's in cache
-                }
-            }
-        }
-        // --- END MODIFIED ---
+        audioManager.updateAudioParameters(
+            newArousal: currentArousalLevel,
+            newTimerFrequency: targetTimerFrequency,
+            newTargetAudioFrequency: newTargetAudioFrequency
+        )
 
         // --- State-Specific Overrides & Calculations ---
         switch currentState {
         case .tracking, .identifying:
-            // Apply calculated frequency
-            self.currentTimerFrequency = targetFrequency
-
-            // --- Motion, Colors, Intervals etc. based on arousal in TRACKING RANGE (0.35-1.0) ---
+            self.currentTimerFrequency = targetTimerFrequency // GameScene updates its own timer frequency
+            // ... (rest of tracking/identifying specific parameter updates: motion, colors, intervals, etc.)
+            // ... (ensure activeTargetColor, activeDistractorColor updates remain)
             let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
             var normalizedTrackingArousal: CGFloat = 0.0
             if trackingRange > 0 {
@@ -847,7 +752,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             motionSettings.targetSpeedSD = gameConfiguration.minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
             let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
             let calculatedTargetCount = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal) - (targetCountRange * normalizedTrackingArousal)
-            let oldTargetCount = self.currentTargetCount
+            // let oldTargetCount = self.currentTargetCount // Keep if needed for other logic
             self.currentTargetCount = max(gameConfiguration.minTargetsAtHighTrackingArousal, min(gameConfiguration.maxTargetsAtLowTrackingArousal, Int(calculatedTargetCount.rounded())))
 
             let idDurationRange = gameConfiguration.maxIdentificationDurationAtLowArousal - gameConfiguration.minIdentificationDurationAtHighArousal
@@ -866,44 +771,32 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             activeTargetColor = interpolateColor(from: gameConfiguration.targetColor_LowArousal, to: gameConfiguration.targetColor_HighArousal, t: normalizedTrackingArousal)
             activeDistractorColor = interpolateColor(from: gameConfiguration.distractorColor_LowArousal, to: gameConfiguration.distractorColor_HighArousal, t: normalizedTrackingArousal)
             if currentState == .tracking { for ball in balls { ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor) } }
-
-            // Ensure dynamic breathing params NOT updated here
-            needsHapticPatternUpdate = false // Reset flag if we transition out of breathing
+            needsHapticPatternUpdate = false
 
         case .breathing:
-            // Apply calculated frequency
-            self.currentTimerFrequency = targetFrequency
-
-            // Update dynamic breathing parameters (which might flag haptic update)
+            self.currentTimerFrequency = targetTimerFrequency
             updateDynamicBreathingParameters()
-
-            // Ensure motion stops & colors are low arousal
             motionSettings.targetMeanSpeed = 0
             motionSettings.targetSpeedSD = 0
             activeTargetColor = gameConfiguration.targetColor_LowArousal
             activeDistractorColor = gameConfiguration.distractorColor_LowArousal
 
         case .paused:
-            // Override frequency to fixed paused value
             self.currentTimerFrequency = 1.0;
-            // Ensure motion stops & parameters reset to low arousal defaults
             motionSettings.targetMeanSpeed = 0; motionSettings.targetSpeedSD = 0
-             self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
-             self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
-             activeTargetColor = gameConfiguration.targetColor_LowArousal
-             activeDistractorColor = gameConfiguration.distractorColor_LowArousal
-            // Ensure dynamic breathing params NOT updated here
-             needsHapticPatternUpdate = false // Reset flag if we pause
+            self.currentTargetCount = gameConfiguration.maxTargetsAtLowTrackingArousal
+            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal
+            activeTargetColor = gameConfiguration.targetColor_LowArousal
+            activeDistractorColor = gameConfiguration.distractorColor_LowArousal
+            needsHapticPatternUpdate = false
         }
-
-        // --- Apply Updated Timer Frequency --- 
-        // (Do this *after* the switch to ensure the correct value is applied)
         precisionTimer?.frequency = self.currentTimerFrequency
-
-        // --- Update UI --- 
         updateUI()
     }
 
+    //====================================================================================================
+    // MARK: - STATE TRANSITION
+    //====================================================================================================
     // --- State Transition Logic ---
     private func checkStateTransition(oldValue: CGFloat, newValue: CGFloat) {
         // Only allow transition to .breathing from .tracking
@@ -919,6 +812,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             identificationCheckNeeded = true
         }
     }
+    
     private func transitionToBreathingState() {
         // --- ADDED: Cancel any pending motion resumption from ID phase --- 
         self.removeAction(forKey: "resumeMotionAfterID")
@@ -977,6 +871,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let startAnimation = SKAction.run { [weak self] in self?.startBreathingAnimation() }
         self.run(SKAction.sequence([waitFormation, startAnimation]))
     }
+    
     private func transitionToTrackingState() {
         guard currentState == .breathing else { return }
         stopBreathingAnimation();
@@ -1000,6 +895,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Start throttled motion control
         startThrottledMotionControl()
     }
+    
     private func checkBreathingFade() {
         guard currentState == .breathing else { return }
         guard fadeOverlayNode != nil else { return }
@@ -1013,6 +909,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             fadeInBreathingVisuals()
         }
     }
+    
     private func fadeInBreathingVisuals() {
          guard breathingVisualsFaded else { return }
          guard fadeOverlayNode != nil else { return }
@@ -1023,18 +920,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
          fadeOverlayNode.run(fadeOutOverlay)
     }
 
+    //====================================================================================================
+    // MARK: - BREATHING ANIMATION
+    //====================================================================================================
     // --- Breathing Animation ---
     private func startBreathingAnimation() {
         guard currentState == .breathing else { return }
         currentBreathingPhase = .inhale
         runBreathingCycleAction()
     }
+    
     private func stopBreathingAnimation() {
         self.removeAction(forKey: breathingAnimationActionKey)
         try? breathingHapticPlayer?.stop(atTime: CHHapticTimeImmediate)
         currentBreathingPhase = .idle
         breathingCueLabel.isHidden = true
     }
+    
     private func runBreathingCycleAction() {
         // --- ADDED: Apply deferred VISUAL duration updates at the START of the cycle ---
         if needsVisualDurationUpdate {
@@ -1105,6 +1007,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let runAgain = SKAction.run { [weak self] in self?.runBreathingCycleAction() }
         self.run(SKAction.sequence([sequence, applyDeferredHapticUpdate, runAgain]), withKey: breathingAnimationActionKey)
     }
+    
     private func updateBreathingPhase(_ newPhase: BreathingPhase) {
         currentBreathingPhase = newPhase
         switch newPhase {
@@ -1116,6 +1019,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
 
+    //====================================================================================================
+    // MARK: - HAPTIC SYSTEM
+    //====================================================================================================
     // --- Haptic Setup ---
     private func setupHaptics() {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { hapticsReady = false; return }
@@ -1142,10 +1048,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             hapticsReady = true
         } catch { print("DIAGNOSTIC: setupHaptics - Error: \(error.localizedDescription)"); hapticsReady = false }
     }
+    
     private func startHapticEngine() {
          guard hapticsReady, let engine = hapticEngine else { print("DIAGNOSTIC: startHapticEngine - Aborted. Ready:\(hapticsReady), Engine:\(self.hapticEngine != nil)."); return }
          do { try engine.start() } catch { print("DIAGNOSTIC: startHapticEngine - Error: \(error.localizedDescription)"); hapticsReady = false }
     }
+    
     private func stopHapticEngine() {
          guard let engine = hapticEngine else { return }; engine.stop { e in if let err = e { print("Error stopping haptic: \(err.localizedDescription)") } }; hapticsReady = false
     }
@@ -1153,65 +1061,65 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- MODIFIED: Parameterized function to generate pattern ---
     private func generateBreathingHapticPattern(inhaleDuration: TimeInterval, hold1Duration: TimeInterval, exhaleDuration: TimeInterval, hold2Duration: TimeInterval) -> CHHapticPattern? {
          guard let engine = hapticEngine else { return nil }
-        var allBreathingEvents: [CHHapticEvent] = []
-        var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
+         var allBreathingEvents: [CHHapticEvent] = []
+         var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
 
-        let hapticIntensity = gameConfiguration.breathingHapticIntensity
-        let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
-        let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
-        let accelFactor = gameConfiguration.breathingHapticAccelFactor
+         let hapticIntensity = gameConfiguration.breathingHapticIntensity
+         let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
+         let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
+         let accelFactor = gameConfiguration.breathingHapticAccelFactor
 
-        // Inhale Phase
-        var relativeTime: TimeInterval = 0; var currentDelayFactor: Double = 1.0
-        let baseInhaleDelay = inhaleDuration / 23.0
-        let sharpnessRangeInhale = sharpnessMax - sharpnessMin
-        while relativeTime < inhaleDuration - 0.01 {
-            let absoluteTime = phaseStartTime + relativeTime; inhaleEventTimes.append(absoluteTime)
-            let fraction = relativeTime / inhaleDuration
-            let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-            allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-            let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += accelFactor
-        }
-        let minimumDelay = inhaleEventTimes.count > 1 ? (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
-        phaseStartTime += inhaleDuration
-
-        // Hold After Inhale Phase
-        relativeTime = 0
-        while relativeTime < hold1Duration - 0.01 {
-            let absoluteTime = phaseStartTime + relativeTime
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
-            allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-            relativeTime += minimumDelay
-        }
-        phaseStartTime += hold1Duration
-
-        // Exhale Phase
-        relativeTime = 0
-        let baseExhaleDelay = exhaleDuration / 23.0
-        let numSteps = inhaleEventTimes.count
-        let maxFactor = 1.0 + accelFactor * Double(numSteps)
-        currentDelayFactor = maxFactor
-        let sharpnessRangeExhale = sharpnessMax - sharpnessMin
-        while relativeTime < exhaleDuration - 0.01 {
-             let absoluteTime = phaseStartTime + relativeTime
-             let fraction = relativeTime / exhaleDuration
-             let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
+         // Inhale Phase
+         var relativeTime: TimeInterval = 0; var currentDelayFactor: Double = 1.0
+         let baseInhaleDelay = inhaleDuration / 23.0
+         let sharpnessRangeInhale = sharpnessMax - sharpnessMin
+         while relativeTime < inhaleDuration - 0.01 {
+             let absoluteTime = phaseStartTime + relativeTime; inhaleEventTimes.append(absoluteTime)
+             let fraction = relativeTime / inhaleDuration
+             let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-             let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
-             relativeTime += delay; currentDelayFactor -= accelFactor
-             if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
-        }
-        // No Hold2 Events
+             let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += accelFactor
+         }
+         let minimumDelay = inhaleEventTimes.count > 1 ? (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
+         phaseStartTime += inhaleDuration
 
-        allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
+         // Hold After Inhale Phase
+         relativeTime = 0
+         while relativeTime < hold1Duration - 0.01 {
+             let absoluteTime = phaseStartTime + relativeTime
+             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
+             let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
+             allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
+             relativeTime += minimumDelay
+         }
+         phaseStartTime += hold1Duration
+
+         // Exhale Phase
+         relativeTime = 0
+         let baseExhaleDelay = exhaleDuration / 23.0
+         let numSteps = inhaleEventTimes.count
+         let maxFactor = 1.0 + accelFactor * Double(numSteps)
+         currentDelayFactor = maxFactor
+         let sharpnessRangeExhale = sharpnessMax - sharpnessMin
+         while relativeTime < exhaleDuration - 0.01 {
+              let absoluteTime = phaseStartTime + relativeTime
+              let fraction = relativeTime / exhaleDuration
+              let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
+              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
+              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
+              let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
+              relativeTime += delay; currentDelayFactor -= accelFactor
+              if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
+         }
+         // No Hold2 Events
+
+         allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
          guard !allBreathingEvents.isEmpty else { return nil }
-        do {
-            let breathingPattern = try CHHapticPattern(events: allBreathingEvents, parameters: [])
+         do {
+             let breathingPattern = try CHHapticPattern(events: allBreathingEvents, parameters: [])
              return breathingPattern
          } catch { print("Error creating breathing haptic pattern: \(error.localizedDescription)"); return nil }
      }
@@ -1249,7 +1157,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             // --- END MODIFIED ---
         }
     }
-    // --- END ADDED ---
 
     // --- ADDED: Function to Update Breathing Haptics ---
     private func updateBreathingHaptics() {
@@ -1272,7 +1179,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Create and start a new player
         do {
             breathingHapticPlayer = try engine.makePlayer(with: newPattern)
-            // Try starting immediately - might cause slight jump if called mid-cycle
             try? breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
              print("DIAGNOSTIC: Successfully updated and started new breathing haptic player.")
         } catch {
@@ -1281,290 +1187,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         needsHapticPatternUpdate = false // Reset flag
     }
-    // --- END ADDED ---
 
-    // --- Audio Setup ---
-    private func setupAudio() {
-        print("Setting up audio with usingPreciseAudio=\(usingPreciseAudio)")
-        
-        // --- ADDED: Initialize PreciseAudioPulser ---
-        if usingPreciseAudio {
-            print("Attempting to create PreciseAudioPulser...")
-            audioPulser = PreciseAudioPulser()
-            
-            if let pulser = audioPulser {
-                print("PreciseAudioPulser created successfully")
-                
-                // --- RE-APPLY FIX: Use the combined update method --- 
-                let minAmplitude: Float = 0.3
-                let maxAmplitude: Float = 0.7
-                let amplitudeRange = maxAmplitude - minAmplitude
-                // Use currentArousalLevel directly as it's available in this scope
-                let clampedArousal = max(0.0, min(currentArousalLevel, 1.0)) 
-                let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
-                let squareness = Float(clampedArousal)
-                // Ensure currentTimerFrequency is initialized before use here
-                let pulseRate = self.currentTimerFrequency * 0.8 
+   
 
-                // Replace individual calls with the single combined call
-                pulser.updateParameters(
-                    frequency: self.currentTargetAudioFrequency, 
-                    amplitude: calculatedAmplitude, 
-                    squarenessFactor: squareness, 
-                    pulseRate: pulseRate
-                )
-                // --- END RE-APPLY FIX ---
-
-                // Start the audio engine immediately
-                pulser.start()
-                
-                audioReady = true
-                print("PreciseAudioPulser initialized and started successfully")
-                return
-            } else {
-                print("ERROR: Failed to create PreciseAudioPulser, falling back to traditional method")
-                usingPreciseAudio = false
-            }
-        }
-        
-        // Traditional method as fallback
-        customAudioEngine = AVAudioEngine(); audioPlayerNode = AVAudioPlayerNode()
-        guard let engine = customAudioEngine, let playerNode = audioPlayerNode else { audioReady = false; return }
-        do {
-            engine.attach(playerNode)
-            // Define format (assuming standard CD quality)
-            audioFormat = AVAudioFormat(standardFormatWithSampleRate: 44100.0, channels: 1)
-            guard let format = audioFormat else { audioReady = false; return }
-
-            // --- MODIFIED: Initialize buffer cache and precompute buffers ---
-            self.audioBufferCache = VHAAudioBufferCache(format: format)
-            
-            if let cache = self.audioBufferCache {
-                // Precompute buffers for all arousal levels
-                let arousalStep = 0.01 // 1% increments for smooth coverage
-                var arousalLevels: [CGFloat] = []
-                
-                // Generate array of arousal levels with finer granularity in the problem range
-                for level in stride(from: 0.0, through: 1.0, by: arousalStep) {
-                    arousalLevels.append(level)
-                }
-                
-                // Add extra points in the problem range (0.67-0.78)
-                for level in stride(from: 0.67, through: 0.78, by: 0.005) {
-                    arousalLevels.append(level)
-                }
-                
-                // Remove duplicates and sort
-                arousalLevels = Array(Set(arousalLevels)).sorted()
-                
-                // Precompute all buffers
-                cache.precomputeBuffers(minFrequency: self.minAudioFrequency, 
-                                      maxFrequency: self.maxAudioFrequency,
-                                      arousalLevels: arousalLevels)
-                
-                // Get initial buffer for current frequency
-                self.audioBuffer = cache.getBuffer(frequency: self.currentTargetAudioFrequency, 
-                                                  arousal: self.currentArousalLevel)
-                self.currentBufferFrequency = self.currentTargetAudioFrequency
-            } else {
-                // Fallback to old method if cache creation fails
-                print("ERROR: Failed to initialize audio buffer cache")
-                self.audioBuffer = generateAudioBuffer(frequency: self.currentTargetAudioFrequency, 
-                                                     arousalLevel: self.currentArousalLevel)
-                self.currentBufferFrequency = self.currentTargetAudioFrequency
-            }
-            
-            guard self.audioBuffer != nil else {
-                print("ERROR: Initial audio buffer generation failed.")
-                audioReady = false; return
-            }
-            // --- END MODIFIED ---
-
-            engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-            try engine.prepare()
-            audioReady = true
-        } catch { print("DIAGNOSTIC: setupAudio - Error: \(error.localizedDescription)"); audioReady = false }
-    }
-    // --- MODIFIED: Remove amplitude param, calculate internally based on arousalLevel, use odd harmonics for square wave approximation ---
-    private func generateAudioBuffer(frequency: Float, arousalLevel: CGFloat) -> AVAudioPCMBuffer? {
-        guard let format = audioFormat, format.sampleRate > 0 else { return nil }
-        let sampleRate = Float(format.sampleRate)
-        let duration: Float = 0.1 // Keep duration short for rhythmic pulse
-        let frameCount = AVAudioFrameCount(sampleRate * duration)
-        guard frameCount > 0 else { return nil }
-
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
-        buffer.frameLength = frameCount // Important: Set the frame length
-
-        guard let channelData = buffer.floatChannelData?[0] else { return nil }
-
-        let angularFrequency = 2 * .pi * frequency / sampleRate
-        // --- Calculate amplitude based on arousal ---
-        let minAmplitude: Float = 0.3
-        let maxAmplitude: Float = 0.7
-        let amplitudeRange = maxAmplitude - minAmplitude
-        let clampedArousal = max(0.0, min(arousalLevel, 1.0))
-        let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
-        // --- END ---
-
-        // --- Square wave approximation via odd harmonics ---
-        let squarenessFactor = Float(clampedArousal) // 0.0 (sine) to 1.0 (more square)
-
-        let angularFreq3 = 3.0 * angularFrequency
-        let amplitude3 = (calculatedAmplitude / 3.0) * squarenessFactor
-
-        let angularFreq5 = 5.0 * angularFrequency
-        let amplitude5 = (calculatedAmplitude / 5.0) * squarenessFactor
-
-        let angularFreq7 = 7.0 * angularFrequency
-        let amplitude7 = (calculatedAmplitude / 7.0) * squarenessFactor
-        // --- END ---
-
-
-        for frame in 0..<Int(frameCount) {
-            let time = Float(frame)
-            // --- Sum fundamental and scaled odd harmonics ---
-            let fundamentalValue = sin(time * angularFrequency) * calculatedAmplitude
-            let harmonic3Value = sin(time * angularFreq3) * amplitude3
-            let harmonic5Value = sin(time * angularFreq5) * amplitude5
-            let harmonic7Value = sin(time * angularFreq7) * amplitude7
-
-            channelData[frame] = fundamentalValue + harmonic3Value + harmonic5Value + harmonic7Value
-            // Optional: Clamp to avoid potential clipping, although unlikely with these amplitudes
-            // channelData[frame] = max(-1.0, min(1.0, channelData[frame]))
-            // --- END ---
-        }
-        // print("DIAGNOSTIC: Generated audio buffer Freq:\(frequency) Hz, Amp:\(calculatedAmplitude), Squareness:\(squarenessFactor)")
-        return buffer
-    }
-    private func startAudioEngine() {
-        if usingPreciseAudio {
-            audioPulser?.start()
-            return
-        }
-         
-        // Traditional method
-        guard audioReady, let engine = customAudioEngine else { 
-            print("DIAGNOSTIC: startAudioEngine - Aborted. Ready:\(audioReady), Engine:\(self.customAudioEngine != nil)."); 
-            return 
-        }
-         if engine.isRunning { return }
-        do { 
-            try engine.start() 
-        } catch { 
-            print("DIAGNOSTIC: startAudioEngine - Error: \(error.localizedDescription)"); 
-            audioReady = false 
-        }
-    }
-    private func stopAudioEngine() {
-        if usingPreciseAudio {
-            audioPulser?.stop()
-            return
-        }
-        
-        // Traditional method
-        guard let engine = customAudioEngine else { return }
-        if engine.isRunning { engine.stop() }
-        audioReady = false
-    }
-
-    // --- Timer Setup ---
-    private func setupTimer() {
-        precisionTimer = PrecisionTimer();
-        precisionTimer?.frequency = self.currentTimerFrequency
-        precisionTimer?.onVisualTick = { [weak self] in self?.handleVisualTick() }
-        precisionTimer?.onHapticTick = { [weak self] t in self?.handleHapticTick(visualTickTime: t) }; precisionTimer?.onAudioTick = { [weak self] t in self?.handleAudioTick(visualTickTime: t) }
-    }
-
-    // --- Timer Callback Handlers ---
-    private func handleVisualTick() {
-        guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
-        guard !balls.isEmpty else { return }
-        guard let _ = balls.first?.strokeColor else { return }
-        let cycleDuration = 1.0 / currentTimerFrequency
-        let onDuration = cycleDuration * gameConfiguration.visualPulseOnDurationRatio
-        guard onDuration > 0.001 else { return }
-        for ball in balls {
-            if !breathingVisualsFaded || currentState != .breathing {
-                let setBorderOn = SKAction.run { ball.lineWidth = Ball.pulseLineWidth }
-                let setBorderOff = SKAction.run { ball.lineWidth = 0 }
-                let waitOn = SKAction.wait(forDuration: onDuration)
-                let sequence = SKAction.sequence([setBorderOn, waitOn, setBorderOff])
-                ball.run(sequence, withKey: "visualPulse")
-            } else {
-                ball.removeAction(forKey: "visualPulse"); ball.lineWidth = 0
-            }
-        }
-    }
-    private func handleHapticTick(visualTickTime: CFTimeInterval) {
-        guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
-        guard hapticsReady, let player = hapticPlayer else { return }
-        let hapticStartTime = visualTickTime + hapticOffset
-        try? player.start(atTime: hapticStartTime)
-    }
-    private func handleAudioTick(visualTickTime: CFTimeInterval) {
-        guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
-        
-        if usingPreciseAudio {
-            // For PreciseAudioPulser we don't need to do anything here
-            // The pulser handles timing internally based on audio hardware clock
-            return
-        }
-        
-        // Traditional method
-        guard audioReady, let initialEngine = customAudioEngine, let initialPlayerNode = audioPlayerNode, let initialBuffer = audioBuffer else { return }
-        guard initialEngine.isRunning else { return }
-        // --- FIX: Use CACurrentMediaTime() --- 
-        let audioStartTime = visualTickTime + audioOffset; let currentTime = CACurrentMediaTime(); let delayUntilStartTime = max(0, audioStartTime - currentTime)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delayUntilStartTime) { [weak self] in
-            guard let self = self else { return }
-            guard (self.currentState == .tracking || self.currentState == .identifying || self.currentState == .breathing), self.audioReady else { return }
-
-            // --- MODIFIED: Use cached buffer instead of regenerating ---
-            var bufferToPlay = self.audioBuffer // Start with the existing buffer
-            
-            if let cache = self.audioBufferCache {
-                // Get buffer from cache
-                if let cachedBuffer = cache.getBuffer(frequency: self.currentTargetAudioFrequency, 
-                                                    arousal: self.currentArousalLevel) {
-                    // Only update the stored buffer reference if frequency changed
-                    if self.currentBufferFrequency == nil || 
-                       abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 {
-                        self.audioBuffer = cachedBuffer
-                        self.currentBufferFrequency = self.currentTargetAudioFrequency
-                    }
-                    bufferToPlay = cachedBuffer
-                }
-            } else {
-                // Fallback to old method if cache is unavailable
-                if self.currentBufferFrequency == nil || 
-                   abs(self.currentBufferFrequency! - self.currentTargetAudioFrequency) > 1.0 {
-                    if let newBuffer = self.generateAudioBuffer(frequency: self.currentTargetAudioFrequency, 
-                                                              arousalLevel: self.currentArousalLevel) {
-                        self.audioBuffer = newBuffer
-                        self.currentBufferFrequency = self.currentTargetAudioFrequency
-                        bufferToPlay = newBuffer
-                    }
-                }
-            }
-            // --- END MODIFIED ---
-
-            // --- MODIFIED: Ensure engine/node/buffer still valid and schedule the potentially updated buffer ---
-            guard let currentEngine = self.customAudioEngine, currentEngine.isRunning,
-                  let currentPlayerNode = self.audioPlayerNode, // No need to check identity anymore
-                  let buffer = bufferToPlay // Use the potentially updated buffer
-            else {
-                 print("DIAGNOSTIC: Audio tick aborted - engine/node/buffer invalid after potential regeneration check.")
-                 return
-            }
-            // --- END MODIFIED ---
-
-            // Schedule and play
-            currentPlayerNode.scheduleBuffer(buffer, at: nil, options: .interrupts) { /* Completion handler */ }
-            if !currentPlayerNode.isPlaying { currentPlayerNode.play() }
-        }
-    }
-
+    //====================================================================================================
+    // MARK: - UPDATE LOOP & PHYSICS
+    //====================================================================================================
     // --- Update Loop ---
     override func update(_ currentTime: TimeInterval) {
         if lastUpdateTime == 0 { lastUpdateTime = currentTime }
@@ -1583,7 +1211,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
             if timeUntilNextShift <= 0 && !isFlashSequenceRunning {
                 assignNewTargets() // MODIFIED: Removed flashNewTargets param
-                resetShiftTimer() 
+                resetShiftTimer()
             }
 
             if timeUntilNextIDCheck <= 0 {
@@ -1615,6 +1243,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- Physics Contact Delegate Method ---
     func didBegin(_ contact: SKPhysicsContact) { }
 
+    //====================================================================================================
+    // MARK: - FEEDBACK SYSTEMS
+    //====================================================================================================
     // --- Feedback Setup ---
     private func setupFeedbackAssets() {
         // Load Particle Emitter Template
@@ -1668,6 +1299,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         return min(1.0, max(0.0, normalized))
     }
 
+    //====================================================================================================
+    // MARK: - SESSION MANAGEMENT
+    //====================================================================================================
     // --- Session Management Methods ---
     internal func calculateArousalForProgress(_ progress: Double) -> CGFloat {
         // Use a Power Curve: A(p) = A_start * (1 - p)^n
@@ -1789,12 +1423,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         return String(format: "%d:%02d remaining", minutes, seconds)
     }
 
-    // --- Additional Properties ---
-    internal var isEndingIdentification: Bool = false
-    private var sessionProgressBar: SKShapeNode?
-    private var sessionProgressFill: SKShapeNode?
-    private var sessionTimeLabel: SKLabelNode?
-    
+    //====================================================================================================
+    // MARK: - MOTION CONTROL
+    //====================================================================================================
     // --- Motion Control Throttling Methods ---
     private func startThrottledMotionControl() {
         // Remove any existing action first
@@ -1824,6 +1455,61 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func stopThrottledMotionControl() {
         self.removeAction(forKey: motionControlActionKey)
     }
-}
+
+    //====================================================================================================
+    // MARK: - PRECISION TIMER
+    //====================================================================================================
+    // --- Timer Setup ---
+    private func setupTimer() {
+        precisionTimer = PrecisionTimer();
+        precisionTimer?.frequency = self.currentTimerFrequency
+        precisionTimer?.onVisualTick = { [weak self] in self?.handleVisualTick() }
+        precisionTimer?.onHapticTick = { [weak self] t in self?.handleHapticTick(visualTickTime: t) }; precisionTimer?.onAudioTick = { [weak self] t in self?.handleAudioTick(visualTickTime: t) }
+    }
+
+    // --- Timer Callback Handlers ---
+    private func handleVisualTick() {
+        guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
+        guard !balls.isEmpty else { return }
+        guard let _ = balls.first?.strokeColor else { return } 
+        let cycleDuration = 1.0 / currentTimerFrequency
+        let onDuration = cycleDuration * gameConfiguration.visualPulseOnDurationRatio
+        guard onDuration > 0.001 else { return }
+        for ball in balls {
+            if !breathingVisualsFaded || currentState != .breathing {
+                let setBorderOn = SKAction.run { ball.lineWidth = Ball.pulseLineWidth }
+                let setBorderOff = SKAction.run { ball.lineWidth = 0 }
+                let waitOn = SKAction.wait(forDuration: onDuration)
+                let sequence = SKAction.sequence([setBorderOn, waitOn, setBorderOff])
+                ball.run(sequence, withKey: "visualPulse")
+            } else {
+                ball.removeAction(forKey: "visualPulse"); ball.lineWidth = 0
+            }
+        }
+    }
+
+    private func handleHapticTick(visualTickTime: CFTimeInterval) {
+        guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
+        guard hapticsReady, let player = hapticPlayer else { return }
+        let hapticStartTime = visualTickTime + hapticOffset
+        try? player.start(atTime: hapticStartTime)
+    }
+
+    private func handleAudioTick(visualTickTime: CFTimeInterval) {
+        let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
+        let audioFreqRange = gameConfiguration.maxAudioFrequency - gameConfiguration.minAudioFrequency
+        let currentActualTargetAudioFreq = gameConfiguration.minAudioFrequency + (audioFreqRange * Float(clampedArousal))
+        self.lastCalculatedTargetAudioFrequencyForTests = currentActualTargetAudioFreq // Update for tests
+
+        audioManager.handleAudioTick(
+            visualTickTime: visualTickTime,
+            currentArousal: currentArousalLevel,
+            currentTargetAudioFreq: currentActualTargetAudioFreq,
+            audioOffset: audioOffset,
+            sceneCurrentState: currentState
+        )
+    }
+
+} // Final closing brace for GameScene Class
 
 // --- Ball class needs to be SKShapeNode ---

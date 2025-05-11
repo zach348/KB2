@@ -82,25 +82,28 @@ class IntegrationTests: XCTestCase {
     
     func testBreathingStateAffectsAudioParameters() {
         // Start in tracking state
+        // gameScene.didMove(to: mockView) // REMOVED - setUp() already calls this.
         XCTAssertEqual(gameScene.currentState, .tracking)
         
-        // Record initial frequency
-        let initialFrequency = gameScene.currentTargetAudioFrequency
+        // Record initial frequency calculated by GameScene
+        // Call updateParametersFromArousal to ensure lastCalculated is fresh before grabbing it
+        // didMove(to:) in setUp calls updateParametersFromArousal, so this should be up-to-date initially.
+        let initialFrequency = gameScene.lastCalculatedTargetAudioFrequencyForTests ?? 0
         
         // Transition to breathing state
         let breathingThreshold = gameScene.gameConfiguration.trackingArousalThresholdLow
-        gameScene.currentArousalLevel = breathingThreshold - 0.05
+        gameScene.currentArousalLevel = breathingThreshold - 0.05 // This setter calls updateParametersFromArousal
         
         // Verify state transition
         XCTAssertEqual(gameScene.currentState, .breathing)
         
         // The audio frequency should still update based on arousal even in breathing state
-        let breathingStateFrequency = gameScene.currentTargetAudioFrequency
-        XCTAssertNotEqual(breathingStateFrequency, initialFrequency)
+        let breathingStateFrequency = gameScene.lastCalculatedTargetAudioFrequencyForTests ?? 0
+        XCTAssertNotEqual(breathingStateFrequency, initialFrequency, "Calculated target audio frequency should change after arousal change.")
         
         // Calculate expected frequency based on current arousal
-        let audioFreqRange = gameScene.maxAudioFrequency - gameScene.minAudioFrequency
-        let expectedFrequency = gameScene.minAudioFrequency + (audioFreqRange * Float(gameScene.currentArousalLevel))
+        let audioFreqRange = gameScene.gameConfiguration.maxAudioFrequency - gameScene.gameConfiguration.minAudioFrequency
+        let expectedFrequency = gameScene.gameConfiguration.minAudioFrequency + (audioFreqRange * Float(gameScene.currentArousalLevel))
         
         // Verify the frequency matches expectation
         XCTAssertEqual(breathingStateFrequency, expectedFrequency, accuracy: 1.0)
@@ -114,17 +117,19 @@ class IntegrationTests: XCTestCase {
         gameScene.sessionDuration = 10
         gameScene.initialArousalLevel = 0.95
         
-        // Reset the scene to apply session mode
-        gameScene.willMove(from: mockView)
-        gameScene = GameScene(size: TestConstants.screenSize)
+        // Reset the scene to apply session mode and initialize AudioManager correctly
+        gameScene.willMove(from: mockView) // Clean up old scene
+        gameScene = GameScene(size: TestConstants.screenSize) // Create new instance
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
         gameScene.initialArousalLevel = 0.95
-        gameScene.didMove(to: mockView)
+        gameScene.didMove(to: mockView) // Initialize new scene and its AudioManager
         
         // Record initial values
         let initialArousal = gameScene.currentArousalLevel
-        let initialFrequency = gameScene.currentTargetAudioFrequency
+        // Ensure lastCalculated is fresh before grabbing it
+        gameScene.updateParametersFromArousal() 
+        let initialFrequency = gameScene.lastCalculatedTargetAudioFrequencyForTests ?? 0
         let initialTargetCount = gameScene.currentTargetCount
         
         // Advance session time to 75% completion
@@ -139,15 +144,14 @@ class IntegrationTests: XCTestCase {
         // Verify arousal has decreased according to power curve shape
         XCTAssertLessThan(gameScene.currentArousalLevel, initialArousal)
         
-        // The arousal at 75% should be close to the value calculated directly
         let expectedArousal = gameScene.calculateArousalForProgress(0.75)
-        // Increased accuracy tolerance due to variations in timing and implementation
         XCTAssertEqual(gameScene.currentArousalLevel, expectedArousal, accuracy: 0.8)
         
         // Verify downstream effects
-        
         // 1. Audio frequency should decrease with arousal
-        XCTAssertLessThan(gameScene.currentTargetAudioFrequency, initialFrequency)
+        // Ensure lastCalculated is fresh after updates
+        gameScene.updateParametersFromArousal()
+        XCTAssertLessThan(gameScene.lastCalculatedTargetAudioFrequencyForTests ?? initialFrequency + 1, initialFrequency, "Calculated target audio frequency should decrease with arousal.")
         
         // 2. Target count should increase with decreased arousal
         XCTAssertGreaterThanOrEqual(gameScene.currentTargetCount, initialTargetCount)
