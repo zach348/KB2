@@ -120,7 +120,7 @@ struct GameConfiguration {
     let challengePhaseCount: ClosedRange<Int> = 2...4 // Keeping the increased count
     let challengePhaseRelativeStart: ClosedRange<Double> = 0.1...0.7 // Keep starting earlier
     let challengePhaseDuration: ClosedRange<Double> = 0.15...0.25   // Changed to 15-25% as requested
-    let challengePhaseIntensity: ClosedRange<Double> = 0.25...0.4   // Changed to 25-40% as requested
+    let challengePhaseIntensity: ClosedRange<Double> = 0.3...0.5   // Changed to 30-50% as requested
     
     // Default session profile
     let defaultSessionProfile: SessionProfile = .fluctuating
