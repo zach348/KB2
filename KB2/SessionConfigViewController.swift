@@ -8,6 +8,7 @@ class SessionConfigViewController: UIViewController {
     private var sessionDurationSlider: UISlider!
     private var durationLabel: UILabel!
     private var startButton: UIButton!
+    private var sessionProfileSegment: UISegmentedControl!
     
     private let minDuration: Float = 5.0   // 5 minutes
     private let maxDuration: Float = 30.0  // 30 minutes
@@ -84,6 +85,25 @@ class SessionConfigViewController: UIViewController {
         maxLabel.textAlignment = .right
         view.addSubview(maxLabel)
         
+        // Create session profile label
+        let profileLabel = UILabel()
+        profileLabel.text = "Session Type"
+        profileLabel.font = UIFont.systemFont(ofSize: 18, weight: .medium)
+        profileLabel.textColor = .white
+        profileLabel.textAlignment = .center
+        profileLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(profileLabel)
+        
+        // Create session profile selector
+        sessionProfileSegment = UISegmentedControl(items: ["Standard", "Fluctuating", "Challenge", "Variable"])
+        sessionProfileSegment.selectedSegmentIndex = 1 // Default to fluctuating
+        sessionProfileSegment.backgroundColor = .darkGray
+        sessionProfileSegment.selectedSegmentTintColor = .systemBlue
+        sessionProfileSegment.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
+        sessionProfileSegment.setTitleTextAttributes([.foregroundColor: UIColor.lightGray], for: .normal)
+        sessionProfileSegment.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sessionProfileSegment)
+        
         // Create start button
         startButton = UIButton(type: .system)
         startButton.setTitle("Begin Session", for: .normal)
@@ -119,6 +139,13 @@ class SessionConfigViewController: UIViewController {
             
             maxLabel.topAnchor.constraint(equalTo: sessionDurationSlider.bottomAnchor, constant: 8),
             maxLabel.trailingAnchor.constraint(equalTo: sessionDurationSlider.trailingAnchor),
+            
+            profileLabel.topAnchor.constraint(equalTo: minLabel.bottomAnchor, constant: 40),
+            profileLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            
+            sessionProfileSegment.topAnchor.constraint(equalTo: profileLabel.bottomAnchor, constant: 16),
+            sessionProfileSegment.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            sessionProfileSegment.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
             
             startButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             startButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -60),
@@ -165,6 +192,20 @@ class SessionConfigViewController: UIViewController {
         scene.sessionMode = true
         scene.sessionDuration = duration
         scene.initialArousalLevel = 0.95 // Fixed high starting arousal
+        
+        // Set session profile based on segment selection
+        switch sessionProfileSegment.selectedSegmentIndex {
+        case 0:
+            scene.sessionProfile = .standard
+        case 1:
+            scene.sessionProfile = .fluctuating
+        case 2:
+            scene.sessionProfile = .challenge
+        case 3:
+            scene.sessionProfile = .variable
+        default:
+            scene.sessionProfile = .fluctuating
+        }
         
         // Remove self from parent view controller
         willMove(toParent: nil)
