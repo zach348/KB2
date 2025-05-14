@@ -15,7 +15,9 @@ class StartScreen: SKScene {
     private var startButton: SKSpriteNode!
     private var startButtonLabel: SKLabelNode!
     private var slider: UISlider!
+    private var segmentedControl: UISegmentedControl!
     private var sliderValue: Double = 15.0
+    private var selectedProfile: SessionProfile = .fluctuating
     
     // Selected session parameters
     private var sessionDuration: TimeInterval = 15 * 60
@@ -25,8 +27,9 @@ class StartScreen: SKScene {
         
         setupUI()
         
-        // Add the UISlider as a subview of the SKView
+        // Add the UISlider and UISegmentedControl as subviews of the SKView
         setupSlider(in: view)
+        setupProfileSelector(in: view)
     }
     
     private func setupUI() {
@@ -51,10 +54,10 @@ class StartScreen: SKScene {
         durationLabel.text = "Session Duration: \(Int(initialSessionMinutes)) minutes"
         durationLabel.fontSize = 24
         durationLabel.fontColor = .white
-        durationLabel.position = CGPoint(x: frame.midX, y: frame.midY + 60)
+        durationLabel.position = CGPoint(x: frame.midX, y: frame.midY + 120)
         addChild(durationLabel)
         
-        // Explanation text
+        // Duration explanation text
         let explanationLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
         explanationLabel.text = "Select your session duration"
         explanationLabel.fontSize = 18
@@ -62,9 +65,17 @@ class StartScreen: SKScene {
         explanationLabel.position = CGPoint(x: frame.midX, y: durationLabel.position.y - 40)
         addChild(explanationLabel)
         
+        // Profile selector label
+        let profileLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
+        profileLabel.text = "Session Type"
+        profileLabel.fontSize = 24
+        profileLabel.fontColor = .white
+        profileLabel.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - 80)
+        addChild(profileLabel)
+        
         // Start button background
         startButton = SKSpriteNode(color: .systemBlue, size: CGSize(width: 200, height: 60))
-        startButton.position = CGPoint(x: frame.midX, y: frame.midY - 100)
+        startButton.position = CGPoint(x: frame.midX, y: frame.midY - 150)
         startButton.zPosition = 10
         startButton.name = "startButton"
         
@@ -94,7 +105,7 @@ class StartScreen: SKScene {
     private func setupSlider(in view: SKView) {
         // Create the slider
         slider = UISlider(frame: CGRect(x: view.bounds.width * 0.15, 
-                                        y: view.bounds.height * 0.5 - 10, 
+                                        y: view.bounds.height * 0.4, 
                                         width: view.bounds.width * 0.7, 
                                         height: 30))
         slider.minimumValue = Float(minSessionMinutes)
@@ -112,10 +123,50 @@ class StartScreen: SKScene {
         view.addSubview(slider)
     }
     
+    private func setupProfileSelector(in view: SKView) {
+        // Create the segmented control
+        segmentedControl = UISegmentedControl(items: ["Smooth", "Dynamic", "Challenge", "Variable"])
+        segmentedControl.frame = CGRect(x: view.bounds.width * 0.15,
+                                       y: view.bounds.height * 0.55,
+                                       width: view.bounds.width * 0.7,
+                                       height: 35)
+        
+        // Set default selection
+        segmentedControl.selectedSegmentIndex = 1 // 'Dynamic' by default
+        
+        // Set up appearance
+        segmentedControl.backgroundColor = .darkGray
+        segmentedControl.selectedSegmentTintColor = .systemBlue
+        segmentedControl.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
+        segmentedControl.setTitleTextAttributes([.foregroundColor: UIColor.lightGray], for: .normal)
+        
+        // Add action for selection change
+        segmentedControl.addTarget(self, action: #selector(profileSelectionChanged(_:)), for: .valueChanged)
+        
+        // Add to view
+        view.addSubview(segmentedControl)
+    }
+    
     @objc private func sliderValueChanged(_ sender: UISlider) {
         sliderValue = Double(sender.value.rounded())
         sessionDuration = sliderValue * 60 // Convert to seconds
         durationLabel.text = "Session Duration: \(Int(sliderValue)) minutes"
+    }
+    
+    @objc private func profileSelectionChanged(_ sender: UISegmentedControl) {
+        // Update the selected profile based on segment index
+        switch sender.selectedSegmentIndex {
+        case 0:
+            selectedProfile = .standard // "Smooth"
+        case 1:
+            selectedProfile = .fluctuating // "Dynamic"
+        case 2:
+            selectedProfile = .challenge
+        case 3:
+            selectedProfile = .variable
+        default:
+            selectedProfile = .fluctuating // Default to "Dynamic"
+        }
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -140,9 +191,10 @@ class StartScreen: SKScene {
         let buttonNodes = self.children.filter { $0.name == "startButton" }
         buttonNodes.forEach { $0.run(sequence) }
         
-        // Remove the slider from the parent view
+        // Remove the slider and segmented control from the parent view
         DispatchQueue.main.async { [weak self] in
             self?.slider?.removeFromSuperview()
+            self?.segmentedControl?.removeFromSuperview()
             self?.startSession()
         }
     }
@@ -154,6 +206,7 @@ class StartScreen: SKScene {
             scene.sessionMode = true
             scene.sessionDuration = sessionDuration
             scene.initialArousalLevel = defaultArousalLevel
+            scene.sessionProfile = selectedProfile
             
             scene.scaleMode = .aspectFill
             view.presentScene(scene, transition: SKTransition.fade(withDuration: 0.5))
@@ -161,8 +214,10 @@ class StartScreen: SKScene {
     }
     
     override func willMove(from view: SKView) {
-        // Clean up slider when the scene is removed
+        // Clean up UIKit elements when the scene is removed
         slider?.removeFromSuperview()
+        segmentedControl?.removeFromSuperview()
         slider = nil
+        segmentedControl = nil
     }
 } 

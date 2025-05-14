@@ -7,6 +7,14 @@ import Foundation
 import CoreGraphics // For CGFloat
 import SpriteKit // For SKColor
 
+// Add this before the struct definition
+enum SessionProfile {
+    case standard          // Traditional descending curve
+    case fluctuating       // Includes random small fluctuations
+    case challenge         // Includes defined challenge phases
+    case variable          // Unpredictable with both fluctuations and challenges
+}
+
 struct GameConfiguration {
 
     // --- General ---
@@ -104,6 +112,23 @@ struct GameConfiguration {
     let flashCooldownDuration: TimeInterval = 0.5
     let fadeDuration: TimeInterval = 4.0 // User adjusted
 
+    //====================================================================================================
+    // MARK: - SESSION CONFIGURATION (NEW)
+    //====================================================================================================
+    // Challenge Phase Parameters
+    let challengePhaseProbability: Double = 1.0       // Kept at 1.0 for testing
+    let challengePhaseCount: ClosedRange<Int> = 2...4 // Keeping the increased count
+    let challengePhaseRelativeStart: ClosedRange<Double> = 0.1...0.7 // Restrict to first 70% of session
+    let challengePhaseDuration: ClosedRange<Double> = 0.15...0.25   // Changed to 15-25% as requested
+    let challengePhaseIntensity: ClosedRange<Double> = 0.3...0.5   // Changed to 30-50% as requested
+    
+    // Breathing State Timing
+    let breathingStateTargetRangeMin: Double = 0.4  // Breathing starts around 40% of session
+    let breathingStateTargetRangeMax: Double = 0.6  // Breathing starts around 60% of session
+    
+    // Default session profile
+    let defaultSessionProfile: SessionProfile = .fluctuating
+    
     // --- Motion Control Fine Tuning ---
     // MotionSettings struct remains separate for now.
 }

@@ -26,6 +26,57 @@ enum BreathingPhase { case idle, inhale, holdAfterInhale, exhale, holdAfterExhal
 //====================================================================================================
 // MARK: - GAME SCENE
 //====================================================================================================
+// Add this before the GameScene class definition
+struct SessionChallengePhase {
+    // When this challenge starts and ends (as fraction of total session)
+    let startProgress: Double
+    let endProgress: Double
+    
+    // How much arousal increases during this challenge
+    let intensity: Double
+    
+    // Helper computed properties
+    var duration: Double { return endProgress - startProgress }
+    var midPoint: Double { return startProgress + (duration / 2) }
+    
+    // Is this challenge phase active at the given progress point?
+    func isActive(at progress: Double) -> Bool {
+        return progress >= startProgress && progress <= endProgress
+    }
+    
+    // Calculate the arousal modifier for the given progress
+    func arousalModifier(at progress: Double) -> CGFloat {
+        guard isActive(at: progress) else { return 0 }
+        
+        // Calculate relative position within the challenge (0.0 to 1.0)
+        let relativePosition = (progress - startProgress) / duration
+        
+        // Create a multi-stage curve with faster ramp-up, plateau, and gradual decline
+        // - First 30% of challenge: Rapid rise (cubic function)
+        // - Middle 40% of challenge: Sustained plateau (near max value)
+        // - Final 30% of challenge: Gradual decline (linear fade)
+        
+        if relativePosition < 0.3 {
+            // First 30%: Rapid rise using a cubic function normalized to reach ~1.0 at relativePosition = 0.3
+            let normalizedPos = relativePosition / 0.3
+            return CGFloat(intensity * pow(normalizedPos, 2.5)) // Steeper rise with power > 1
+        } 
+        else if relativePosition < 0.7 {
+            // Middle 40%: Plateau with slight variation to make it feel organic
+            let plateauCenter = 0.5
+            let distanceFromCenter = abs(relativePosition - plateauCenter) / 0.2
+            let minVariation = 0.9 // Keep intensity at least 90% during plateau
+            let variation = 1.0 - (1.0 - minVariation) * pow(distanceFromCenter, 2)
+            return CGFloat(intensity * variation)
+        }
+        else {
+            // Final 30%: More gradual linear decline
+            let normalizedPos = (1.0 - relativePosition) / 0.3 // Reverse and normalize
+            return CGFloat(intensity * normalizedPos * 0.9) // Linear decline from 90%
+        }
+    }
+}
+
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     //====================================================================================================
@@ -40,6 +91,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var sessionDuration: TimeInterval = 0
     var sessionStartTime: TimeInterval = 0
     var initialArousalLevel: CGFloat = 0.95
+    var sessionProfile: SessionProfile = .standard // Default profile
+    var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
+    var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point
     
     // --- ADDED: Throttling properties for arousal updates ---
     private var lastArousalUpdateTime: TimeInterval = 0
@@ -145,6 +199,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var sessionProgressFill: SKShapeNode?
     private var sessionTimeLabel: SKLabelNode?
     
+    // --- Challenge Phase UI Elements ---
+    internal var challengeIndicator: SKShapeNode!
+    private var challengeLabel: SKLabelNode!
+    // Change from private to internal for testing purposes
+    internal var isInChallengePhase: Bool = false
+    
     //====================================================================================================
     // MARK: - FEEDBACK SYSTEMS
     //====================================================================================================
@@ -231,7 +291,31 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if sessionMode {
             sessionStartTime = CACurrentMediaTime()
             _currentArousalLevel = initialArousalLevel
-            print("DIAGNOSTIC: Session started with duration \\(sessionDuration) seconds, initial arousal \\(initialArousalLevel)")
+            
+            // Randomly determine when the breathing state should begin (40-60% range)
+            breathingTransitionPoint = Double.random(in: 
+                gameConfiguration.breathingStateTargetRangeMin...gameConfiguration.breathingStateTargetRangeMax)
+            
+            print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
+            print("DIAGNOSTIC: Breathing transition target point: \(Int(breathingTransitionPoint * 100))% of session")
+            
+            // Debug the session profile type with updated labels
+            switch sessionProfile {
+            case .standard:
+                print("DIAGNOSTIC: Using SMOOTH session profile - smooth curve, no challenges")
+            case .fluctuating:
+                print("DIAGNOSTIC: Using DYNAMIC session profile - small variations in arousal")
+                generateFluctuations()
+            case .challenge:
+                print("DIAGNOSTIC: Using CHALLENGE session profile - includes challenging periods")
+                generateChallengePhases()
+            case .variable:
+                print("DIAGNOSTIC: Using VARIABLE session profile - both fluctuations and challenges")
+                generateFluctuations()
+                generateChallengePhases()
+            }
+            
+            print("DIAGNOSTIC: Generated \(challengePhases.count) challenge phases for this session")
         }
         
         updateParametersFromArousal() // This will now also update audioManager
@@ -300,6 +384,28 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         breathingCueLabel.fontName = "HelveticaNeue-Bold"; breathingCueLabel.fontSize = 36; breathingCueLabel.fontColor = .white
         breathingCueLabel.position = CGPoint(x: frame.midX, y: frame.midY + 50); breathingCueLabel.horizontalAlignmentMode = .center; breathingCueLabel.isHidden = true; addChild(breathingCueLabel)
         
+        // Setup challenge phase indicator (moved to bottom-right corner)
+        challengeIndicator = SKShapeNode(circleOfRadius: 10)
+        challengeIndicator.fillColor = .systemRed
+        challengeIndicator.strokeColor = .white
+        challengeIndicator.lineWidth = 1
+        challengeIndicator.position = CGPoint(x: frame.maxX - 30, y: frame.minY + 30) // Changed from top-right to bottom-right
+        challengeIndicator.alpha = 0 // Initially invisible
+        challengeIndicator.zPosition = 101
+        addChild(challengeIndicator)
+        
+        // Setup challenge notification label
+        challengeLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        challengeLabel.text = "CHALLENGE PHASE"
+        challengeLabel.fontSize = 24
+        challengeLabel.fontColor = .systemRed
+        challengeLabel.horizontalAlignmentMode = .center
+        challengeLabel.verticalAlignmentMode = .center
+        challengeLabel.position = CGPoint(x: frame.midX, y: frame.midY + 100)
+        challengeLabel.alpha = 0 // Initially invisible
+        challengeLabel.zPosition = 101
+        addChild(challengeLabel)
+        
         // Add session progress bar if in session mode
         if sessionMode {
             setupSessionProgressBar()
@@ -307,9 +413,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     private func setupFadeOverlay() {
-        fadeOverlayNode.color = .black; fadeOverlayNode.size = self.size
+        fadeOverlayNode.color = .black // Explicitly set to black
+        fadeOverlayNode.size = self.size
         fadeOverlayNode.position = CGPoint(x: frame.midX, y: frame.midY)
-        fadeOverlayNode.zPosition = 100; fadeOverlayNode.alpha = 0.0
+        fadeOverlayNode.zPosition = 100
+        fadeOverlayNode.alpha = 0.0
         fadeOverlayNode.isUserInteractionEnabled = false // Explicitly disable interaction
         if fadeOverlayNode.parent == nil { addChild(fadeOverlayNode) }
     }
@@ -902,6 +1010,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func checkBreathingFade() {
         guard currentState == .breathing else { return }
         guard fadeOverlayNode != nil else { return }
+        
+        // Ensure fade overlay is black for normal breathing fade
+        fadeOverlayNode.color = .black
+        
         if currentArousalLevel < gameConfiguration.breathingFadeOutThreshold && !breathingVisualsFaded {
             breathingVisualsFaded = true
             let fadeOut = SKAction.fadeOut(withDuration: gameConfiguration.fadeDuration)
@@ -914,13 +1026,18 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     private func fadeInBreathingVisuals() {
-         guard breathingVisualsFaded else { return }
-         guard fadeOverlayNode != nil else { return }
-         breathingVisualsFaded = false
-         let fadeIn = SKAction.fadeIn(withDuration: gameConfiguration.fadeDuration)
-         let fadeOutOverlay = SKAction.fadeOut(withDuration: gameConfiguration.fadeDuration)
-         balls.forEach { $0.run(fadeIn) }; breathingCueLabel.run(fadeIn)
-         fadeOverlayNode.run(fadeOutOverlay)
+        guard breathingVisualsFaded else { return }
+        guard fadeOverlayNode != nil else { return }
+        
+        // Ensure fade overlay is black for normal breathing visuals
+        fadeOverlayNode.color = .black
+        
+        breathingVisualsFaded = false
+        let fadeIn = SKAction.fadeIn(withDuration: gameConfiguration.fadeDuration)
+        let fadeOutOverlay = SKAction.fadeOut(withDuration: gameConfiguration.fadeDuration)
+        balls.forEach { $0.run(fadeIn) }
+        breathingCueLabel.run(fadeIn)
+        fadeOverlayNode.run(fadeOutOverlay)
     }
 
     //====================================================================================================
@@ -1353,14 +1470,43 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     //====================================================================================================
     // --- Session Management Methods ---
     internal func calculateArousalForProgress(_ progress: Double) -> CGFloat {
+        // Get the base arousal value following the power curve
+        let baseArousal = calculateBaseArousalForProgress(progress)
+        
+        // Apply profile-specific modifiers
+        var modifiedArousal = baseArousal
+        
+        switch sessionProfile {
+        case .standard:
+            // Standard curve, no modifications
+            return baseArousal
+            
+        case .fluctuating, .variable:
+            // Add small random fluctuations
+            modifiedArousal = applyFluctuations(to: baseArousal, at: progress)
+            fallthrough // Allow challenge phases to also apply in variable mode
+            
+        case .challenge:
+            // Apply any active challenge phases
+            modifiedArousal = applyChallengePhases(to: modifiedArousal, at: progress)
+        }
+        
+        // Ensure we don't go beyond valid range
+        return max(0.0, min(initialArousalLevel, modifiedArousal))
+    }
+
+    // New method: Calculate base arousal using the original power curve formula
+    internal func calculateBaseArousalForProgress(_ progress: Double) -> CGFloat {
         // Use a Power Curve: A(p) = A_start * (1 - p)^n
         // Where n is calculated to make A(0.5) = breathingThreshold
         
         let startArousal = initialArousalLevel
         let endArousal: CGFloat = 0.0 // Target end arousal
         let breathingThreshold = gameConfiguration.trackingArousalThresholdLow
-        let targetProgress: Double = 0.5 // Progress at which to hit the threshold
-
+        
+        // Use the randomized transition point instead of the fixed 0.5
+        let targetProgress: Double = breathingTransitionPoint
+        
         // Calculate the exponent 'n' needed to hit the threshold at the target progress
         // Formula derivation: threshold = start * (1 - targetProgress)^n
         // threshold / start = (1 - targetProgress)^n
@@ -1377,6 +1523,65 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         return max(endArousal, min(startArousal, calculatedArousal))
     }
 
+    // New method: Apply subtle fluctuations to arousal value
+    private func applyFluctuations(to baseArousal: CGFloat, at progress: Double) -> CGFloat {
+        // No fluctuations at very start or end of session
+        if progress < 0.05 || progress > 0.95 {
+            return baseArousal
+        }
+        
+        // Create deterministic but pseudo-random fluctuations based on progress
+        // Using multiple sine waves of different frequencies creates natural-feeling variation
+        let frequency1 = 15.0 // High frequency component
+        let frequency2 = 5.0  // Medium frequency component
+        let frequency3 = 2.0  // Low frequency component
+        
+        let wave1 = sin(progress * .pi * frequency1) * 0.02 // Small amplitude
+        let wave2 = sin(progress * .pi * frequency2) * 0.03 // Medium amplitude
+        let wave3 = sin(progress * .pi * frequency3) * 0.01 // Small amplitude
+        
+        // Combined weighted fluctuation
+        let fluctuation = CGFloat(wave1 + wave2 + wave3)
+        
+        // Apply fluctuation but ensure we don't go below 0 or above initial arousal
+        return max(0.01, min(initialArousalLevel, baseArousal + fluctuation))
+    }
+
+    // New method: Apply challenge phase modifications
+    private func applyChallengePhases(to baseArousal: CGFloat, at progress: Double) -> CGFloat {
+        // If no challenges or none active, return the base value
+        guard !challengePhases.isEmpty, 
+              (sessionProfile == .challenge || sessionProfile == .variable) else {
+            return baseArousal
+        }
+        
+        // Find any active challenge phases
+        var totalModifier: CGFloat = 0
+        var activeChallenge = false
+        
+        for phase in challengePhases {
+            if phase.isActive(at: progress) {
+                activeChallenge = true
+                // Get this phase's modifier and add it to the total
+                let modifier = phase.arousalModifier(at: progress)
+                totalModifier += modifier
+                
+                // Debug output for significant modifiers
+                if modifier > 0.05 {
+                    print("CHALLENGE EFFECT: Adding \(String(format: "%.2f", modifier)) to arousal at progress \(Int(progress * 100))%")
+                }
+            }
+        }
+        
+        // Apply total modifier to base arousal
+        let modifiedArousal = baseArousal + totalModifier
+        
+        // Ensure we stay within valid range - but allow exceeding the initial value during challenges
+        // This is key to making challenges noticeable - they can temporarily increase arousal
+        let maxLimit = max(initialArousalLevel, baseArousal + 0.3) // Allow going above initial arousal
+        return max(0.0, min(maxLimit, modifiedArousal))
+    }
+
     private func updateArousalForSession() {
         guard sessionMode else { return }
         
@@ -1391,8 +1596,39 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let elapsedTime = currentTime - sessionStartTime
         let progress = min(1.0, elapsedTime / sessionDuration)
         
+        // Every 5 seconds, print the progress
+        if Int(elapsedTime) % 5 == 0 && Int(elapsedTime) > 0 {
+            print("Session progress: \(Int(progress * 100))% (\(Int(elapsedTime))s / \(Int(sessionDuration))s)")
+            
+            // Check and report on any active challenge
+            if sessionProfile == .challenge || sessionProfile == .variable {
+                for (i, phase) in challengePhases.enumerated() {
+                    if phase.isActive(at: progress) {
+                        // Calculate how far into the challenge we are
+                        let challengeProgress = (progress - phase.startProgress) / phase.duration
+                        let phaseDescription = challengeProgress < 0.3 ? "RAMP-UP" : 
+                                              (challengeProgress < 0.7 ? "PLATEAU" : "DECLINE")
+                        
+                        print("  ACTIVE CHALLENGE \(i+1): \(Int(challengeProgress * 100))% complete - \(phaseDescription) phase")
+                        print("  Phase timing: \(Int(phase.startProgress * 100))-\(Int(phase.endProgress * 100))% with intensity \(phase.intensity)")
+                        
+                        // Show the actual effect of the challenge on arousal
+                        let baseArousal = calculateBaseArousalForProgress(progress)
+                        let modifier = phase.arousalModifier(at: progress)
+                        print("  Challenge effect: +\(String(format: "%.2f", modifier)) to arousal")
+                    }
+                }
+            }
+        }
+        
         // Calculate target arousal based on exponential decay
+        let baseArousal = calculateBaseArousalForProgress(progress)
         let targetArousal = calculateArousalForProgress(progress)
+        
+        // If there's a significant difference, log it (likely due to a challenge)
+        if abs(targetArousal - baseArousal) > 0.05 {
+            print("AROUSAL MODIFICATION: Base: \(String(format: "%.2f", baseArousal)), Target: \(String(format: "%.2f", targetArousal)), Diff: \(String(format: "%.2f", targetArousal - baseArousal))")
+        }
         
         // Apply arousal change more smoothly
         let arousalDifference = targetArousal - currentArousalLevel
@@ -1400,6 +1636,33 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             // Apply gradual change rather than jumping directly to target
             let newArousal = currentArousalLevel + (arousalDifference * 0.05)  // 5% step toward target
             currentArousalLevel = newArousal
+        }
+        
+        // Check for challenge phase
+        let wasInChallengePhase = isInChallengePhase
+        isInChallengePhase = false
+        
+        // Check if we're currently in any challenge phase
+        if sessionProfile == .challenge || sessionProfile == .variable {
+            for phase in challengePhases {
+                if phase.isActive(at: progress) {
+                    isInChallengePhase = true
+                    break
+                }
+            }
+        }
+        
+        // Handle challenge phase visualization
+        if isInChallengePhase != wasInChallengePhase {
+            if isInChallengePhase {
+                // Starting a challenge phase
+                print("CHALLENGE PHASE STARTED at \(Int(progress * 100))% (\(Int(elapsedTime))s)")
+                startChallengePhaseVisualization()
+            } else {
+                // Ending a challenge phase
+                print("CHALLENGE PHASE ENDED at \(Int(progress * 100))% (\(Int(elapsedTime))s)")
+                endChallengePhaseVisualization()
+            }
         }
     }
     
@@ -1557,6 +1820,184 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             audioOffset: audioOffset,
             sceneCurrentState: currentState
         )
+    }
+
+    // --- Session Profile Generation ---
+    private func generateSessionProfile() {
+        // Clear any existing challenge phases
+        challengePhases.removeAll()
+        
+        switch sessionProfile {
+        case .standard:
+            // Standard profile has no challenges or fluctuations
+            break
+            
+        case .fluctuating:
+            // Generate small random fluctuations throughout the session
+            generateFluctuations()
+            
+        case .challenge:
+            // Generate specific challenge phases
+            generateChallengePhases()
+            
+        case .variable:
+            // Both fluctuations and challenges
+            generateFluctuations()
+            generateChallengePhases()
+        }
+    }
+
+    private func generateFluctuations() {
+        // For now, fluctuations are implemented in the calculateArousalForProgress method
+        // They don't require pre-generation like challenge phases
+    }
+
+    private func generateChallengePhases() {
+        // Only generate challenge phases with the configured probability
+        guard Double.random(in: 0...1) <= gameConfiguration.challengePhaseProbability else {
+            print("DIAGNOSTIC: No challenge phases for this session (random probability)")
+            return
+        }
+        
+        // Determine how many challenge phases to include
+        let count = Int.random(in: gameConfiguration.challengePhaseCount)
+        print("DIAGNOSTIC: Generating \(count) challenge phases for this session")
+        
+        // Available progress range for challenges
+        let startRange = gameConfiguration.challengePhaseRelativeStart
+        let durationRange = gameConfiguration.challengePhaseDuration
+        let intensityRange = gameConfiguration.challengePhaseIntensity
+        
+        // Ensure no challenge extends into the final 10% of the session
+        let finalCutoffPoint: Double = 0.9
+        
+        // Track already used progress ranges to avoid overlaps
+        var usedRanges: [(start: Double, end: Double)] = []
+        
+        // Generate each challenge phase
+        for i in 0..<count {
+            var attempts = 0
+            var validPhaseFound = false
+            var newPhase: SessionChallengePhase?
+            
+            // Try to find a non-overlapping placement
+            while !validPhaseFound && attempts < 10 {
+                attempts += 1
+                
+                // Random parameters for this challenge
+                let start = Double.random(in: startRange)
+                let duration = Double.random(in: durationRange)
+                let end = min(start + duration, finalCutoffPoint - 0.01) // Ensure it ends before final 10%
+                
+                // Skip this attempt if the end would be too close to the start (due to cutoff)
+                if end - start < durationRange.lowerBound {
+                    continue
+                }
+                
+                let intensity = Double.random(in: intensityRange)
+                
+                // Check if this overlaps with any existing phases
+                let overlaps = usedRanges.contains { 
+                    (start <= $0.end + 0.05 && end >= $0.start - 0.05) 
+                }
+                
+                if !overlaps {
+                    newPhase = SessionChallengePhase(
+                        startProgress: start,
+                        endProgress: end,
+                        intensity: intensity
+                    )
+                    usedRanges.append((start, end))
+                    validPhaseFound = true
+                }
+            }
+            
+            if let phase = newPhase {
+                challengePhases.append(phase)
+                print("DIAGNOSTIC: Added challenge phase \(i+1): \(phase.startProgress) to \(phase.endProgress), intensity \(phase.intensity)")
+            }
+        }
+        
+        // Sort challenges by start time
+        challengePhases.sort { $0.startProgress < $1.startProgress }
+        
+        // Extra diagnostics
+        if challengePhases.isEmpty {
+            print("WARNING: Failed to generate any challenge phases despite trying")
+        } else {
+            print("DIAGNOSTIC: Final challenge phases for this session:")
+            for (i, phase) in challengePhases.enumerated() {
+                let startSecs = phase.startProgress * sessionDuration
+                let endSecs = phase.endProgress * sessionDuration
+                let durationSecs = endSecs - startSecs
+                print("  Phase \(i+1): Start at \(Int(startSecs))s, End at \(Int(endSecs))s, Duration: \(Int(durationSecs))s, Intensity: \(phase.intensity)")
+            }
+        }
+    }
+
+    // New methods to handle challenge phase visualization
+    internal func startChallengePhaseVisualization() {
+        // Show persistent indicator with more contrast
+        challengeIndicator.fillColor = .systemRed
+        challengeIndicator.strokeColor = .white
+        challengeIndicator.lineWidth = 2
+        let fadeIn = SKAction.fadeAlpha(to: 1.0, duration: 0.3)
+        challengeIndicator.run(fadeIn)
+        
+        // Make the challenge label more prominent
+        challengeLabel.fontColor = .white
+        challengeLabel.fontSize = 28
+        
+        // Add background to the label for contrast
+        let labelBackground = SKShapeNode(rectOf: CGSize(width: 300, height: 50), cornerRadius: 10)
+        labelBackground.fillColor = .systemRed
+        labelBackground.strokeColor = .white
+        labelBackground.lineWidth = 2
+        labelBackground.position = challengeLabel.position
+        labelBackground.zPosition = challengeLabel.zPosition - 1
+        labelBackground.alpha = 0
+        labelBackground.name = "challengeLabelBg"
+        addChild(labelBackground)
+        
+        // Show and then hide notification banner with background
+        let showBanner = SKAction.fadeAlpha(to: 1.0, duration: 0.3)
+        let wait = SKAction.wait(forDuration: 3.0) // Longer display time
+        let hideBanner = SKAction.fadeAlpha(to: 0.0, duration: 0.5)
+        challengeLabel.run(SKAction.sequence([showBanner, wait, hideBanner]))
+        labelBackground.run(SKAction.sequence([showBanner, wait, hideBanner]))
+        
+        // Add stronger pulse effect to the indicator
+        let scaleUp = SKAction.scale(to: 1.5, duration: 0.4)
+        let scaleDown = SKAction.scale(to: 1.0, duration: 0.4)
+        let pulse = SKAction.sequence([scaleUp, scaleDown])
+        let repeatPulse = SKAction.repeatForever(pulse)
+        challengeIndicator.run(repeatPulse, withKey: "challengePulse")
+        
+        // More noticeable screen flash
+        fadeOverlayNode.color = .red
+        fadeOverlayNode.alpha = 0
+        let flashOn = SKAction.fadeAlpha(to: 0.25, duration: 0.2)
+        let flashOff = SKAction.fadeAlpha(to: 0.0, duration: 0.2)
+        fadeOverlayNode.run(SKAction.sequence([flashOn, flashOff, flashOn, flashOff, flashOn, flashOff]))
+    }
+
+    internal func endChallengePhaseVisualization() {
+        // Hide indicator
+        let fadeOut = SKAction.fadeAlpha(to: 0.0, duration: 0.5)
+        challengeIndicator.run(fadeOut)
+        challengeIndicator.removeAction(forKey: "challengePulse")
+        
+        // Remove label background
+        if let bg = childNode(withName: "challengeLabelBg") {
+            bg.run(SKAction.sequence([fadeOut, SKAction.removeFromParent()]))
+        }
+        
+        // Reset scale
+        challengeIndicator.setScale(1.0)
+        
+        // Reset fadeOverlayNode color back to black for breathing state
+        fadeOverlayNode.color = .black
+        fadeOverlayNode.alpha = 0
     }
 
 } // Final closing brace for GameScene Class
