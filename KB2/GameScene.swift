@@ -48,18 +48,32 @@ struct SessionChallengePhase {
     func arousalModifier(at progress: Double) -> CGFloat {
         guard isActive(at: progress) else { return 0 }
         
-        // Create a more dramatic bell curve for the challenge intensity
-        // - Starts at 0
-        // - Peaks at intensity at the midpoint
-        // - Returns to 0 at the end
+        // Calculate relative position within the challenge (0.0 to 1.0)
         let relativePosition = (progress - startProgress) / duration
         
-        // Enhanced sinusoidal shape for more pronounced effect
-        // Using sin^2 instead of sin for a steeper curve
-        let t = relativePosition * .pi
-        let bellCurve = pow(sin(t), 1.5) // More concentrated near the peak
+        // Create a multi-stage curve with faster ramp-up, plateau, and gradual decline
+        // - First 30% of challenge: Rapid rise (cubic function)
+        // - Middle 40% of challenge: Sustained plateau (near max value)
+        // - Final 30% of challenge: Gradual decline (linear fade)
         
-        return CGFloat(bellCurve * intensity)
+        if relativePosition < 0.3 {
+            // First 30%: Rapid rise using a cubic function normalized to reach ~1.0 at relativePosition = 0.3
+            let normalizedPos = relativePosition / 0.3
+            return CGFloat(intensity * pow(normalizedPos, 2.5)) // Steeper rise with power > 1
+        } 
+        else if relativePosition < 0.7 {
+            // Middle 40%: Plateau with slight variation to make it feel organic
+            let plateauCenter = 0.5
+            let distanceFromCenter = abs(relativePosition - plateauCenter) / 0.2
+            let minVariation = 0.9 // Keep intensity at least 90% during plateau
+            let variation = 1.0 - (1.0 - minVariation) * pow(distanceFromCenter, 2)
+            return CGFloat(intensity * variation)
+        }
+        else {
+            // Final 30%: More gradual linear decline
+            let normalizedPos = (1.0 - relativePosition) / 0.3 // Reverse and normalize
+            return CGFloat(intensity * normalizedPos * 0.9) // Linear decline from 90%
+        }
     }
 }
 
@@ -1590,7 +1604,18 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if sessionProfile == .challenge || sessionProfile == .variable {
                 for (i, phase) in challengePhases.enumerated() {
                     if phase.isActive(at: progress) {
-                        print("  ACTIVE CHALLENGE \(i+1): Currently at \(Int(phase.startProgress * 100))-\(Int(phase.endProgress * 100))% with intensity \(phase.intensity)")
+                        // Calculate how far into the challenge we are
+                        let challengeProgress = (progress - phase.startProgress) / phase.duration
+                        let phaseDescription = challengeProgress < 0.3 ? "RAMP-UP" : 
+                                              (challengeProgress < 0.7 ? "PLATEAU" : "DECLINE")
+                        
+                        print("  ACTIVE CHALLENGE \(i+1): \(Int(challengeProgress * 100))% complete - \(phaseDescription) phase")
+                        print("  Phase timing: \(Int(phase.startProgress * 100))-\(Int(phase.endProgress * 100))% with intensity \(phase.intensity)")
+                        
+                        // Show the actual effect of the challenge on arousal
+                        let baseArousal = calculateBaseArousalForProgress(progress)
+                        let modifier = phase.arousalModifier(at: progress)
+                        print("  Challenge effect: +\(String(format: "%.2f", modifier)) to arousal")
                     }
                 }
             }
