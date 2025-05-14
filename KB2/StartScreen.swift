@@ -125,14 +125,14 @@ class StartScreen: SKScene {
     
     private func setupProfileSelector(in view: SKView) {
         // Create the segmented control
-        segmentedControl = UISegmentedControl(items: ["Standard", "Fluctuating", "Challenge", "Variable"])
+        segmentedControl = UISegmentedControl(items: ["Smooth", "Dynamic", "Challenge", "Variable"])
         segmentedControl.frame = CGRect(x: view.bounds.width * 0.15,
                                        y: view.bounds.height * 0.55,
                                        width: view.bounds.width * 0.7,
                                        height: 35)
         
         // Set default selection
-        segmentedControl.selectedSegmentIndex = 1 // Fluctuating by default
+        segmentedControl.selectedSegmentIndex = 1 // 'Dynamic' by default
         
         // Set up appearance
         segmentedControl.backgroundColor = .darkGray
@@ -157,15 +157,15 @@ class StartScreen: SKScene {
         // Update the selected profile based on segment index
         switch sender.selectedSegmentIndex {
         case 0:
-            selectedProfile = .standard
+            selectedProfile = .standard // "Smooth"
         case 1:
-            selectedProfile = .fluctuating
+            selectedProfile = .fluctuating // "Dynamic"
         case 2:
             selectedProfile = .challenge
         case 3:
             selectedProfile = .variable
         default:
-            selectedProfile = .fluctuating
+            selectedProfile = .fluctuating // Default to "Dynamic"
         }
     }
     

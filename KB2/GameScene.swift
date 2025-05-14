@@ -285,12 +285,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
             print("DIAGNOSTIC: Breathing transition target point: \(Int(breathingTransitionPoint * 100))% of session")
             
-            // Debug the session profile type
+            // Debug the session profile type with updated labels
             switch sessionProfile {
             case .standard:
-                print("DIAGNOSTIC: Using STANDARD session profile - smooth curve, no challenges")
+                print("DIAGNOSTIC: Using SMOOTH session profile - smooth curve, no challenges")
             case .fluctuating:
-                print("DIAGNOSTIC: Using FLUCTUATING session profile - small variations in arousal")
+                print("DIAGNOSTIC: Using DYNAMIC session profile - small variations in arousal")
                 generateFluctuations()
             case .challenge:
                 print("DIAGNOSTIC: Using CHALLENGE session profile - includes challenging periods")
