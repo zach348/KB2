@@ -118,9 +118,13 @@ struct GameConfiguration {
     // Challenge Phase Parameters
     let challengePhaseProbability: Double = 1.0       // Kept at 1.0 for testing
     let challengePhaseCount: ClosedRange<Int> = 2...4 // Keeping the increased count
-    let challengePhaseRelativeStart: ClosedRange<Double> = 0.1...0.7 // Keep starting earlier
+    let challengePhaseRelativeStart: ClosedRange<Double> = 0.1...0.7 // Restrict to first 70% of session
     let challengePhaseDuration: ClosedRange<Double> = 0.15...0.25   // Changed to 15-25% as requested
     let challengePhaseIntensity: ClosedRange<Double> = 0.3...0.5   // Changed to 30-50% as requested
+    
+    // Breathing State Timing
+    let breathingStateTargetRangeMin: Double = 0.4  // Breathing starts around 40% of session
+    let breathingStateTargetRangeMax: Double = 0.6  // Breathing starts around 60% of session
     
     // Default session profile
     let defaultSessionProfile: SessionProfile = .fluctuating

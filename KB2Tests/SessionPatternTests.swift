@@ -290,4 +290,62 @@ class SessionPatternTests: XCTestCase {
         gameScene.isInChallengePhase = false
         gameScene.endChallengePhaseVisualization()
     }
+    
+    // Add a new test to verify the breathing transition point is within the expected range
+    func testBreathingTransitionPointRandomization() {
+        // Setup session
+        gameScene.sessionMode = true
+        gameScene.sessionDuration = 10
+        gameScene.initialArousalLevel = 0.95
+        
+        // Initialize game scene 
+        gameScene.didMove(to: mockView)
+        
+        // Verify the transition point falls within the configured range
+        let minPoint = gameScene.gameConfiguration.breathingStateTargetRangeMin
+        let maxPoint = gameScene.gameConfiguration.breathingStateTargetRangeMax
+        
+        XCTAssertGreaterThanOrEqual(
+            gameScene.breathingTransitionPoint, 
+            minPoint,
+            "Breathing transition point should be at least \(minPoint)"
+        )
+        
+        XCTAssertLessThanOrEqual(
+            gameScene.breathingTransitionPoint, 
+            maxPoint,
+            "Breathing transition point should be at most \(maxPoint)"
+        )
+        
+        // Verify the transition point affects the arousal curve
+        let midSessionProgress = gameScene.breathingTransitionPoint
+        let slightlyBeforeTransition = midSessionProgress - 0.05
+        let slightlyAfterTransition = midSessionProgress + 0.05
+        
+        let arousalBeforeTransition = gameScene.calculateBaseArousalForProgress(slightlyBeforeTransition)
+        let arousalAtTransition = gameScene.calculateBaseArousalForProgress(midSessionProgress)
+        let arousalAfterTransition = gameScene.calculateBaseArousalForProgress(slightlyAfterTransition)
+        
+        // At the transition point, arousal should be approximately equal to the threshold
+        XCTAssertEqual(
+            arousalAtTransition,
+            gameScene.gameConfiguration.trackingArousalThresholdLow,
+            accuracy: 0.02,
+            "Arousal at transition point should match breathing threshold"
+        )
+        
+        // Before transition, arousal should be higher than the threshold
+        XCTAssertGreaterThan(
+            arousalBeforeTransition,
+            gameScene.gameConfiguration.trackingArousalThresholdLow,
+            "Arousal before transition point should be above breathing threshold"
+        )
+        
+        // After transition, arousal should be lower than the threshold
+        XCTAssertLessThan(
+            arousalAfterTransition,
+            gameScene.gameConfiguration.trackingArousalThresholdLow,
+            "Arousal after transition point should be below breathing threshold"
+        )
+    }
 } 

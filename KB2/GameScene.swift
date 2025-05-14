@@ -79,6 +79,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var initialArousalLevel: CGFloat = 0.95
     var sessionProfile: SessionProfile = .standard // Default profile
     var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
+    var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point
     
     // --- ADDED: Throttling properties for arousal updates ---
     private var lastArousalUpdateTime: TimeInterval = 0
@@ -277,7 +278,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             sessionStartTime = CACurrentMediaTime()
             _currentArousalLevel = initialArousalLevel
             
+            // Randomly determine when the breathing state should begin (40-60% range)
+            breathingTransitionPoint = Double.random(in: 
+                gameConfiguration.breathingStateTargetRangeMin...gameConfiguration.breathingStateTargetRangeMax)
+            
             print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
+            print("DIAGNOSTIC: Breathing transition target point: \(Int(breathingTransitionPoint * 100))% of session")
             
             // Debug the session profile type
             switch sessionProfile {
@@ -1483,8 +1489,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let startArousal = initialArousalLevel
         let endArousal: CGFloat = 0.0 // Target end arousal
         let breathingThreshold = gameConfiguration.trackingArousalThresholdLow
-        let targetProgress: Double = 0.5 // Progress at which to hit the threshold
-
+        
+        // Use the randomized transition point instead of the fixed 0.5
+        let targetProgress: Double = breathingTransitionPoint
+        
         // Calculate the exponent 'n' needed to hit the threshold at the target progress
         // Formula derivation: threshold = start * (1 - targetProgress)^n
         // threshold / start = (1 - targetProgress)^n
@@ -1835,6 +1843,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let durationRange = gameConfiguration.challengePhaseDuration
         let intensityRange = gameConfiguration.challengePhaseIntensity
         
+        // Ensure no challenge extends into the final 10% of the session
+        let finalCutoffPoint: Double = 0.9
+        
         // Track already used progress ranges to avoid overlaps
         var usedRanges: [(start: Double, end: Double)] = []
         
@@ -1851,7 +1862,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 // Random parameters for this challenge
                 let start = Double.random(in: startRange)
                 let duration = Double.random(in: durationRange)
-                let end = min(start + duration, 0.98) // Ensure it ends before session end
+                let end = min(start + duration, finalCutoffPoint - 0.01) // Ensure it ends before final 10%
+                
+                // Skip this attempt if the end would be too close to the start (due to cutoff)
+                if end - start < durationRange.lowerBound {
+                    continue
+                }
+                
                 let intensity = Double.random(in: intensityRange)
                 
                 // Check if this overlaps with any existing phases
