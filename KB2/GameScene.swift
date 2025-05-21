@@ -838,6 +838,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let newTargetAudioFrequency = gameConfiguration.minAudioFrequency + (audioFreqRange * Float(clampedArousal))
         self.lastCalculatedTargetAudioFrequencyForTests = newTargetAudioFrequency // Update for tests
         
+        // First, update the timer frequency
+        self.currentTimerFrequency = targetTimerFrequency 
+        
+        // Update the visual pulse duration whenever timer frequency changes
+        let newVisualPulseDuration = 1.0 / targetTimerFrequency * gameConfiguration.visualPulseOnDurationRatio
+        precisionTimer?.updateVisualPulseDuration(newDuration: newVisualPulseDuration)
+        
+        // Then update audio parameters
         audioManager.updateAudioParameters(
             newArousal: currentArousalLevel,
             newTimerFrequency: targetTimerFrequency,
@@ -847,7 +855,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // --- State-Specific Overrides & Calculations ---
         switch currentState {
         case .tracking, .identifying:
-            self.currentTimerFrequency = targetTimerFrequency // GameScene updates its own timer frequency
             // ... (rest of tracking/identifying specific parameter updates: motion, colors, intervals, etc.)
             // ... (ensure activeTargetColor, activeDistractorColor updates remain)
             let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
@@ -1775,23 +1782,30 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func setupTimer() {
         precisionTimer = PrecisionTimer();
         precisionTimer?.frequency = self.currentTimerFrequency
+        
+        // Set initial visual pulse duration based on game configuration
+        let visualPulseDuration = 1.0 / currentTimerFrequency * gameConfiguration.visualPulseOnDurationRatio
+        precisionTimer?.updateVisualPulseDuration(newDuration: visualPulseDuration)
+        
         precisionTimer?.onVisualTick = { [weak self] in self?.handleVisualTick() }
-        precisionTimer?.onHapticTick = { [weak self] t in self?.handleHapticTick(visualTickTime: t) }; precisionTimer?.onAudioTick = { [weak self] t in self?.handleAudioTick(visualTickTime: t) }
+        precisionTimer?.onHapticTick = { [weak self] t in self?.handleHapticTick(visualTickTime: t) }
+        precisionTimer?.onAudioTick = { [weak self] t in self?.handleAudioTick(visualTickTime: t) }
     }
 
     // --- Timer Callback Handlers ---
     private func handleVisualTick() {
         guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
         guard !balls.isEmpty else { return }
-        guard let _ = balls.first?.strokeColor else { return } 
-        let cycleDuration = 1.0 / currentTimerFrequency
-        let onDuration = cycleDuration * gameConfiguration.visualPulseOnDurationRatio
-        guard onDuration > 0.001 else { return }
+        guard let _ = balls.first?.strokeColor else { return }
+        
+        // Use the visual pulse duration from the timer for consistency
+        let visualPulseDuration = precisionTimer?.visualPulseDuration ?? 0.02
+        
         for ball in balls {
             if !breathingVisualsFaded || currentState != .breathing {
                 let setBorderOn = SKAction.run { ball.lineWidth = Ball.pulseLineWidth }
                 let setBorderOff = SKAction.run { ball.lineWidth = 0 }
-                let waitOn = SKAction.wait(forDuration: onDuration)
+                let waitOn = SKAction.wait(forDuration: visualPulseDuration)
                 let sequence = SKAction.sequence([setBorderOn, waitOn, setBorderOff])
                 ball.run(sequence, withKey: "visualPulse")
             } else {
@@ -1803,7 +1817,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func handleHapticTick(visualTickTime: CFTimeInterval) {
         guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
         guard hapticsReady, let player = hapticPlayer else { return }
-        let hapticStartTime = visualTickTime + hapticOffset
+        
+        // Ensure haptic offset is within reasonable bounds
+        let safeHapticOffset = max(-0.05, min(hapticOffset, 0.05)) // Limit between -50ms and +50ms
+        let hapticStartTime = visualTickTime + safeHapticOffset
+        
         try? player.start(atTime: hapticStartTime)
     }
 
@@ -1813,11 +1831,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let currentActualTargetAudioFreq = gameConfiguration.minAudioFrequency + (audioFreqRange * Float(clampedArousal))
         self.lastCalculatedTargetAudioFrequencyForTests = currentActualTargetAudioFreq // Update for tests
 
+        // Ensure audio offset is within reasonable bounds
+        let safeAudioOffset = max(-0.05, min(audioOffset, 0.05)) // Limit between -50ms and +50ms
+        
         audioManager.handleAudioTick(
             visualTickTime: visualTickTime,
             currentArousal: currentArousalLevel,
             currentTargetAudioFreq: currentActualTargetAudioFreq,
-            audioOffset: audioOffset,
+            audioOffset: safeAudioOffset,
             sceneCurrentState: currentState
         )
     }

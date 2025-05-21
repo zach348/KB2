@@ -106,6 +106,12 @@ class AudioManager {
     private var audioBufferCache: VHAAudioBufferCache?
     private var audioPulser: PreciseAudioPulser?
     private var usingPreciseAudio: Bool
+    
+    // Visual pulse duration tracking for audio pulse width
+    private var lastVisualPulseDuration: TimeInterval = 0.0
+    
+    // Diagnostic counters
+    private var audioTickCounter = 0
 
     init(gameConfiguration: GameConfiguration, initialArousal: CGFloat, initialTimerFrequency: Double, initialTargetAudioFrequency: Float) {
         self.gameConfiguration = gameConfiguration
@@ -131,9 +137,15 @@ class AudioManager {
         print("AudioManager: Setting up audio with usingPreciseAudio=\(usingPreciseAudio)")
         
         if usingPreciseAudio {
-            audioPulser = PreciseAudioPulser() 
+            // Create PreciseAudioPulser with external sync mode
+            audioPulser = PreciseAudioPulser(useExternalSync: true) 
             if let pulser = audioPulser {
-                print("AudioManager: PreciseAudioPulser created successfully.")
+                print("AudioManager: PreciseAudioPulser created successfully in external sync mode.")
+                
+                // Calculate visual pulse duration for audio pulse width matching
+                lastVisualPulseDuration = 1.0 / initialTimerFrequency * gameConfiguration.visualPulseOnDurationRatio
+                pulser.setPulseDuration(lastVisualPulseDuration)
+                
                 updatePulserParameters(pulser: pulser, arousal: initialArousal, timerFrequency: initialTimerFrequency, targetAudioFrequency: initialTargetAudioFrequency)
                 // pulser.start() is called by self.startEngine()
                 audioReady = true 
@@ -204,7 +216,13 @@ class AudioManager {
         let clampedArousal = max(0.0, min(arousal, 1.0))
         let calculatedAmplitude = minAmplitude + (amplitudeRange * Float(clampedArousal))
         let squareness = Float(clampedArousal)
-        // Assuming pulseRateFactor is in GameConfiguration, e.g., 0.8
+        
+        // Calculate visual pulse duration for audio pulse width matching
+        lastVisualPulseDuration = 1.0 / timerFrequency * gameConfiguration.visualPulseOnDurationRatio
+        pulser.setPulseDuration(lastVisualPulseDuration)
+        
+        // In external sync mode, we don't need to set the pulseRate as we'll manually trigger pulses
+        // But we'll keep it as a fallback in case we switch modes
         let pulseRate = timerFrequency * gameConfiguration.audioPulseRateFactor 
 
         pulser.updateParameters(
@@ -253,19 +271,14 @@ class AudioManager {
 
     func startEngine() {
         if !audioReady {
-            print("AudioManager: StartEngine called but audio not ready. Attempting to re-setup.")
-            // This might indicate a deeper issue, but as a fallback:
-            // Consider if re-setup needs current arousal/freq values if they changed since init.
-            // For now, let's assume init values are sufficient for a re-setup if it failed first time.
-            // Or, this re-setup logic could be removed if startEngine should only work if already ready.
-            // setupAudio(initialArousal: ???, initialTimerFrequency: ???, initialTargetAudioFrequency: ???)
-            // if !audioReady { print("AudioManager: Re-setup failed. Engine not starting."); return }
-             print("AudioManager: StartEngine called but audio not ready. Engine not starting.")
-             return
+            print("AudioManager: StartEngine called but audio not ready. Engine not starting.")
+            return
         }
 
         if usingPreciseAudio {
-            audioPulser?.start()
+            if let startResult = audioPulser?.start(), !startResult {
+                print("AudioManager WARNING: PreciseAudioPulser failed to start")
+            }
         } else {
             guard let engine = customAudioEngine, audioReady else {
                 print("AudioManager: StartEngine (traditional) - Aborted. Engine nil or not ready.")
@@ -330,14 +343,34 @@ class AudioManager {
     }
 
     func handleAudioTick(visualTickTime: CFTimeInterval, currentArousal: CGFloat, currentTargetAudioFreq: Float, audioOffset: TimeInterval, sceneCurrentState: GameState) {
+        // Only proceed if in a state that plays rhythmic audio
+        guard (sceneCurrentState == .tracking || sceneCurrentState == .identifying || sceneCurrentState == .breathing) else { return }
+        
         if usingPreciseAudio {
-            // PreciseAudioPulser handles its own timing internally
+            guard let pulser = audioPulser, pulser.isRunning else { 
+                print("AudioManager: handleAudioTick - Pulser not ready or running")
+                return 
+            }
+            
+            // Calculate the time when the audio pulse should start
+            let audioStartTime = visualTickTime + audioOffset
+            
+            // Periodically log the timing details (every 120 ticks)
+            audioTickCounter += 1
+            if audioTickCounter % 120 == 0 {
+                let currentTime = CACurrentMediaTime()
+                print("AudioManager: Audio tick #\(audioTickCounter) - now: \(String(format: "%.3f", currentTime)), " +
+                      "visualTick: \(String(format: "%.3f", visualTickTime)), " +
+                      "audioStart: \(String(format: "%.3f", audioStartTime))")
+            }
+            
+            // Trigger pulse at the exact scheduled time
+            pulser.triggerPulse(at: audioStartTime)
             return
         }
         
+        // Traditional audio handling logic (unchanged)
         guard audioReady, let engine = customAudioEngine, let playerNode = audioPlayerNode else { return }
-        // Only proceed if in a state that plays rhythmic audio
-        guard (sceneCurrentState == .tracking || sceneCurrentState == .identifying || sceneCurrentState == .breathing) else { return }
         guard engine.isRunning else { return }
 
         let audioStartTime = visualTickTime + audioOffset 
@@ -350,7 +383,7 @@ class AudioManager {
             guard self.audioReady,
                   (sceneCurrentState == .tracking || sceneCurrentState == .identifying || sceneCurrentState == .breathing),
                   let currentEngine = self.customAudioEngine, currentEngine.isRunning,
-                  let currentPlayerNode = self.audioPlayerNode else { return }
+                  let _ = self.audioPlayerNode else { return }
 
             var bufferToPlay: AVAudioPCMBuffer?
 
@@ -359,7 +392,6 @@ class AudioManager {
                 // Update currentBufferFrequency if the target frequency has changed significantly
                 if bufferToPlay != nil && (self.currentBufferFrequency == nil || abs(self.currentBufferFrequency! - currentTargetAudioFreq) > 1.0) {
                     self.currentBufferFrequency = currentTargetAudioFreq
-                     // self.audioBuffer = bufferToPlay // Not strictly needed to re-assign self.audioBuffer if cache handles it
                 }
             } else { // Fallback if cache is nil (should not happen if setup was correct)
                 if self.currentBufferFrequency == nil || abs(self.currentBufferFrequency! - currentTargetAudioFreq) > 1.0 {
@@ -370,12 +402,11 @@ class AudioManager {
             }
             
             guard let finalBufferToPlay = bufferToPlay else {
-                // print("AudioManager: handleAudioTick - No buffer to play for freq \(currentTargetAudioFreq)")
                 return
             }
             
-            currentPlayerNode.scheduleBuffer(finalBufferToPlay, at: nil, options: .interrupts) { /* Completion handler */ }
-            if !currentPlayerNode.isPlaying { currentPlayerNode.play() }
+            self.audioPlayerNode?.scheduleBuffer(finalBufferToPlay, at: nil, options: .interrupts) { /* Completion handler */ }
+            if !(self.audioPlayerNode?.isPlaying ?? false) { self.audioPlayerNode?.play() }
         }
     }
 }
