@@ -19,6 +19,11 @@ class StartScreen: SKScene {
     private var sliderValue: Double = 15.0
     private var selectedProfile: SessionProfile = .fluctuating
     
+    // New EMA elements
+    private var arousalSlider: UISlider?
+    private var arousalLabel: SKLabelNode?
+    private var userReportedArousal: CGFloat = 0.7 // Default mid-high value
+    
     // Selected session parameters
     private var sessionDuration: TimeInterval = 15 * 60
     
@@ -30,6 +35,7 @@ class StartScreen: SKScene {
         // Add the UISlider and UISegmentedControl as subviews of the SKView
         setupSlider(in: view)
         setupProfileSelector(in: view)
+        setupArousalSlider(in: view)
     }
     
     private func setupUI() {
@@ -49,12 +55,12 @@ class StartScreen: SKScene {
         subtitleLabel.position = CGPoint(x: frame.midX, y: titleLabel.position.y - 40)
         addChild(subtitleLabel)
         
-        // Duration selection label
+        // Duration selection label - moved up
         durationLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
         durationLabel.text = "Session Duration: \(Int(initialSessionMinutes)) minutes"
         durationLabel.fontSize = 24
         durationLabel.fontColor = .white
-        durationLabel.position = CGPoint(x: frame.midX, y: frame.midY + 120)
+        durationLabel.position = CGPoint(x: frame.midX, y: frame.midY + 160) // Moved up
         addChild(durationLabel)
         
         // Duration explanation text
@@ -65,17 +71,41 @@ class StartScreen: SKScene {
         explanationLabel.position = CGPoint(x: frame.midX, y: durationLabel.position.y - 40)
         addChild(explanationLabel)
         
-        // Profile selector label
+        // Profile selector label - moved up further to prevent occlusion
         let profileLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
         profileLabel.text = "Session Type"
         profileLabel.fontSize = 24
         profileLabel.fontColor = .white
-        profileLabel.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - 80)
+        profileLabel.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - 70) // Adjusted position
         addChild(profileLabel)
         
-        // Start button background
+        // Add arousal self-report label
+        let arousalSelfReportLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
+        arousalSelfReportLabel.text = "Current Arousal Level"
+        arousalSelfReportLabel.fontSize = 24
+        arousalSelfReportLabel.fontColor = .white
+        arousalSelfReportLabel.position = CGPoint(x: frame.midX, y: profileLabel.position.y - 80)
+        addChild(arousalSelfReportLabel)
+        
+        // Add arousal description
+        let arousalDescriptionLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
+        arousalDescriptionLabel.text = "Calm                  Alert                  Anxious"
+        arousalDescriptionLabel.fontSize = 14
+        arousalDescriptionLabel.fontColor = .lightGray
+        arousalDescriptionLabel.position = CGPoint(x: frame.midX, y: arousalSelfReportLabel.position.y - 60)
+        addChild(arousalDescriptionLabel)
+        
+        // Current arousal value label
+        arousalLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
+        arousalLabel?.text = arousalLevelDescription(for: userReportedArousal)
+        arousalLabel?.fontSize = 18
+        arousalLabel?.fontColor = .white
+        arousalLabel?.position = CGPoint(x: frame.midX, y: arousalSelfReportLabel.position.y - 30)
+        addChild(arousalLabel!)
+        
+        // Start button background - moved further down
         startButton = SKSpriteNode(color: .systemBlue, size: CGSize(width: 200, height: 60))
-        startButton.position = CGPoint(x: frame.midX, y: frame.midY - 150)
+        startButton.position = CGPoint(x: frame.midX, y: frame.midY - 220) // Moved down more
         startButton.zPosition = 10
         startButton.name = "startButton"
         
@@ -103,9 +133,9 @@ class StartScreen: SKScene {
     }
     
     private func setupSlider(in view: SKView) {
-        // Create the slider
+        // Create the slider - moved up
         slider = UISlider(frame: CGRect(x: view.bounds.width * 0.15, 
-                                        y: view.bounds.height * 0.4, 
+                                        y: view.bounds.height * 0.35, // Moved up
                                         width: view.bounds.width * 0.7, 
                                         height: 30))
         slider.minimumValue = Float(minSessionMinutes)
@@ -124,10 +154,10 @@ class StartScreen: SKScene {
     }
     
     private func setupProfileSelector(in view: SKView) {
-        // Create the segmented control
+        // Create the segmented control - moved up
         segmentedControl = UISegmentedControl(items: ["Smooth", "Dynamic", "Challenge", "Variable"])
         segmentedControl.frame = CGRect(x: view.bounds.width * 0.15,
-                                       y: view.bounds.height * 0.55,
+                                       y: view.bounds.height * 0.45, // Moved up
                                        width: view.bounds.width * 0.7,
                                        height: 35)
         
@@ -145,6 +175,30 @@ class StartScreen: SKScene {
         
         // Add to view
         view.addSubview(segmentedControl)
+    }
+    
+    private func setupArousalSlider(in view: SKView) {
+        // Create the arousal slider - position in lower half of screen
+        arousalSlider = UISlider(frame: CGRect(x: view.bounds.width * 0.15,
+                                              y: view.bounds.height * 0.65, // Adjusted to be between profile selector and start button
+                                              width: view.bounds.width * 0.7,
+                                              height: 30))
+        
+        guard let arousalSlider = arousalSlider else { return }
+        
+        arousalSlider.minimumValue = 0.0
+        arousalSlider.maximumValue = 1.0
+        arousalSlider.value = Float(userReportedArousal)
+        
+        // Appearance
+        arousalSlider.minimumTrackTintColor = .systemGreen
+        arousalSlider.maximumTrackTintColor = .systemRed
+        
+        // Add value changed action
+        arousalSlider.addTarget(self, action: #selector(arousalSliderChanged(_:)), for: .valueChanged)
+        
+        // Add to view
+        view.addSubview(arousalSlider)
     }
     
     @objc private func sliderValueChanged(_ sender: UISlider) {
@@ -166,6 +220,21 @@ class StartScreen: SKScene {
             selectedProfile = .variable
         default:
             selectedProfile = .fluctuating // Default to "Dynamic"
+        }
+    }
+    
+    @objc private func arousalSliderChanged(_ sender: UISlider) {
+        userReportedArousal = CGFloat(sender.value)
+        arousalLabel?.text = arousalLevelDescription(for: userReportedArousal)
+    }
+    
+    private func arousalLevelDescription(for level: CGFloat) -> String {
+        if level < 0.33 {
+            return "Calm/Relaxed (\(Int(level * 100))%)"
+        } else if level < 0.67 {
+            return "Alert/Focused (\(Int(level * 100))%)"
+        } else {
+            return "Energetic/Tense (\(Int(level * 100))%)"
         }
     }
     
@@ -191,10 +260,14 @@ class StartScreen: SKScene {
         let buttonNodes = self.children.filter { $0.name == "startButton" }
         buttonNodes.forEach { $0.run(sequence) }
         
+        // Log the self-reported arousal level
+        DataLogger.shared.logSelfReport(arousalLevel: userReportedArousal, phase: "pre-session")
+        
         // Remove the slider and segmented control from the parent view
         DispatchQueue.main.async { [weak self] in
             self?.slider?.removeFromSuperview()
             self?.segmentedControl?.removeFromSuperview()
+            self?.arousalSlider?.removeFromSuperview()
             self?.startSession()
         }
     }
@@ -203,10 +276,18 @@ class StartScreen: SKScene {
         // Create and present the game scene with session mode enabled
         if let view = self.view {
             let scene = GameScene(size: view.bounds.size)
+            
+            // Initialize the ArousalEstimator with the user's self-reported arousal
+            let arousalEstimator = ArousalEstimator(initialArousal: userReportedArousal)
+            
+            // Configure session parameters
             scene.sessionMode = true
             scene.sessionDuration = sessionDuration
-            scene.initialArousalLevel = defaultArousalLevel
+            scene.initialArousalLevel = defaultArousalLevel  // System arousal starts high
             scene.sessionProfile = selectedProfile
+            
+            // Provide the arousal estimator to the scene (we'll modify GameScene.swift next)
+            scene.arousalEstimator = arousalEstimator
             
             scene.scaleMode = .aspectFill
             view.presentScene(scene, transition: SKTransition.fade(withDuration: 0.5))
@@ -217,7 +298,9 @@ class StartScreen: SKScene {
         // Clean up UIKit elements when the scene is removed
         slider?.removeFromSuperview()
         segmentedControl?.removeFromSuperview()
+        arousalSlider?.removeFromSuperview()
         slider = nil
         segmentedControl = nil
+        arousalSlider = nil
     }
 } 

@@ -80,20 +80,26 @@ struct SessionChallengePhase {
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
     //====================================================================================================
-    // MARK: - CONFIGURATION & CORE PROPERTIES
-    //====================================================================================================
-    // --- Configuration ---
-    internal let gameConfiguration = GameConfiguration()
-    private var audioManager: AudioManager! // ADDED
+// MARK: - CONFIGURATION & CORE PROPERTIES
+//====================================================================================================
+// --- Configuration ---
+internal let gameConfiguration = GameConfiguration()
+private var audioManager: AudioManager! // ADDED
 
-    // --- Session Management Properties ---
-    var sessionMode: Bool = false
-    var sessionDuration: TimeInterval = 0
-    var sessionStartTime: TimeInterval = 0
-    var initialArousalLevel: CGFloat = 0.95
-    var sessionProfile: SessionProfile = .standard // Default profile
-    var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
-    var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point
+// --- Session Management Properties ---
+var sessionMode: Bool = false
+var sessionDuration: TimeInterval = 0
+var sessionStartTime: TimeInterval = 0
+var initialArousalLevel: CGFloat = 0.95
+var sessionProfile: SessionProfile = .standard // Default profile
+var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
+var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point
+
+// --- User Arousal Estimation ---
+var arousalEstimator: ArousalEstimator? // Tracks the user's estimated arousal level
+
+// --- Game Session Tracking ---
+private var hasLoggedSessionStart = false
     
     // --- ADDED: Throttling properties for arousal updates ---
     private var lastArousalUpdateTime: TimeInterval = 0
@@ -264,6 +270,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         backgroundColor = .darkGray
         safeAreaTopInset = view.safeAreaInsets.top
         
+        // Log the estimated user arousal if available
+        if let estimator = arousalEstimator {
+            print("USER AROUSAL: Initial value is \(String(format: "%.2f", estimator.currentUserArousalLevel))")
+        }
+        
         // Initialize AudioManager
         // GameScene still manages currentTargetAudioFrequency as it's derived from arousal
         // and used by updateParametersFromArousal before being passed to AudioManager.
@@ -425,7 +436,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // --- UI Update ---
     private func updateUI() {
         scoreLabel.text = "Score: \(score)"
-        arousalLabel.text = "Arousal: \(String(format: "%.2f", currentArousalLevel))"
+        
+        // Display both system and user arousal if estimator is available
+        if let estimator = arousalEstimator {
+            arousalLabel.text = "S: \(String(format: "%.2f", currentArousalLevel)) U: \(String(format: "%.2f", estimator.currentUserArousalLevel))"
+        } else {
+            arousalLabel.text = "Arousal: \(String(format: "%.2f", currentArousalLevel))"
+        }
         switch currentState {
         case .tracking: stateLabel.text = "Tracking"; stateLabel.fontColor = .yellow; countdownLabel.isHidden = true; breathingCueLabel.isHidden = true
         case .identifying: stateLabel.text = "Identify!"; stateLabel.fontColor = .red; countdownLabel.isHidden = false; breathingCueLabel.isHidden = true
@@ -1372,6 +1389,26 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let dt = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
         
+        // Log session start data if needed
+        if sessionMode && !hasLoggedSessionStart {
+            hasLoggedSessionStart = true
+            
+            // Log system arousal level at start
+            print("DIAGNOSTIC: Session started with system arousal at \(String(format: "%.2f", currentArousalLevel))")
+            
+            // Log user arousal level if available
+            if let estimator = arousalEstimator {
+                print("DIAGNOSTIC: Initial user arousal estimate is \(String(format: "%.2f", estimator.currentUserArousalLevel))")
+                
+                // Log the difference between system and user arousal
+                let difference = abs(currentArousalLevel - estimator.currentUserArousalLevel)
+                print("DIAGNOSTIC: Initial arousal mismatch is \(String(format: "%.2f", difference))")
+            }
+            
+            // Log session phase
+            DataLogger.shared.logStateTransition(from: "none", to: "session_start")
+        }
+        
         // Update arousal for session mode
         if sessionMode {
             // Note: updateArousalForSession itself contains throttling logic
@@ -1796,7 +1833,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func handleVisualTick() {
         guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
         guard !balls.isEmpty else { return }
-        guard let _ = balls.first?.strokeColor else { return }
+        guard let _ = balls.first?.strokeColor else { return } 
         
         // Use the visual pulse duration from the timer for consistency
         let visualPulseDuration = precisionTimer?.visualPulseDuration ?? 0.02
@@ -1833,7 +1870,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         // Ensure audio offset is within reasonable bounds
         let safeAudioOffset = max(-0.05, min(audioOffset, 0.05)) // Limit between -50ms and +50ms
-        
+
         audioManager.handleAudioTick(
             visualTickTime: visualTickTime,
             currentArousal: currentArousalLevel,
