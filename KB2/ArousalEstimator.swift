@@ -68,6 +68,15 @@ class ArousalEstimator {
         print("AROUSAL_ESTIMATOR: DataLogger integration enabled")
     }
     
+    /// Get current arousal data in structured format for logging
+    func getArousalData() -> [String: Any] {
+        return [
+            "currentLevel": _currentUserArousalLevel,
+            "timestamp": Date().timeIntervalSince1970,
+            "historyCount": recentPerformanceHistory.count
+        ]
+    }
+    
     /// Update the user arousal estimate based on a direct self-report
     func updateFromSelfReport(reportedArousal: CGFloat) {
         let oldValue = _currentUserArousalLevel
