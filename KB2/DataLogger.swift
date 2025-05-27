@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 
-/// A simple data logger for collecting arousal-related data points
+/// A comprehensive data logger for collecting arousal-related data points with file persistence
 class DataLogger {
     
     // MARK: - Properties
@@ -9,11 +9,55 @@ class DataLogger {
     static let shared = DataLogger()
     
     private var events: [[String: Any]] = []
+    private var currentSessionId: String?
+    private var sessionStartTime: TimeInterval?
     
     // MARK: - Initialization
     
     private init() {
         // Private initializer for singleton pattern
+    }
+    
+    // MARK: - Session Management
+    
+    /// Start a new logging session
+    func startSession() {
+        currentSessionId = UUID().uuidString
+        sessionStartTime = Date().timeIntervalSince1970
+        events.removeAll()
+        
+        let event: [String: Any] = [
+            "type": "session_start",
+            "timestamp": sessionStartTime!,
+            "session_id": currentSessionId!
+        ]
+        events.append(event)
+        print("DATA_LOG: Session started - ID: \(currentSessionId!)")
+    }
+    
+    /// End the current session and save to file
+    func endSession() {
+        guard let sessionId = currentSessionId else {
+            print("DATA_LOG: Warning - No active session to end")
+            return
+        }
+        
+        let timestamp = Date().timeIntervalSince1970
+        let event: [String: Any] = [
+            "type": "session_end",
+            "timestamp": timestamp,
+            "session_id": sessionId
+        ]
+        events.append(event)
+        
+        saveSessionToFile()
+        
+        // Reset session state
+        currentSessionId = nil
+        sessionStartTime = nil
+        events.removeAll()
+        
+        print("DATA_LOG: Session ended - ID: \(sessionId)")
     }
     
     // MARK: - Public Methods
@@ -62,4 +106,24 @@ class DataLogger {
             print("DATA_LOG: - \(type): \(count) events")
         }
     }
-} 
+    
+    // MARK: - Private Methods
+    
+    /// Save current session events to a JSON file
+    private func saveSessionToFile() {
+        guard let sessionId = currentSessionId else { return }
+        
+        do {
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let sessionFileName = "kb2_session_\(sessionId).json"
+            let fileURL = documentsPath.appendingPathComponent(sessionFileName)
+            
+            let jsonData = try JSONSerialization.data(withJSONObject: events, options: .prettyPrinted)
+            try jsonData.write(to: fileURL)
+            
+            print("DATA_LOG: Session data saved to \(sessionFileName)")
+        } catch {
+            print("DATA_LOG: Error saving session data: \(error)")
+        }
+    }
+}
