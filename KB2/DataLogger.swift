@@ -1,5 +1,7 @@
 import Foundation
 import CoreGraphics
+import Network
+import Combine
 
 /// A comprehensive data logger for collecting arousal-related data points with file persistence
 class DataLogger {
@@ -11,6 +13,28 @@ class DataLogger {
     private var events: [[String: Any]] = []
     private var currentSessionId: String?
     private var sessionStartTime: TimeInterval?
+    
+    // Real-time streaming properties
+    private var isStreamingEnabled: Bool = false
+    private var streamingBuffer: [[String: Any]] = []
+    private var streamingTimer: Timer?
+    private var streamingInterval: TimeInterval = 1.0 // Stream every second
+    private var maxBufferSize: Int = 100
+    
+    // Network connectivity
+    private var networkMonitor: NWPathMonitor?
+    private var networkQueue: DispatchQueue?
+    private var isNetworkAvailable: Bool = false
+    
+    // Cloud export configuration
+    private var cloudEndpointURL: URL?
+    private var cloudAPIKey: String?
+    private var cloudUploadQueue: [URL] = []
+    private var isCloudExportEnabled: Bool = false
+    
+    // Event subscribers for real-time data distribution
+    private var eventSubscribers: [(([String: Any]) -> Void)] = []
+    private let subscriberQueue = DispatchQueue(label: "datalogger.subscribers", qos: .utility)
     
     // MARK: - Initialization
     
@@ -73,6 +97,7 @@ class DataLogger {
         ]
         
         events.append(event)
+        addToStreamingBuffer(event)
         print("DATA_LOG: Self-report (\(phase)) - Arousal Level: \(String(format: "%.2f", arousalLevel))")
     }
     
@@ -107,6 +132,7 @@ class DataLogger {
         ]
         
         events.append(event)
+        addToStreamingBuffer(event)
         print("DATA_LOG: Tap event - Correct: \(isCorrect), RT: \(String(format: "%.3f", reactionTime))s, Accuracy: \(String(format: "%.2f", accuracy))px")
     }
     
@@ -608,6 +634,318 @@ class DataLogger {
         let removedCount = initialCount - events.count
         if removedCount > 0 {
             print("DATA_LOG: Cleared \(removedCount) old events")
+        }
+    }
+    
+    // MARK: - Real-time Data Streaming
+    
+    /// Start real-time data streaming with configurable interval
+    func startRealTimeStreaming(interval: TimeInterval = 1.0, bufferSize: Int = 100) {
+        guard !isStreamingEnabled else {
+            print("DATA_LOG: Real-time streaming already enabled")
+            return
+        }
+        
+        streamingInterval = interval
+        maxBufferSize = bufferSize
+        isStreamingEnabled = true
+        streamingBuffer.removeAll()
+        
+        // Start periodic streaming timer
+        streamingTimer = Timer.scheduledTimer(withTimeInterval: streamingInterval, repeats: true) { [weak self] _ in
+            self?.flushStreamingBuffer()
+        }
+        
+        print("DATA_LOG: Real-time streaming started - Interval: \(interval)s, Buffer: \(bufferSize)")
+    }
+    
+    /// Stop real-time data streaming
+    func stopRealTimeStreaming() {
+        guard isStreamingEnabled else {
+            print("DATA_LOG: Real-time streaming not active")
+            return
+        }
+        
+        streamingTimer?.invalidate()
+        streamingTimer = nil
+        isStreamingEnabled = false
+        
+        // Flush any remaining buffered events
+        flushStreamingBuffer()
+        
+        print("DATA_LOG: Real-time streaming stopped")
+    }
+    
+    /// Subscribe to real-time event notifications
+    func subscribeToEvents(_ callback: @escaping ([String: Any]) -> Void) {
+        subscriberQueue.async { [weak self] in
+            self?.eventSubscribers.append(callback)
+        }
+        print("DATA_LOG: Event subscriber added")
+    }
+    
+    /// Remove all event subscribers
+    func clearEventSubscribers() {
+        subscriberQueue.async { [weak self] in
+            self?.eventSubscribers.removeAll()
+        }
+        print("DATA_LOG: All event subscribers cleared")
+    }
+    
+    /// Flush current streaming buffer to subscribers
+    private func flushStreamingBuffer() {
+        guard !streamingBuffer.isEmpty else { return }
+        
+        let bufferCopy = streamingBuffer
+        streamingBuffer.removeAll()
+        
+        subscriberQueue.async { [weak self] in
+            guard let self = self else { return }
+            for subscriber in self.eventSubscribers {
+                for event in bufferCopy {
+                    subscriber(event)
+                }
+            }
+        }
+        
+        print("DATA_LOG: Streamed \(bufferCopy.count) events to \(eventSubscribers.count) subscribers")
+    }
+    
+    /// Add event to streaming buffer and notify subscribers
+    private func addToStreamingBuffer(_ event: [String: Any]) {
+        guard isStreamingEnabled else { return }
+        
+        streamingBuffer.append(event)
+        
+        // Manage buffer size
+        if streamingBuffer.count >= maxBufferSize {
+            flushStreamingBuffer()
+        }
+    }
+    
+    // MARK: - Network Connectivity
+    
+    /// Start monitoring network connectivity for cloud features
+    func startNetworkMonitoring() {
+        networkQueue = DispatchQueue(label: "datalogger.network", qos: .utility)
+        networkMonitor = NWPathMonitor()
+        
+        networkMonitor?.pathUpdateHandler = { [weak self] path in
+            let wasAvailable = self?.isNetworkAvailable ?? false
+            self?.isNetworkAvailable = path.status == .satisfied
+            
+            if !wasAvailable && self?.isNetworkAvailable == true {
+                print("DATA_LOG: Network connection restored")
+                self?.processCloudUploadQueue()
+            } else if wasAvailable && self?.isNetworkAvailable == false {
+                print("DATA_LOG: Network connection lost")
+            }
+        }
+        
+        networkMonitor?.start(queue: networkQueue!)
+        print("DATA_LOG: Network monitoring started")
+    }
+    
+    /// Stop network monitoring
+    func stopNetworkMonitoring() {
+        networkMonitor?.cancel()
+        networkMonitor = nil
+        networkQueue = nil
+        isNetworkAvailable = false
+        print("DATA_LOG: Network monitoring stopped")
+    }
+    
+    /// Get current network connectivity status
+    func getNetworkStatus() -> [String: Any] {
+        return [
+            "is_available": isNetworkAvailable,
+            "cloud_export_enabled": isCloudExportEnabled,
+            "upload_queue_size": cloudUploadQueue.count
+        ]
+    }
+    
+    // MARK: - Cloud Export and Sync
+    
+    /// Configure cloud export settings
+    func configureCloudExport(endpointURL: String, apiKey: String) {
+        guard let url = URL(string: endpointURL) else {
+            print("DATA_LOG: Invalid cloud endpoint URL: \(endpointURL)")
+            return
+        }
+        
+        cloudEndpointURL = url
+        cloudAPIKey = apiKey
+        isCloudExportEnabled = true
+        
+        print("DATA_LOG: Cloud export configured - Endpoint: \(endpointURL)")
+        
+        // Process any queued uploads
+        if isNetworkAvailable {
+            processCloudUploadQueue()
+        }
+    }
+    
+    /// Disable cloud export functionality
+    func disableCloudExport() {
+        isCloudExportEnabled = false
+        cloudEndpointURL = nil
+        cloudAPIKey = nil
+        cloudUploadQueue.removeAll()
+        print("DATA_LOG: Cloud export disabled")
+    }
+    
+    /// Upload session data to configured cloud endpoint
+    func uploadToCloud(sessionFilePath: URL, completion: @escaping (Bool, String?) -> Void) {
+        guard isCloudExportEnabled,
+              let endpoint = cloudEndpointURL,
+              let apiKey = cloudAPIKey else {
+            completion(false, "Cloud export not properly configured")
+            return
+        }
+        
+        guard isNetworkAvailable else {
+            // Queue for later upload
+            cloudUploadQueue.append(sessionFilePath)
+            completion(false, "Network unavailable - queued for upload")
+            return
+        }
+        
+        // Create upload request
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        do {
+            let fileData = try Data(contentsOf: sessionFilePath)
+            request.httpBody = fileData
+            
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        completion(false, "Upload error: \(error.localizedDescription)")
+                        return
+                    }
+                    
+                    if let httpResponse = response as? HTTPURLResponse {
+                        if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
+                            print("DATA_LOG: Successfully uploaded \(sessionFilePath.lastPathComponent)")
+                            completion(true, nil)
+                        } else {
+                            completion(false, "Server error: HTTP \(httpResponse.statusCode)")
+                        }
+                    } else {
+                        completion(false, "Invalid server response")
+                    }
+                }
+            }.resume()
+            
+        } catch {
+            completion(false, "File read error: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Upload current session data to cloud
+    func uploadCurrentSessionToCloud(completion: @escaping (Bool, String?) -> Void) {
+        guard let sessionId = currentSessionId else {
+            completion(false, "No active session to upload")
+            return
+        }
+        
+        // Create temporary export file
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kb2_cloud_\(sessionId).json")
+        
+        do {
+            if let jsonString = exportAsJSON() {
+                try jsonString.write(to: tempURL, atomically: true, encoding: .utf8)
+                
+                uploadToCloud(sessionFilePath: tempURL) { success, error in
+                    // Clean up temporary file
+                    try? FileManager.default.removeItem(at: tempURL)
+                    completion(success, error)
+                }
+            } else {
+                completion(false, "Failed to export session data")
+            }
+        } catch {
+            completion(false, "Failed to create temporary file: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Process queued cloud uploads when network becomes available
+    private func processCloudUploadQueue() {
+        guard isNetworkAvailable && isCloudExportEnabled else { return }
+        
+        let queueCopy = cloudUploadQueue
+        cloudUploadQueue.removeAll()
+        
+        for fileURL in queueCopy {
+            uploadToCloud(sessionFilePath: fileURL) { success, error in
+                if !success {
+                    print("DATA_LOG: Failed to upload queued file: \(error ?? "Unknown error")")
+                    // Re-queue failed uploads
+                    self.cloudUploadQueue.append(fileURL)
+                }
+            }
+        }
+        
+        if !queueCopy.isEmpty {
+            print("DATA_LOG: Processing \(queueCopy.count) queued cloud uploads")
+        }
+    }
+    
+    /// Get cloud sync statistics
+    func getCloudSyncStats() -> [String: Any] {
+        return [
+            "cloud_enabled": isCloudExportEnabled,
+            "endpoint_configured": cloudEndpointURL != nil,
+            "api_key_configured": cloudAPIKey != nil,
+            "upload_queue_size": cloudUploadQueue.count,
+            "network_available": isNetworkAvailable
+        ]
+    }
+    
+    /// Force sync all local session files to cloud
+    func syncAllSessionsToCloud(completion: @escaping (Int, Int, [String]) -> Void) {
+        guard isCloudExportEnabled else {
+            completion(0, 0, ["Cloud export not enabled"])
+            return
+        }
+        
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        var uploadedCount = 0
+        var failedCount = 0
+        var errors: [String] = []
+        
+        do {
+            let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsPath, 
+                                                                     includingPropertiesForKeys: nil)
+            let sessionFiles = fileURLs.filter { $0.pathExtension == "json" && $0.lastPathComponent.hasPrefix("kb2_session_") }
+            
+            let group = DispatchGroup()
+            
+            for fileURL in sessionFiles {
+                group.enter()
+                uploadToCloud(sessionFilePath: fileURL) { success, error in
+                    if success {
+                        uploadedCount += 1
+                    } else {
+                        failedCount += 1
+                        if let error = error {
+                            errors.append("\(fileURL.lastPathComponent): \(error)")
+                        }
+                    }
+                    group.leave()
+                }
+            }
+            
+            group.notify(queue: .main) {
+                completion(uploadedCount, failedCount, errors)
+            }
+            
+        } catch {
+            completion(0, 0, ["Failed to enumerate session files: \(error.localizedDescription)"])
         }
     }
     
