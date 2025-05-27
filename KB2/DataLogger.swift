@@ -324,6 +324,293 @@ class DataLogger {
         }
     }
     
+    // MARK: - Data Export and Analysis
+    
+    /// Export current session data as CSV string
+    func exportAsCSV() -> String {
+        var csvLines: [String] = []
+        
+        // CSV Header
+        csvLines.append("timestamp,session_id,event_type,data")
+        
+        // Data rows
+        for event in events {
+            let timestamp = event["timestamp"] as? TimeInterval ?? 0
+            let sessionId = currentSessionId ?? "unknown"
+            let eventType = event["type"] as? String ?? "unknown"
+            
+            // Convert event data to JSON string for CSV
+            if let jsonData = try? JSONSerialization.data(withJSONObject: event, options: .fragmentsAllowed),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                let escapedJson = jsonString.replacingOccurrences(of: "\"", with: "\"\"")
+                csvLines.append("\(timestamp),\(sessionId),\(eventType),\"\(escapedJson)\"")
+            }
+        }
+        
+        return csvLines.joined(separator: "\n")
+    }
+    
+    /// Export current session data as JSON string
+    func exportAsJSON() -> String? {
+        let exportData: [String: Any] = [
+            "session_id": currentSessionId ?? "unknown",
+            "export_timestamp": Date().timeIntervalSince1970,
+            "event_count": events.count,
+            "events": events
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: exportData, options: .prettyPrinted),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            print("DATA_LOG: Error exporting data as JSON")
+            return nil
+        }
+        
+        return jsonString
+    }
+    
+    /// Get data summary statistics
+    func getDataSummary() -> [String: Any] {
+        guard !events.isEmpty else {
+            return ["event_count": 0, "session_duration": 0]
+        }
+        
+        // Calculate session duration
+        let timestamps = events.compactMap { $0["timestamp"] as? TimeInterval }
+        let sessionDuration = timestamps.isEmpty ? 0 : (timestamps.max()! - timestamps.min()!)
+        
+        // Count events by type
+        var eventCounts: [String: Int] = [:]
+        for event in events {
+            if let type = event["type"] as? String {
+                eventCounts[type] = (eventCounts[type] ?? 0) + 1
+            }
+        }
+        
+        // Calculate data rate (events per second)
+        let dataRate = sessionDuration > 0 ? Double(events.count) / sessionDuration : 0
+        
+        return [
+            "session_id": currentSessionId ?? "unknown",
+            "event_count": events.count,
+            "session_duration": sessionDuration,
+            "data_rate_eps": dataRate,
+            "event_types": eventCounts,
+            "first_timestamp": timestamps.min() ?? 0,
+            "last_timestamp": timestamps.max() ?? 0
+        ]
+    }
+    
+    // MARK: - Batch Operations
+    
+    /// Log multiple events at once for high-frequency data
+    func logBatchEvents(_ batchEvents: [[String: Any]]) {
+        events.append(contentsOf: batchEvents)
+        print("DATA_LOG: Batch logged \(batchEvents.count) events")
+    }
+    
+    /// Create a batch event for efficient logging
+    func createBatchEvent(type: String, timestamp: TimeInterval? = nil, data: [String: Any]) -> [String: Any] {
+        var event = data
+        event["type"] = type
+        event["timestamp"] = timestamp ?? Date().timeIntervalSince1970
+        return event
+    }
+    
+    /// Log high-frequency IMU data in batches
+    func logIMUBatch(_ readings: [(timestamp: TimeInterval, accel: (x: Double, y: Double, z: Double), gyro: (x: Double, y: Double, z: Double))]) {
+        let batchEvents = readings.map { reading in
+            createBatchEvent(
+                type: "imu_data",
+                timestamp: reading.timestamp,
+                data: [
+                    "accelerometer": [
+                        "x": reading.accel.x,
+                        "y": reading.accel.y,
+                        "z": reading.accel.z
+                    ],
+                    "gyroscope": [
+                        "x": reading.gyro.x,
+                        "y": reading.gyro.y,
+                        "z": reading.gyro.z
+                    ]
+                ]
+            )
+        }
+        
+        logBatchEvents(batchEvents)
+    }
+    
+    // MARK: - Data Validation and Integrity
+    
+    /// Validate data integrity and report issues
+    func validateDataIntegrity() -> [String] {
+        var issues: [String] = []
+        
+        // Check for missing timestamps
+        let eventsWithoutTimestamp = events.filter { $0["timestamp"] == nil }
+        if !eventsWithoutTimestamp.isEmpty {
+            issues.append("Found \(eventsWithoutTimestamp.count) events without timestamps")
+        }
+        
+        // Check for missing event types
+        let eventsWithoutType = events.filter { $0["type"] == nil }
+        if !eventsWithoutType.isEmpty {
+            issues.append("Found \(eventsWithoutType.count) events without type")
+        }
+        
+        // Check timestamp ordering
+        let timestamps = events.compactMap { $0["timestamp"] as? TimeInterval }
+        let sortedTimestamps = timestamps.sorted()
+        if timestamps != sortedTimestamps {
+            issues.append("Events are not in chronological order")
+        }
+        
+        // Check for duplicate events (same timestamp and type)
+        var seenEvents: Set<String> = []
+        for event in events {
+            if let timestamp = event["timestamp"] as? TimeInterval,
+               let type = event["type"] as? String {
+                let key = "\(timestamp)_\(type)"
+                if seenEvents.contains(key) {
+                    issues.append("Found duplicate event: \(type) at \(timestamp)")
+                }
+                seenEvents.insert(key)
+            }
+        }
+        
+        if issues.isEmpty {
+            print("DATA_LOG: Data integrity validation passed")
+        } else {
+            print("DATA_LOG: Data integrity issues found: \(issues.count)")
+            for issue in issues {
+                print("DATA_LOG: - \(issue)")
+            }
+        }
+        
+        return issues
+    }
+    
+    /// Get memory usage statistics
+    func getMemoryUsage() -> [String: Any] {
+        let eventCount = events.count
+        let estimatedSize = events.reduce(0) { total, event in
+            // Rough estimation of memory usage per event
+            return total + MemoryLayout.size(ofValue: event) + 200 // Base overhead
+        }
+        
+        return [
+            "event_count": eventCount,
+            "estimated_memory_bytes": estimatedSize,
+            "estimated_memory_mb": Double(estimatedSize) / (1024 * 1024)
+        ]
+    }
+    
+    // MARK: - Integration Utilities
+    
+    /// Connect with GameScene for automatic event logging
+    func setupGameSceneIntegration() {
+        // This would be called to set up automatic logging hooks
+        print("DATA_LOG: Game scene integration ready")
+    }
+    
+    /// Log game state transition with automatic context capture
+    func logGameStateWithContext(from oldState: String, to newState: String, gameContext: [String: Any] = [:]) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        let event: [String: Any] = [
+            "type": "game_state_transition",
+            "timestamp": timestamp,
+            "old_state": oldState,
+            "new_state": newState,
+            "game_context": gameContext
+        ]
+        
+        events.append(event)
+        print("DATA_LOG: Game state: \(oldState) → \(newState)")
+    }
+    
+    /// Create a timestamped annotation for marking important events
+    func logAnnotation(_ text: String, category: String = "general") {
+        let timestamp = Date().timeIntervalSince1970
+        
+        let event: [String: Any] = [
+            "type": "annotation",
+            "timestamp": timestamp,
+            "text": text,
+            "category": category
+        ]
+        
+        events.append(event)
+        print("DATA_LOG: Annotation [\(category)]: \(text)")
+    }
+    
+    /// Log performance metrics with system context
+    func logPerformanceMetrics(framerate: Double? = nil, memoryUsage: Double? = nil, cpuUsage: Double? = nil) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        var event: [String: Any] = [
+            "type": "performance_metrics",
+            "timestamp": timestamp
+        ]
+        
+        if let fps = framerate {
+            event["framerate"] = fps
+        }
+        
+        if let memory = memoryUsage {
+            event["memory_usage_mb"] = memory
+        }
+        
+        if let cpu = cpuUsage {
+            event["cpu_usage_percent"] = cpu
+        }
+        
+        events.append(event)
+        print("DATA_LOG: Performance - FPS: \(framerate ?? 0), Memory: \(memoryUsage ?? 0)MB")
+    }
+    
+    /// Get events filtered by type and time range
+    func getFilteredEvents(types: [String]? = nil, fromTime: TimeInterval? = nil, toTime: TimeInterval? = nil) -> [[String: Any]] {
+        return events.filter { event in
+            // Filter by type if specified
+            if let types = types,
+               let eventType = event["type"] as? String,
+               !types.contains(eventType) {
+                return false
+            }
+            
+            // Filter by time range if specified
+            if let timestamp = event["timestamp"] as? TimeInterval {
+                if let fromTime = fromTime, timestamp < fromTime {
+                    return false
+                }
+                if let toTime = toTime, timestamp > toTime {
+                    return false
+                }
+            }
+            
+            return true
+        }
+    }
+    
+    /// Clear old events to manage memory usage
+    func clearEventsOlderThan(_ timeInterval: TimeInterval) {
+        let cutoffTime = Date().timeIntervalSince1970 - timeInterval
+        let initialCount = events.count
+        
+        events = events.filter { event in
+            if let timestamp = event["timestamp"] as? TimeInterval {
+                return timestamp >= cutoffTime
+            }
+            return true // Keep events without timestamps
+        }
+        
+        let removedCount = initialCount - events.count
+        if removedCount > 0 {
+            print("DATA_LOG: Cleared \(removedCount) old events")
+        }
+    }
+    
     // MARK: - Private Methods
     
     /// Calculate the distance between target and tap positions
