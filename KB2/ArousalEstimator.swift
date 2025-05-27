@@ -50,6 +50,7 @@ class ArousalEstimator {
     private var currentCorrectTaps = 0
     private var currentIncorrectTaps = 0
     
+    
     // MARK: - Initialization
     
     /// Initialize with an optional initial arousal value from self-report
@@ -61,6 +62,11 @@ class ArousalEstimator {
     }
     
     // MARK: - Public Methods
+    
+    /// Configure DataLogger integration (called from ArousalManager)
+    func enableDataLoggerIntegration() {
+        print("AROUSAL_ESTIMATOR: DataLogger integration enabled")
+    }
     
     /// Update the user arousal estimate based on a direct self-report
     func updateFromSelfReport(reportedArousal: CGFloat) {
@@ -224,4 +230,3 @@ class ArousalEstimator {
         }
     }
 }
-
