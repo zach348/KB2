@@ -168,6 +168,145 @@ class DataLogger {
         print("DATA_LOG: Difficulty adjusted - \(String(format: "%.2f", oldDifficulty)) → \(String(format: "%.2f", newDifficulty)) (\(reason))")
     }
     
+    /// Log EMA (Ecological Momentary Assessment) responses
+    func logEMAResponse(questionId: String, questionText: String, response: Any, responseType: String, completionTime: TimeInterval, context: String = "") {
+        let timestamp = Date().timeIntervalSince1970
+        
+        let event: [String: Any] = [
+            "type": "ema_response",
+            "timestamp": timestamp,
+            "question_id": questionId,
+            "question_text": questionText,
+            "response": response,
+            "response_type": responseType,
+            "completion_time": completionTime,
+            "context": context
+        ]
+        
+        events.append(event)
+        print("DATA_LOG: EMA response - \(questionId): \(response) (\(String(format: "%.2f", completionTime))s)")
+    }
+    
+    /// Log IMU (Inertial Measurement Unit) sensor data
+    func logIMUData(accelerometerX: Double, accelerometerY: Double, accelerometerZ: Double, 
+                   gyroscopeX: Double, gyroscopeY: Double, gyroscopeZ: Double,
+                   magnetometerX: Double? = nil, magnetometerY: Double? = nil, magnetometerZ: Double? = nil,
+                   attitude: [String: Double]? = nil) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        var event: [String: Any] = [
+            "type": "imu_data",
+            "timestamp": timestamp,
+            "accelerometer": [
+                "x": accelerometerX,
+                "y": accelerometerY,
+                "z": accelerometerZ
+            ],
+            "gyroscope": [
+                "x": gyroscopeX,
+                "y": gyroscopeY,
+                "z": gyroscopeZ
+            ]
+        ]
+        
+        if let magX = magnetometerX, let magY = magnetometerY, let magZ = magnetometerZ {
+            event["magnetometer"] = [
+                "x": magX,
+                "y": magY,
+                "z": magZ
+            ]
+        }
+        
+        if let attitudeData = attitude {
+            event["attitude"] = attitudeData
+        }
+        
+        events.append(event)
+        // Note: IMU logging typically doesn't print to console due to high frequency
+    }
+    
+    /// Log session configuration and metadata
+    func logSessionConfiguration(participantId: String, studyCondition: String, configuration: [String: Any]) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        let event: [String: Any] = [
+            "type": "session_configuration",
+            "timestamp": timestamp,
+            "participant_id": participantId,
+            "study_condition": studyCondition,
+            "configuration": configuration
+        ]
+        
+        events.append(event)
+        print("DATA_LOG: Session configured - Participant: \(participantId), Condition: \(studyCondition)")
+    }
+    
+    /// Log physiological data (heart rate, skin conductance, etc.)
+    func logPhysiologicalData(dataType: String, value: Double, unit: String, sensorId: String? = nil, quality: String? = nil) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        var event: [String: Any] = [
+            "type": "physiological_data",
+            "timestamp": timestamp,
+            "data_type": dataType,
+            "value": value,
+            "unit": unit
+        ]
+        
+        if let sensor = sensorId {
+            event["sensor_id"] = sensor
+        }
+        
+        if let qualityMeasure = quality {
+            event["quality"] = qualityMeasure
+        }
+        
+        events.append(event)
+        print("DATA_LOG: Physiological data - \(dataType): \(String(format: "%.2f", value)) \(unit)")
+    }
+    
+    /// Log arousal estimation from various sources
+    func logArousalEstimation(estimatedArousal: Double, source: String, confidence: Double? = nil, features: [String: Double]? = nil) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        var event: [String: Any] = [
+            "type": "arousal_estimation",
+            "timestamp": timestamp,
+            "estimated_arousal": estimatedArousal,
+            "estimation_source": source
+        ]
+        
+        if let confidenceLevel = confidence {
+            event["confidence"] = confidenceLevel
+        }
+        
+        if let featureVector = features {
+            event["features"] = featureVector
+        }
+        
+        events.append(event)
+        print("DATA_LOG: Arousal estimated - \(String(format: "%.3f", estimatedArousal)) from \(source)")
+    }
+    
+    /// Log custom events with flexible structure
+    func logCustomEvent(eventType: String, data: [String: Any], description: String = "") {
+        let timestamp = Date().timeIntervalSince1970
+        
+        var event: [String: Any] = [
+            "type": "custom_event",
+            "timestamp": timestamp,
+            "event_type": eventType,
+            "data": data
+        ]
+        
+        if !description.isEmpty {
+            event["description"] = description
+        }
+        
+        events.append(event)
+        print("DATA_LOG: Custom event - \(eventType): \(description)")
+    }
+    
     /// Print a summary of collected data
     func printSummary() {
         print("DATA_LOG: Summary of \(events.count) events collected")
