@@ -77,6 +77,26 @@ class ArousalEstimator {
         ]
     }
     
+    /// Get performance history data in structured format for analysis
+    func getPerformanceHistory() -> [[String: Any]] {
+        return recentPerformanceHistory.map { performance in
+            var data: [String: Any] = [
+                "startTime": performance.startTime,
+                "endTime": performance.endTime,
+                "duration": performance.duration,
+                "success": performance.success,
+                "totalTaps": performance.totalTaps,
+                "correctTaps": performance.correctTaps,
+                "incorrectTaps": performance.incorrectTaps,
+                "accuracy": performance.accuracy
+            ]
+            if let reactionTime = performance.reactionTime {
+                data["reactionTime"] = reactionTime
+            }
+            return data
+        }
+    }
+    
     /// Update the user arousal estimate based on a direct self-report
     func updateFromSelfReport(reportedArousal: CGFloat) {
         let oldValue = _currentUserArousalLevel
