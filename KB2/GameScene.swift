@@ -595,6 +595,11 @@ private var hasLoggedSessionStart = false
         currentState = .identifying; updateUI()
         physicsWorld.speed = 0; balls.forEach { ball in ball.storedVelocity = ball.physicsBody?.velocity; ball.physicsBody?.velocity = .zero; ball.physicsBody?.isDynamic = false }
         
+        // Record identification task start time for performance tracking
+        let identificationStartTime = CACurrentMediaTime()
+        print("PROXY_TASK: Starting identification task at \(String(format: "%.2f", identificationStartTime))s with \(targetsToFind) targets to find")
+        arousalEstimator?.startIdentificationTask(at: identificationStartTime)
+        
         let previousTargetsToFindValue = targetsToFind
         targetsToFind = 0; targetsFoundThisRound = 0
 
@@ -648,6 +653,11 @@ private var hasLoggedSessionStart = false
         }
         isEndingIdentification = true // Set flag immediately
         // -----------------------------------
+        
+        // Record identification task completion for performance tracking
+        let completionTime = CACurrentMediaTime()
+        print("PROXY_TASK: Completing identification task at \(String(format: "%.2f", completionTime))s, success: \(success), found \(targetsFoundThisRound) of \(targetsToFind) targets")
+        arousalEstimator?.completeIdentificationTask(at: completionTime, wasSuccessful: success)
 
         if success { score += 1 } 
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
@@ -749,12 +759,20 @@ private var hasLoggedSessionStart = false
         // --- Calculate Feedback Salience based on Arousal (Used by all feedback in this function) ---
         let normalizedFeedbackArousal = calculateNormalizedFeedbackArousal()
         // ---------------------------------------------------------------------------------------
+        
+        // Get the current time for performance tracking
+        let tapTime = CACurrentMediaTime()
+        print("PROXY_TAP: Ball tapped at \(String(format: "%.2f", tapTime))s, ball is target: \(ball.isTarget), hidden: \(ball.isVisuallyHidden)")
+        let isCorrectTap = ball.isTarget && ball.isVisuallyHidden && activeParticleEmitters[ball] == nil
 
         // Check if the ball is currently hidden visually and hasn't already been correctly identified (no emitter attached)
         if ball.isVisuallyHidden && activeParticleEmitters[ball] == nil {
             if ball.isTarget {
                 targetsFoundThisRound += 1
                 ball.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) // Reveal it
+                
+                // Record correct tap for performance tracking
+                arousalEstimator?.recordTap(at: tapTime, wasCorrect: true)
 
                 // --- Add Visual Feedback (Particle Emitter) ---
                 if normalizedFeedbackArousal > 0, let template = correctTapEmitterTemplate {
@@ -794,6 +812,9 @@ private var hasLoggedSessionStart = false
 
             } else {
                 // Tapped a hidden distractor
+                
+                // Record incorrect tap for performance tracking
+                arousalEstimator?.recordTap(at: tapTime, wasCorrect: false)
 
                 // --- Play Audio Feedback (Incorrect Tap) ---
                 if normalizedFeedbackArousal > 0, let player = incorrectTapPlayer {
@@ -1388,6 +1409,13 @@ private var hasLoggedSessionStart = false
         if lastUpdateTime == 0 { lastUpdateTime = currentTime }
         let dt = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
+        
+        // Log arousal levels much less frequently to avoid flooding
+        if Int(currentTime) % 30 == 0 && Int(lastUpdateTime) % 30 != 0 {
+            if let estimator = arousalEstimator {
+                print("PROXY_UPDATE: Current arousal levels - System: \(String(format: "%.2f", currentArousalLevel)), User: \(String(format: "%.2f", estimator.currentUserArousalLevel))")
+            }
+        }
         
         // Log session start data if needed
         if sessionMode && !hasLoggedSessionStart {
