@@ -42,7 +42,8 @@ class ArousalEstimator {
     /// Structure to store a comprehensive snapshot of all arousal-modulated game parameters
     struct DynamicTaskStateSnapshot {
         // Core arousal values
-        let currentArousalLevel: CGFloat
+        let systemCurrentArousalLevel: CGFloat // Explicitly system's current
+        let userCurrentArousalLevel: CGFloat?  // User's estimated current (optional)
         let normalizedTrackingArousal: CGFloat
         
         // Target and motion parameters
@@ -89,7 +90,8 @@ class ArousalEstimator {
         let sessionStartTime: TimeInterval
         let timeOfDay: String        // e.g., "14:30:25"
         let dayOfWeek: String        // e.g., "Tuesday"
-        let initialArousalLevel: CGFloat
+        let systemInitialArousalLevel: CGFloat  // System's starting arousal level
+        let userInitialArousalLevel: CGFloat?   // User's estimated arousal at session start (optional)
         let sessionDuration: TimeInterval
         let sessionProfile: String   // e.g., "standard", "fluctuating", etc.
     }
@@ -187,8 +189,16 @@ class ArousalEstimator {
         currentFirstTapTime = nil
         currentCorrectTaps = 0
         currentIncorrectTaps = 0
+        currentTapEvents.removeAll()
+        currentTaskStateSnapshot = nil
         
         print("PROXY: Started tracking identification task at \(String(format: "%.2f", time))")
+    }
+    
+    /// Set the initial task snapshot for the current identification task
+    func setInitialTaskSnapshot(_ snapshot: DynamicTaskStateSnapshot) {
+        currentTaskStateSnapshot = snapshot
+        print("AROUSAL_ESTIMATOR: Task snapshot set - System arousal: \(String(format: "%.2f", snapshot.systemCurrentArousalLevel)), User arousal: \(snapshot.userCurrentArousalLevel.map { String(format: "%.2f", $0) } ?? "nil")")
     }
     
     /// Record a tap during the identification task
@@ -215,6 +225,34 @@ class ArousalEstimator {
         }
         
         print("PROXY: Recorded \(wasCorrect ? "correct" : "incorrect") tap, totals - correct: \(currentCorrectTaps), incorrect: \(currentIncorrectTaps)")
+    }
+    
+    /// Record a detailed tap event with comprehensive context
+    func recordDetailedTapEvent(
+        timestamp: TimeInterval,
+        tapLocation: CGPoint,
+        tappedElementID: String?,
+        wasCorrect: Bool,
+        ballPositions: [String: CGPoint],
+        targetBallIDs: Set<String>,
+        distractorBallIDs: Set<String>
+    ) {
+        let tapEvent = TapEventDetail(
+            timestamp: timestamp,
+            tapLocation: tapLocation,
+            tappedElementID: tappedElementID,
+            wasCorrect: wasCorrect,
+            ballPositions: ballPositions,
+            targetBallIDs: targetBallIDs,
+            distractorBallIDs: distractorBallIDs
+        )
+        
+        currentTapEvents.append(tapEvent)
+        
+        // Also call the simple recordTap for reaction time tracking
+        recordTap(at: timestamp, wasCorrect: wasCorrect)
+        
+        print("AROUSAL_ESTIMATOR: Detailed tap recorded - Element: \(tappedElementID ?? "none"), Targets: \(targetBallIDs.count), Distractors: \(distractorBallIDs.count)")
     }
     
     /// Complete the current identification task
@@ -250,6 +288,24 @@ class ArousalEstimator {
         // Log the performance
         logPerformance(performance)
         
+        // Log comprehensive performance data to DataLogger
+        let tapEventsForLog = performance.tapEvents.map { convertTapEventToDict($0) }
+        let snapshotForLog = convertSnapshotToDict(performance.taskStateSnapshot)
+        
+        DataLogger.shared.logEnhancedIdentificationPerformance(
+            startTime: performance.startTime,
+            endTime: performance.endTime,
+            success: performance.success,
+            totalTaps: performance.totalTaps,
+            correctTaps: performance.correctTaps,
+            incorrectTaps: performance.incorrectTaps,
+            reactionTime: performance.reactionTime,
+            tapEvents: tapEventsForLog,
+            taskStateSnapshot: snapshotForLog
+        )
+        
+        print("AROUSAL_ESTIMATOR: Enhanced performance data logged with \(tapEventsForLog.count) tap events")
+        
         // Update arousal estimate based on performance (very simple heuristic for now)
         updateArousalFromPerformance(performance)
         
@@ -264,11 +320,86 @@ class ArousalEstimator {
     
     // MARK: - Private Methods
     
+    /// Convert TapEventDetail struct to dictionary for logging
+    private func convertTapEventToDict(_ tapEvent: TapEventDetail) -> [String: Any] {
+        return [
+            "timestamp": tapEvent.timestamp,
+            "tap_location": ["x": tapEvent.tapLocation.x, "y": tapEvent.tapLocation.y],
+            "tapped_element_id": tapEvent.tappedElementID as Any,
+            "was_correct": tapEvent.wasCorrect,
+            "ball_positions": tapEvent.ballPositions.mapValues { ["x": $0.x, "y": $0.y] },
+            "target_ball_ids": Array(tapEvent.targetBallIDs),
+            "distractor_ball_ids": Array(tapEvent.distractorBallIDs)
+        ]
+    }
+    
+    /// Convert DynamicTaskStateSnapshot struct to dictionary for logging
+    private func convertSnapshotToDict(_ snapshot: DynamicTaskStateSnapshot) -> [String: Any] {
+        var dict: [String: Any] = [
+            "system_current_arousal_level": snapshot.systemCurrentArousalLevel,
+            "user_current_arousal_level": snapshot.userCurrentArousalLevel as Any,
+            "normalized_tracking_arousal": snapshot.normalizedTrackingArousal,
+            "current_target_count": snapshot.currentTargetCount,
+            "target_mean_speed": snapshot.targetMeanSpeed,
+            "target_speed_sd": snapshot.targetSpeedSD,
+            "current_identification_duration": snapshot.currentIdentificationDuration,
+            "current_min_shift_interval": snapshot.currentMinShiftInterval,
+            "current_max_shift_interval": snapshot.currentMaxShiftInterval,
+            "current_min_id_interval": snapshot.currentMinIDInterval,
+            "current_max_id_interval": snapshot.currentMaxIDInterval,
+            "current_timer_frequency": snapshot.currentTimerFrequency,
+            "visual_pulse_duration": snapshot.visualPulseDuration,
+            "active_target_color": [
+                "r": snapshot.activeTargetColor.r,
+                "g": snapshot.activeTargetColor.g,
+                "b": snapshot.activeTargetColor.b,
+                "a": snapshot.activeTargetColor.a
+            ],
+            "active_distractor_color": [
+                "r": snapshot.activeDistractorColor.r,
+                "g": snapshot.activeDistractorColor.g,
+                "b": snapshot.activeDistractorColor.b,
+                "a": snapshot.activeDistractorColor.a
+            ],
+            "current_target_audio_frequency": snapshot.currentTargetAudioFrequency,
+            "current_amplitude": snapshot.currentAmplitude as Any,
+            "flash_speed_factor": snapshot.flashSpeedFactor,
+            "normalized_feedback_arousal": snapshot.normalizedFeedbackArousal,
+            "snapshot_timestamp": snapshot.snapshotTimestamp
+        ]
+        
+        // Add optional flash parameters
+        if let flashColor = snapshot.lastFlashColor {
+            dict["last_flash_color"] = [
+                "r": flashColor.r,
+                "g": flashColor.g,
+                "b": flashColor.b,
+                "a": flashColor.a
+            ]
+        }
+        if let flashCount = snapshot.lastNumberOfFlashes {
+            dict["last_number_of_flashes"] = flashCount
+        }
+        if let flashDuration = snapshot.lastFlashDuration {
+            dict["last_flash_duration"] = flashDuration
+        }
+        
+        // Add optional breathing parameters
+        if let inhaleDuration = snapshot.currentBreathingInhaleDuration,
+           let exhaleDuration = snapshot.currentBreathingExhaleDuration {
+            dict["current_breathing_inhale_duration"] = inhaleDuration
+            dict["current_breathing_exhale_duration"] = exhaleDuration
+        }
+        
+        return dict
+    }
+    
     /// Create an empty snapshot with default values as fallback
     private func createEmptySnapshot() -> DynamicTaskStateSnapshot {
         let currentTime = CACurrentMediaTime()
         return DynamicTaskStateSnapshot(
-            currentArousalLevel: 0.5,
+            systemCurrentArousalLevel: 0.5,
+            userCurrentArousalLevel: _currentUserArousalLevel,
             normalizedTrackingArousal: 0.5,
             currentTargetCount: 1,
             targetMeanSpeed: 100.0,
