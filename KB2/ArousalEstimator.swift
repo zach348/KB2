@@ -1,12 +1,13 @@
 import Foundation
 import CoreGraphics
+import QuartzCore
 
 /// Responsible for estimating user's arousal level based on various inputs
 class ArousalEstimator {
     
     // MARK: - Types
     
-    /// Structure to store performance metrics from an identification task
+    /// Structure to store performance metrics from an identification task (enhanced)
     struct IdentificationPerformance {
         let startTime: TimeInterval
         let endTime: TimeInterval
@@ -15,6 +16,8 @@ class ArousalEstimator {
         let correctTaps: Int
         let incorrectTaps: Int
         let reactionTime: TimeInterval?  // Time to first tap
+        let tapEvents: [TapEventDetail]  // NEW: Detailed tap-by-tap data
+        let taskStateSnapshot: DynamicTaskStateSnapshot  // NEW: Game state snapshot
         
         var duration: TimeInterval {
             return endTime - startTime
@@ -23,6 +26,72 @@ class ArousalEstimator {
         var accuracy: Double {
             return totalTaps > 0 ? Double(correctTaps) / Double(totalTaps) : 0.0
         }
+    }
+    
+    /// Structure to store detailed information about a single tap event
+    struct TapEventDetail {
+        let timestamp: TimeInterval
+        let tapLocation: CGPoint
+        let tappedElementID: String?  // nil if no element was tapped
+        let wasCorrect: Bool
+        let ballPositions: [String: CGPoint]  // ballID -> position at time of tap
+        let targetBallIDs: Set<String>        // which balls were targets at time of tap
+        let distractorBallIDs: Set<String>    // which balls were distractors at time of tap
+    }
+    
+    /// Structure to store a comprehensive snapshot of all arousal-modulated game parameters
+    struct DynamicTaskStateSnapshot {
+        // Core arousal values
+        let currentArousalLevel: CGFloat
+        let normalizedTrackingArousal: CGFloat
+        
+        // Target and motion parameters
+        let currentTargetCount: Int
+        let targetMeanSpeed: CGFloat
+        let targetSpeedSD: CGFloat
+        
+        // Timing parameters
+        let currentIdentificationDuration: TimeInterval
+        let currentMinShiftInterval: TimeInterval
+        let currentMaxShiftInterval: TimeInterval
+        let currentMinIDInterval: TimeInterval
+        let currentMaxIDInterval: TimeInterval
+        let currentTimerFrequency: Double
+        let visualPulseDuration: TimeInterval
+        
+        // Color parameters (stored as RGB components for easier logging)
+        let activeTargetColor: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat)
+        let activeDistractorColor: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat)
+        
+        // Audio parameters
+        let currentTargetAudioFrequency: Float
+        let currentAmplitude: Float?  // Optional in case not accessible
+        
+        // Flash parameters (from last target assignment)
+        let lastFlashColor: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat)?
+        let lastNumberOfFlashes: Int?
+        let lastFlashDuration: TimeInterval?
+        let flashSpeedFactor: CGFloat
+        
+        // Feedback parameters
+        let normalizedFeedbackArousal: CGFloat
+        
+        // Breathing parameters (if relevant)
+        let currentBreathingInhaleDuration: TimeInterval?
+        let currentBreathingExhaleDuration: TimeInterval?
+        
+        // Timestamp when this snapshot was taken
+        let snapshotTimestamp: TimeInterval
+    }
+    
+    /// Structure to store session context information
+    struct SessionContext {
+        let sessionStartTime: TimeInterval
+        let timeOfDay: String        // e.g., "14:30:25"
+        let dayOfWeek: String        // e.g., "Tuesday"
+        let initialArousalLevel: CGFloat
+        let sessionDuration: TimeInterval
+        let sessionProfile: String   // e.g., "standard", "fluctuating", etc.
     }
     
     // MARK: - Properties
@@ -49,6 +118,13 @@ class ArousalEstimator {
     private var currentFirstTapTime: TimeInterval?
     private var currentCorrectTaps = 0
     private var currentIncorrectTaps = 0
+    
+    /// Enhanced tracking for current identification task
+    private var currentTapEvents: [TapEventDetail] = []
+    private var currentTaskStateSnapshot: DynamicTaskStateSnapshot?
+    
+    /// Session context information (stored once per session)
+    private var sessionContext: SessionContext?
     
     
     // MARK: - Initialization
@@ -152,7 +228,7 @@ class ArousalEstimator {
         // Calculate reaction time if available
         let reactionTime = currentFirstTapTime.map { $0 - startTime }
         
-        // Create performance record
+        // Create performance record with enhanced data
         let performance = IdentificationPerformance(
             startTime: startTime,
             endTime: time,
@@ -160,7 +236,9 @@ class ArousalEstimator {
             totalTaps: currentCorrectTaps + currentIncorrectTaps,
             correctTaps: currentCorrectTaps,
             incorrectTaps: currentIncorrectTaps,
-            reactionTime: reactionTime
+            reactionTime: reactionTime,
+            tapEvents: currentTapEvents,
+            taskStateSnapshot: currentTaskStateSnapshot ?? createEmptySnapshot()
         )
         
         // Add to history, keeping most recent entries
@@ -180,9 +258,42 @@ class ArousalEstimator {
         currentFirstTapTime = nil
         currentCorrectTaps = 0
         currentIncorrectTaps = 0
+        currentTapEvents.removeAll()
+        currentTaskStateSnapshot = nil
     }
     
     // MARK: - Private Methods
+    
+    /// Create an empty snapshot with default values as fallback
+    private func createEmptySnapshot() -> DynamicTaskStateSnapshot {
+        let currentTime = CACurrentMediaTime()
+        return DynamicTaskStateSnapshot(
+            currentArousalLevel: 0.5,
+            normalizedTrackingArousal: 0.5,
+            currentTargetCount: 1,
+            targetMeanSpeed: 100.0,
+            targetSpeedSD: 20.0,
+            currentIdentificationDuration: 3.0,
+            currentMinShiftInterval: 5.0,
+            currentMaxShiftInterval: 10.0,
+            currentMinIDInterval: 10.0,
+            currentMaxIDInterval: 15.0,
+            currentTimerFrequency: 5.0,
+            visualPulseDuration: 0.1,
+            activeTargetColor: (r: 1.0, g: 1.0, b: 1.0, a: 1.0),
+            activeDistractorColor: (r: 0.5, g: 0.5, b: 0.5, a: 1.0),
+            currentTargetAudioFrequency: 440.0,
+            currentAmplitude: nil,
+            lastFlashColor: nil,
+            lastNumberOfFlashes: nil,
+            lastFlashDuration: nil,
+            flashSpeedFactor: 1.0,
+            normalizedFeedbackArousal: 0.5,
+            currentBreathingInhaleDuration: nil,
+            currentBreathingExhaleDuration: nil,
+            snapshotTimestamp: currentTime
+        )
+    }
     
     private func logArousalChange(from oldValue: CGFloat, to newValue: CGFloat, source: String) {
         print("USER AROUSAL changed from \(String(format: "%.2f", oldValue)) to \(String(format: "%.2f", newValue)) via \(source)")
