@@ -314,6 +314,259 @@ class DataLogger {
         print("DATA_LOG: Arousal estimated - \(String(format: "%.3f", estimatedArousal)) from \(source)")
     }
     
+    // MARK: - Enhanced Data Structures (Kalibrate Implementation)
+    
+    /// Log enhanced identification performance data with comprehensive metrics
+    func logEnhancedIdentificationPerformance(
+        startTime: TimeInterval,
+        endTime: TimeInterval,
+        success: Bool,
+        totalTaps: Int,
+        correctTaps: Int,
+        incorrectTaps: Int,
+        reactionTime: TimeInterval?,
+        tapEvents: [[String: Any]],
+        taskStateSnapshot: [String: Any]
+    ) {
+        let timestamp = Date().timeIntervalSince1970
+        let duration = endTime - startTime
+        let accuracy = totalTaps > 0 ? Double(correctTaps) / Double(totalTaps) : 0.0
+        
+        let event: [String: Any] = [
+            "type": "enhanced_identification_performance",
+            "timestamp": timestamp,
+            "start_time": startTime,
+            "end_time": endTime,
+            "duration": duration,
+            "success": success,
+            "total_taps": totalTaps,
+            "correct_taps": correctTaps,
+            "incorrect_taps": incorrectTaps,
+            "accuracy": accuracy,
+            "reaction_time": reactionTime as Any,
+            "tap_events": tapEvents,
+            "task_state_snapshot": taskStateSnapshot
+        ]
+        
+        events.append(event)
+        addToStreamingBuffer(event)
+        
+        print("DATA_LOG: Enhanced ID performance - Duration: \(String(format: "%.2f", duration))s, Success: \(success), Accuracy: \(String(format: "%.1f", accuracy * 100))%")
+        if let rt = reactionTime {
+            print("DATA_LOG: - Reaction time: \(String(format: "%.3f", rt))s, Taps: \(totalTaps), Events: \(tapEvents.count)")
+        }
+    }
+    
+    /// Log detailed tap event with comprehensive context
+    func logDetailedTapEvent(
+        timestamp: TimeInterval,
+        tapLocation: CGPoint,
+        tappedElementID: String?,
+        wasCorrect: Bool,
+        ballPositions: [String: CGPoint],
+        targetBallIDs: Set<String>,
+        distractorBallIDs: Set<String>,
+        reactionTimeFromTaskStart: TimeInterval? = nil,
+        gameContext: [String: Any] = [:]
+    ) {
+        let event: [String: Any] = [
+            "type": "detailed_tap_event",
+            "timestamp": timestamp,
+            "tap_location": ["x": tapLocation.x, "y": tapLocation.y],
+            "tapped_element_id": tappedElementID as Any,
+            "was_correct": wasCorrect,
+            "ball_positions": ballPositions.mapValues { ["x": $0.x, "y": $0.y] },
+            "target_ball_ids": Array(targetBallIDs),
+            "distractor_ball_ids": Array(distractorBallIDs),
+            "reaction_time_from_task_start": reactionTimeFromTaskStart as Any,
+            "game_context": gameContext
+        ]
+        
+        events.append(event)
+        addToStreamingBuffer(event)
+        
+        print("DATA_LOG: Detailed tap - Correct: \(wasCorrect), Element: \(tappedElementID ?? "none"), Targets: \(targetBallIDs.count), Distractors: \(distractorBallIDs.count)")
+    }
+    
+    /// Log comprehensive dynamic task state snapshot
+    func logDynamicTaskStateSnapshot(
+        currentArousalLevel: CGFloat,
+        normalizedTrackingArousal: CGFloat,
+        targetCount: Int,
+        targetMeanSpeed: CGFloat,
+        targetSpeedSD: CGFloat,
+        identificationDuration: TimeInterval,
+        minShiftInterval: TimeInterval,
+        maxShiftInterval: TimeInterval,
+        minIDInterval: TimeInterval,
+        maxIDInterval: TimeInterval,
+        timerFrequency: Double,
+        visualPulseDuration: TimeInterval,
+        activeTargetColor: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat),
+        activeDistractorColor: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat),
+        targetAudioFrequency: Float,
+        amplitude: Float?,
+        lastFlashColor: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat)?,
+        lastNumberOfFlashes: Int?,
+        lastFlashDuration: TimeInterval?,
+        flashSpeedFactor: CGFloat,
+        normalizedFeedbackArousal: CGFloat,
+        breathingInhaleDuration: TimeInterval?,
+        breathingExhaleDuration: TimeInterval?,
+        additionalContext: [String: Any] = [:]
+    ) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        var event: [String: Any] = [
+            "type": "dynamic_task_state_snapshot",
+            "timestamp": timestamp,
+            "snapshot_timestamp": timestamp, // When this snapshot was captured
+            "arousal_levels": [
+                "current": currentArousalLevel,
+                "normalized_tracking": normalizedTrackingArousal,
+                "normalized_feedback": normalizedFeedbackArousal
+            ],
+            "target_parameters": [
+                "count": targetCount,
+                "mean_speed": targetMeanSpeed,
+                "speed_sd": targetSpeedSD
+            ],
+            "timing_parameters": [
+                "identification_duration": identificationDuration,
+                "min_shift_interval": minShiftInterval,
+                "max_shift_interval": maxShiftInterval,
+                "min_id_interval": minIDInterval,
+                "max_id_interval": maxIDInterval,
+                "timer_frequency": timerFrequency,
+                "visual_pulse_duration": visualPulseDuration
+            ],
+            "color_parameters": [
+                "active_target_color": [
+                    "r": activeTargetColor.r,
+                    "g": activeTargetColor.g,
+                    "b": activeTargetColor.b,
+                    "a": activeTargetColor.a
+                ],
+                "active_distractor_color": [
+                    "r": activeDistractorColor.r,
+                    "g": activeDistractorColor.g,
+                    "b": activeDistractorColor.b,
+                    "a": activeDistractorColor.a
+                ]
+            ],
+            "audio_parameters": [
+                "target_frequency": targetAudioFrequency,
+                "amplitude": amplitude as Any
+            ],
+            "flash_parameters": [
+                "speed_factor": flashSpeedFactor,
+                "last_number_of_flashes": lastNumberOfFlashes as Any,
+                "last_flash_duration": lastFlashDuration as Any
+            ],
+            "additional_context": additionalContext
+        ]
+        
+        // Add optional flash color if provided
+        if let flashColor = lastFlashColor {
+            event["flash_parameters"] = (event["flash_parameters"] as! [String: Any]).merging([
+                "last_flash_color": [
+                    "r": flashColor.r,
+                    "g": flashColor.g,
+                    "b": flashColor.b,
+                    "a": flashColor.a
+                ]
+            ]) { _, new in new }
+        }
+        
+        // Add breathing parameters if provided
+        if let inhale = breathingInhaleDuration, let exhale = breathingExhaleDuration {
+            event["breathing_parameters"] = [
+                "inhale_duration": inhale,
+                "exhale_duration": exhale
+            ]
+        }
+        
+        events.append(event)
+        addToStreamingBuffer(event)
+        
+        print("DATA_LOG: Task state snapshot - Arousal: \(String(format: "%.2f", currentArousalLevel)), Targets: \(targetCount), Speed: \(String(format: "%.1f", targetMeanSpeed))")
+    }
+    
+    /// Log session context information for comprehensive session analysis
+    func logSessionContext(
+        sessionStartTime: TimeInterval,
+        timeOfDay: String,
+        dayOfWeek: String,
+        initialArousalLevel: CGFloat,
+        sessionDuration: TimeInterval,
+        sessionProfile: String,
+        participantMetadata: [String: Any] = [:],
+        environmentalFactors: [String: Any] = [:]
+    ) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        let event: [String: Any] = [
+            "type": "session_context",
+            "timestamp": timestamp,
+            "session_start_time": sessionStartTime,
+            "time_of_day": timeOfDay,
+            "day_of_week": dayOfWeek,
+            "initial_arousal_level": initialArousalLevel,
+            "session_duration": sessionDuration,
+            "session_profile": sessionProfile,
+            "participant_metadata": participantMetadata,
+            "environmental_factors": environmentalFactors
+        ]
+        
+        events.append(event)
+        
+        print("DATA_LOG: Session context - Start: \(timeOfDay) (\(dayOfWeek)), Duration: \(String(format: "%.1f", sessionDuration))s, Profile: \(sessionProfile)")
+        print("DATA_LOG: - Initial arousal: \(String(format: "%.2f", initialArousalLevel))")
+    }
+    
+    /// Log performance history data for trend analysis
+    func logPerformanceHistory(performanceRecords: [[String: Any]], analysisContext: [String: Any] = [:]) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        let event: [String: Any] = [
+            "type": "performance_history",
+            "timestamp": timestamp,
+            "record_count": performanceRecords.count,
+            "performance_records": performanceRecords,
+            "analysis_context": analysisContext
+        ]
+        
+        events.append(event)
+        
+        print("DATA_LOG: Performance history - \(performanceRecords.count) records logged")
+    }
+    
+    /// Log arousal estimation data with enhanced context from ArousalEstimator
+    func logEnhancedArousalData(
+        currentLevel: CGFloat,
+        historyCount: Int,
+        source: String = "arousal_estimator",
+        performanceMetrics: [String: Any] = [:],
+        metadata: [String: Any] = [:]
+    ) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        let event: [String: Any] = [
+            "type": "enhanced_arousal_data",
+            "timestamp": timestamp,
+            "current_level": currentLevel,
+            "history_count": historyCount,
+            "source": source,
+            "performance_metrics": performanceMetrics,
+            "metadata": metadata
+        ]
+        
+        events.append(event)
+        addToStreamingBuffer(event)
+        
+        print("DATA_LOG: Enhanced arousal data - Level: \(String(format: "%.3f", currentLevel)), History: \(historyCount) records")
+    }
+    
     /// Log custom events with flexible structure
     func logCustomEvent(eventType: String, data: [String: Any], description: String = "") {
         let timestamp = Date().timeIntervalSince1970
