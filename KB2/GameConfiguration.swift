@@ -101,10 +101,10 @@ struct GameConfiguration {
     // MARK: - AUDIO SYSTEM CONFIGURATION (NEW)
     //====================================================================================================
     let usePreciseAudio: Bool = true // Feature flag for PreciseAudioPulser
-    let minAudioFrequency: Float = 100.0 // Min frequency for rhythmic audio
-    let maxAudioFrequency: Float = 600.0 // Max frequency for rhythmic audio
-    let audioMinAmplitude: Float = 0.3   // Min amplitude for audio pulse
-    let audioMaxAmplitude: Float = 0.7   // Max amplitude for audio pulse
+    let minAudioFrequency: Float = 75.0 // Min frequency for rhythmic audio
+    let maxAudioFrequency: Float = 525.0 // Max frequency for rhythmic audio
+    let audioMinAmplitude: Float = 0.15   // Min amplitude for audio pulse
+    let audioMaxAmplitude: Float = 0.325   // Max amplitude for audio pulse
     let audioPulseRateFactor: Double = 0.8 // Factor to derive pulser rate from timer frequency
 
     // --- Visuals ---
