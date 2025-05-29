@@ -242,6 +242,39 @@ class ArousalEstimator {
             print("  - Breathing Hold After Exhale: \(String(format: "%.2f", holdAfterExhaleDuration))s")
         }
         print("  - Snapshot Timestamp: \(String(format: "%.3f", snapshot.snapshotTimestamp))")
+        
+        // Log the complete snapshot to DataLogger for comprehensive data collection
+        DataLogger.shared.logDynamicTaskStateSnapshot(
+            currentArousalLevel: snapshot.systemCurrentArousalLevel,
+            normalizedTrackingArousal: snapshot.normalizedTrackingArousal,
+            targetCount: snapshot.currentTargetCount,
+            targetMeanSpeed: snapshot.targetMeanSpeed,
+            targetSpeedSD: snapshot.targetSpeedSD,
+            identificationDuration: snapshot.currentIdentificationDuration,
+            minShiftInterval: snapshot.currentMinShiftInterval,
+            maxShiftInterval: snapshot.currentMaxShiftInterval,
+            minIDInterval: snapshot.currentMinIDInterval,
+            maxIDInterval: snapshot.currentMaxIDInterval,
+            timerFrequency: snapshot.currentTimerFrequency,
+            visualPulseDuration: snapshot.visualPulseDuration,
+            activeTargetColor: snapshot.activeTargetColor,
+            activeDistractorColor: snapshot.activeDistractorColor,
+            targetAudioFrequency: snapshot.currentTargetAudioFrequency,
+            amplitude: snapshot.currentAmplitude,
+            lastFlashColor: snapshot.lastFlashColor,
+            lastNumberOfFlashes: snapshot.lastNumberOfFlashes,
+            lastFlashDuration: snapshot.lastFlashDuration,
+            flashSpeedFactor: snapshot.flashSpeedFactor,
+            normalizedFeedbackArousal: snapshot.normalizedFeedbackArousal,
+            breathingInhaleDuration: snapshot.currentBreathingInhaleDuration,
+            breathingExhaleDuration: snapshot.currentBreathingExhaleDuration,
+            additionalContext: [
+                "user_arousal_level": snapshot.userCurrentArousalLevel as Any,
+                "total_ball_count": snapshot.totalBallCount,
+                "breathing_hold_after_inhale_duration": snapshot.currentBreathingHoldAfterInhaleDuration as Any,
+                "breathing_hold_after_exhale_duration": snapshot.currentBreathingHoldAfterExhaleDuration as Any
+            ]
+        )
     }
     
     /// Record a tap during the identification task
@@ -331,10 +364,21 @@ class ArousalEstimator {
         // Log the performance
         logPerformance(performance)
         
-        // Log comprehensive performance data (DataLogger temporarily disabled due to compilation issues)
+        // Log comprehensive performance data
         print("AROUSAL_ESTIMATOR: Enhanced performance data - Duration: \(String(format: "%.2f", performance.duration))s, Success: \(performance.success), Taps: \(performance.tapEvents.count), RT: \(performance.reactionTime.map { String(format: "%.3f", $0) } ?? "nil")s")
         
-        // TODO: Re-enable DataLogger.shared.logEnhancedIdentificationPerformance call once compilation issue is resolved
+        // Log enhanced performance data to DataLogger
+        DataLogger.shared.logEnhancedIdentificationPerformance(
+            startTime: performance.startTime,
+            endTime: performance.endTime,
+            success: performance.success,
+            totalTaps: performance.totalTaps,
+            correctTaps: performance.correctTaps,
+            incorrectTaps: performance.incorrectTaps,
+            reactionTime: performance.reactionTime,
+            tapEvents: performance.tapEvents.map(convertTapEventToDict),
+            taskStateSnapshot: convertSnapshotToDict(performance.taskStateSnapshot)
+        )
         
         // Update arousal estimate based on performance (very simple heuristic for now)
         updateArousalFromPerformance(performance)
