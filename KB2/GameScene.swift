@@ -606,10 +606,15 @@ private var hasLoggedSessionStart = false
         // Get visual pulse duration
         let visualPulseDuration = precisionTimer?.visualPulseDuration ?? (1.0 / currentTimerFrequency * gameConfiguration.visualPulseOnDurationRatio)
         
-        // Convert colors to tuples
-        let targetColorComponents = activeTargetColor.cgColor.components ?? [0, 0, 0, 1]
-        let distractorColorComponents = activeDistractorColor.cgColor.components ?? [0, 0, 0, 1]
-        let flashColorComponents = gameConfiguration.flashColor.cgColor.components ?? [1, 1, 1, 1]
+        // Extract RGBA components safely using getRed method
+        var r_t: CGFloat = 0, g_t: CGFloat = 0, b_t: CGFloat = 0, a_t: CGFloat = 0
+        activeTargetColor.getRed(&r_t, green: &g_t, blue: &b_t, alpha: &a_t)
+        
+        var r_d: CGFloat = 0, g_d: CGFloat = 0, b_d: CGFloat = 0, a_d: CGFloat = 0
+        activeDistractorColor.getRed(&r_d, green: &g_d, blue: &b_d, alpha: &a_d)
+        
+        var r_f: CGFloat = 0, g_f: CGFloat = 0, b_f: CGFloat = 0, a_f: CGFloat = 0
+        gameConfiguration.flashColor.getRed(&r_f, green: &g_f, blue: &b_f, alpha: &a_f)
         
         // Calculate current audio amplitude based on arousal level
         let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
@@ -630,26 +635,11 @@ private var hasLoggedSessionStart = false
             currentMaxIDInterval: currentMaxIDInterval,
             currentTimerFrequency: currentTimerFrequency,
             visualPulseDuration: visualPulseDuration,
-            activeTargetColor: (
-                r: CGFloat(targetColorComponents[0]),
-                g: CGFloat(targetColorComponents[1]),
-                b: CGFloat(targetColorComponents[2]),
-                a: CGFloat(targetColorComponents[3])
-            ),
-            activeDistractorColor: (
-                r: CGFloat(distractorColorComponents[0]),
-                g: CGFloat(distractorColorComponents[1]),
-                b: CGFloat(distractorColorComponents[2]),
-                a: CGFloat(distractorColorComponents[3])
-            ),
+            activeTargetColor: (r: r_t, g: g_t, b: b_t, a: a_t),
+            activeDistractorColor: (r: r_d, g: g_d, b: b_d, a: a_d),
             currentTargetAudioFrequency: lastCalculatedTargetAudioFrequencyForTests ?? gameConfiguration.minAudioFrequency,
             currentAmplitude: currentAudioAmplitude,
-            lastFlashColor: (
-                r: CGFloat(flashColorComponents[0]),
-                g: CGFloat(flashColorComponents[1]),
-                b: CGFloat(flashColorComponents[2]),
-                a: CGFloat(flashColorComponents[3])
-            ),
+            lastFlashColor: (r: r_f, g: g_f, b: b_f, a: a_f),
             lastNumberOfFlashes: nil,
             lastFlashDuration: nil,
             flashSpeedFactor: gameConfiguration.flashSpeedFactor,
