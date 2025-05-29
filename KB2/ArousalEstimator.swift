@@ -47,6 +47,7 @@ class ArousalEstimator {
         let normalizedTrackingArousal: CGFloat
         
         // Target and motion parameters
+        let totalBallCount: Int               // Total number of balls in the game
         let currentTargetCount: Int
         let targetMeanSpeed: CGFloat
         let targetSpeedSD: CGFloat
@@ -407,6 +408,7 @@ class ArousalEstimator {
             systemCurrentArousalLevel: 0.5,
             userCurrentArousalLevel: _currentUserArousalLevel,
             normalizedTrackingArousal: 0.5,
+            totalBallCount: 10,
             currentTargetCount: 1,
             targetMeanSpeed: 100.0,
             targetSpeedSD: 20.0,

@@ -588,6 +588,81 @@ private var hasLoggedSessionStart = false
     }
 
     //====================================================================================================
+    // MARK: - TASK STATE SNAPSHOT
+    //====================================================================================================
+    
+    /// Create a comprehensive snapshot of the current task state for logging
+    private func createTaskStateSnapshot() -> ArousalEstimator.DynamicTaskStateSnapshot {
+        let currentTime = CACurrentMediaTime()
+        
+        // Calculate normalized tracking arousal
+        let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
+        var normalizedTrackingArousal: CGFloat = 0.0
+        if trackingRange > 0 {
+            let clampedArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
+            normalizedTrackingArousal = (clampedArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
+        }
+        
+        // Get visual pulse duration
+        let visualPulseDuration = precisionTimer?.visualPulseDuration ?? (1.0 / currentTimerFrequency * gameConfiguration.visualPulseOnDurationRatio)
+        
+        // Convert colors to tuples
+        let targetColorComponents = activeTargetColor.cgColor.components ?? [0, 0, 0, 1]
+        let distractorColorComponents = activeDistractorColor.cgColor.components ?? [0, 0, 0, 1]
+        let flashColorComponents = gameConfiguration.flashColor.cgColor.components ?? [1, 1, 1, 1]
+        
+        // Calculate current audio amplitude based on arousal level
+        let clampedArousal = max(0.0, min(currentArousalLevel, 1.0))
+        let currentAudioAmplitude = 0.3 + (0.4 * Float(clampedArousal)) // Range 0.3-0.7, matching ArousalManager calculation
+        
+        return ArousalEstimator.DynamicTaskStateSnapshot(
+            systemCurrentArousalLevel: currentArousalLevel,
+            userCurrentArousalLevel: arousalEstimator?.currentUserArousalLevel,
+            normalizedTrackingArousal: normalizedTrackingArousal,
+            totalBallCount: gameConfiguration.numberOfBalls,
+            currentTargetCount: currentTargetCount,
+            targetMeanSpeed: motionSettings.targetMeanSpeed,
+            targetSpeedSD: motionSettings.targetSpeedSD,
+            currentIdentificationDuration: currentIdentificationDuration,
+            currentMinShiftInterval: currentMinShiftInterval,
+            currentMaxShiftInterval: currentMaxShiftInterval,
+            currentMinIDInterval: currentMinIDInterval,
+            currentMaxIDInterval: currentMaxIDInterval,
+            currentTimerFrequency: currentTimerFrequency,
+            visualPulseDuration: visualPulseDuration,
+            activeTargetColor: (
+                r: CGFloat(targetColorComponents[0]),
+                g: CGFloat(targetColorComponents[1]),
+                b: CGFloat(targetColorComponents[2]),
+                a: CGFloat(targetColorComponents[3])
+            ),
+            activeDistractorColor: (
+                r: CGFloat(distractorColorComponents[0]),
+                g: CGFloat(distractorColorComponents[1]),
+                b: CGFloat(distractorColorComponents[2]),
+                a: CGFloat(distractorColorComponents[3])
+            ),
+            currentTargetAudioFrequency: lastCalculatedTargetAudioFrequencyForTests ?? gameConfiguration.minAudioFrequency,
+            currentAmplitude: currentAudioAmplitude,
+            lastFlashColor: (
+                r: CGFloat(flashColorComponents[0]),
+                g: CGFloat(flashColorComponents[1]),
+                b: CGFloat(flashColorComponents[2]),
+                a: CGFloat(flashColorComponents[3])
+            ),
+            lastNumberOfFlashes: nil,
+            lastFlashDuration: nil,
+            flashSpeedFactor: gameConfiguration.flashSpeedFactor,
+            normalizedFeedbackArousal: calculateNormalizedFeedbackArousal(),
+            currentBreathingInhaleDuration: currentState == .breathing ? currentBreathingInhaleDuration : nil,
+            currentBreathingHoldAfterInhaleDuration: currentState == .breathing ? currentBreathingHold1Duration : nil,
+            currentBreathingExhaleDuration: currentState == .breathing ? currentBreathingExhaleDuration : nil,
+            currentBreathingHoldAfterExhaleDuration: currentState == .breathing ? currentBreathingHold2Duration : nil,
+            snapshotTimestamp: currentTime
+        )
+    }
+    
+    //====================================================================================================
     // MARK: - IDENTIFICATION PHASE
     //====================================================================================================
     internal func startIdentificationPhase() {
@@ -599,6 +674,12 @@ private var hasLoggedSessionStart = false
         let identificationStartTime = CACurrentMediaTime()
         print("PROXY_TASK: Starting identification task at \(String(format: "%.2f", identificationStartTime))s with \(targetsToFind) targets to find")
         arousalEstimator?.startIdentificationTask(at: identificationStartTime)
+        
+        // Create and set task state snapshot for comprehensive logging
+        if let estimator = arousalEstimator {
+            let snapshot = createTaskStateSnapshot()
+            estimator.setInitialTaskSnapshot(snapshot)
+        }
         
         let previousTargetsToFindValue = targetsToFind
         targetsToFind = 0; targetsFoundThisRound = 0
