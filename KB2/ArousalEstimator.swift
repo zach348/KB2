@@ -79,7 +79,9 @@ class ArousalEstimator {
         
         // Breathing parameters (if relevant)
         let currentBreathingInhaleDuration: TimeInterval?
+        let currentBreathingHoldAfterInhaleDuration: TimeInterval?
         let currentBreathingExhaleDuration: TimeInterval?
+        let currentBreathingHoldAfterExhaleDuration: TimeInterval?
         
         // Timestamp when this snapshot was taken
         let snapshotTimestamp: TimeInterval
@@ -384,11 +386,15 @@ class ArousalEstimator {
             dict["last_flash_duration"] = flashDuration
         }
         
-        // Add optional breathing parameters
+        // Add optional breathing parameters (updated to include hold durations)
         if let inhaleDuration = snapshot.currentBreathingInhaleDuration,
-           let exhaleDuration = snapshot.currentBreathingExhaleDuration {
+           let holdAfterInhaleDuration = snapshot.currentBreathingHoldAfterInhaleDuration,
+           let exhaleDuration = snapshot.currentBreathingExhaleDuration,
+           let holdAfterExhaleDuration = snapshot.currentBreathingHoldAfterExhaleDuration {
             dict["current_breathing_inhale_duration"] = inhaleDuration
+            dict["current_breathing_hold_after_inhale_duration"] = holdAfterInhaleDuration
             dict["current_breathing_exhale_duration"] = exhaleDuration
+            dict["current_breathing_hold_after_exhale_duration"] = holdAfterExhaleDuration
         }
         
         return dict
@@ -421,7 +427,9 @@ class ArousalEstimator {
             flashSpeedFactor: 1.0,
             normalizedFeedbackArousal: 0.5,
             currentBreathingInhaleDuration: nil,
+            currentBreathingHoldAfterInhaleDuration: nil,
             currentBreathingExhaleDuration: nil,
+            currentBreathingHoldAfterExhaleDuration: nil,
             snapshotTimestamp: currentTime
         )
     }
