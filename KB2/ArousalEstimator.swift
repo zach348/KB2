@@ -202,6 +202,46 @@ class ArousalEstimator {
     func setInitialTaskSnapshot(_ snapshot: DynamicTaskStateSnapshot) {
         currentTaskStateSnapshot = snapshot
         print("AROUSAL_ESTIMATOR: Task snapshot set - System arousal: \(String(format: "%.2f", snapshot.systemCurrentArousalLevel)), User arousal: \(snapshot.userCurrentArousalLevel.map { String(format: "%.2f", $0) } ?? "nil")")
+        
+        // Log comprehensive snapshot details to console for debugging
+        print("DATA_LOG: Dynamic Task State Snapshot:")
+        print("  - System Arousal: \(String(format: "%.3f", snapshot.systemCurrentArousalLevel))")
+        print("  - User Arousal: \(snapshot.userCurrentArousalLevel.map { String(format: "%.3f", $0) } ?? "nil")")
+        print("  - Normalized Tracking Arousal: \(String(format: "%.3f", snapshot.normalizedTrackingArousal))")
+        print("  - Target Count: \(snapshot.currentTargetCount) / \(snapshot.totalBallCount)")
+        print("  - Target Speed: \(String(format: "%.1f", snapshot.targetMeanSpeed)) ± \(String(format: "%.1f", snapshot.targetSpeedSD))")
+        print("  - ID Duration: \(String(format: "%.2f", snapshot.currentIdentificationDuration))s")
+        print("  - Shift Interval: \(String(format: "%.1f", snapshot.currentMinShiftInterval))-\(String(format: "%.1f", snapshot.currentMaxShiftInterval))s")
+        print("  - ID Interval: \(String(format: "%.1f", snapshot.currentMinIDInterval))-\(String(format: "%.1f", snapshot.currentMaxIDInterval))s")
+        print("  - Timer Freq: \(String(format: "%.2f", snapshot.currentTimerFrequency))Hz")
+        print("  - Visual Pulse: \(String(format: "%.3f", snapshot.visualPulseDuration))s")
+        print("  - Target Color: R:\(String(format: "%.2f", snapshot.activeTargetColor.r)) G:\(String(format: "%.2f", snapshot.activeTargetColor.g)) B:\(String(format: "%.2f", snapshot.activeTargetColor.b))")
+        print("  - Distractor Color: R:\(String(format: "%.2f", snapshot.activeDistractorColor.r)) G:\(String(format: "%.2f", snapshot.activeDistractorColor.g)) B:\(String(format: "%.2f", snapshot.activeDistractorColor.b))")
+        print("  - Audio Freq: \(String(format: "%.1f", snapshot.currentTargetAudioFrequency))Hz")
+        if let amplitude = snapshot.currentAmplitude {
+            print("  - Audio Amplitude: \(String(format: "%.3f", amplitude))")
+        }
+        print("  - Flash Speed Factor: \(String(format: "%.2f", snapshot.flashSpeedFactor))")
+        if let flashCount = snapshot.lastNumberOfFlashes {
+            print("  - Last Flash Count: \(flashCount)")
+        }
+        if let flashDuration = snapshot.lastFlashDuration {
+            print("  - Last Flash Duration: \(String(format: "%.2f", flashDuration))s")
+        }
+        print("  - Normalized Feedback Arousal: \(String(format: "%.3f", snapshot.normalizedFeedbackArousal))")
+        if let inhaleDuration = snapshot.currentBreathingInhaleDuration {
+            print("  - Breathing Inhale: \(String(format: "%.2f", inhaleDuration))s")
+        }
+        if let holdAfterInhaleDuration = snapshot.currentBreathingHoldAfterInhaleDuration {
+            print("  - Breathing Hold After Inhale: \(String(format: "%.2f", holdAfterInhaleDuration))s")
+        }
+        if let exhaleDuration = snapshot.currentBreathingExhaleDuration {
+            print("  - Breathing Exhale: \(String(format: "%.2f", exhaleDuration))s")
+        }
+        if let holdAfterExhaleDuration = snapshot.currentBreathingHoldAfterExhaleDuration {
+            print("  - Breathing Hold After Exhale: \(String(format: "%.2f", holdAfterExhaleDuration))s")
+        }
+        print("  - Snapshot Timestamp: \(String(format: "%.3f", snapshot.snapshotTimestamp))")
     }
     
     /// Record a tap during the identification task
@@ -291,23 +331,10 @@ class ArousalEstimator {
         // Log the performance
         logPerformance(performance)
         
-        // Log comprehensive performance data to DataLogger
-        let tapEventsForLog = performance.tapEvents.map { convertTapEventToDict($0) }
-        let snapshotForLog = convertSnapshotToDict(performance.taskStateSnapshot)
+        // Log comprehensive performance data (DataLogger temporarily disabled due to compilation issues)
+        print("AROUSAL_ESTIMATOR: Enhanced performance data - Duration: \(String(format: "%.2f", performance.duration))s, Success: \(performance.success), Taps: \(performance.tapEvents.count), RT: \(performance.reactionTime.map { String(format: "%.3f", $0) } ?? "nil")s")
         
-        DataLogger.shared.logEnhancedIdentificationPerformance(
-            startTime: performance.startTime,
-            endTime: performance.endTime,
-            success: performance.success,
-            totalTaps: performance.totalTaps,
-            correctTaps: performance.correctTaps,
-            incorrectTaps: performance.incorrectTaps,
-            reactionTime: performance.reactionTime,
-            tapEvents: tapEventsForLog,
-            taskStateSnapshot: snapshotForLog
-        )
-        
-        print("AROUSAL_ESTIMATOR: Enhanced performance data logged with \(tapEventsForLog.count) tap events")
+        // TODO: Re-enable DataLogger.shared.logEnhancedIdentificationPerformance call once compilation issue is resolved
         
         // Update arousal estimate based on performance (very simple heuristic for now)
         updateArousalFromPerformance(performance)
