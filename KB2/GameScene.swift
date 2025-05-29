@@ -1431,6 +1431,22 @@ private var hasLoggedSessionStart = false
         let tolerance: TimeInterval = 0.1
         if abs(targetInhaleDuration - currentBreathingInhaleDuration) > tolerance || abs(targetExhaleDuration - currentBreathingExhaleDuration) > tolerance {
             print("DIAGNOSTIC: Breathing duration change detected. Flagging for update...")
+            print("DIAGNOSTIC: Target pattern - Inhale: \(String(format: "%.1f", targetInhaleDuration))s, Exhale: \(String(format: "%.1f", targetExhaleDuration))s")
+            
+            // Log breathing pattern change to DataLogger
+            DataLogger.shared.logBreathingPatternChange(
+                oldInhaleDuration: currentBreathingInhaleDuration,
+                newInhaleDuration: targetInhaleDuration,
+                oldExhaleDuration: currentBreathingExhaleDuration,
+                newExhaleDuration: targetExhaleDuration,
+                oldHoldAfterInhaleDuration: currentBreathingHold1Duration,
+                newHoldAfterInhaleDuration: currentBreathingHold1Duration, // Hold durations not changing in this implementation
+                oldHoldAfterExhaleDuration: currentBreathingHold2Duration,
+                newHoldAfterExhaleDuration: currentBreathingHold2Duration, // Hold durations not changing in this implementation
+                arousalLevel: currentArousalLevel,
+                normalizedBreathingArousal: normalizedBreathingArousal
+            )
+            
             // --- MODIFIED: Don't update durations directly, just set flags ---
             // currentBreathingInhaleDuration = targetInhaleDuration
             // currentBreathingExhaleDuration = targetExhaleDuration
