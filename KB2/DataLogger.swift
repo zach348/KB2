@@ -314,6 +314,46 @@ class DataLogger {
         print("DATA_LOG: Arousal estimated - \(String(format: "%.3f", estimatedArousal)) from \(source)")
     }
     
+    /// Log breathing pattern change events with detailed duration and arousal information
+    func logBreathingPatternChange(
+        oldInhaleDuration: Double, newInhaleDuration: Double,
+        oldExhaleDuration: Double, newExhaleDuration: Double,
+        oldHoldAfterInhaleDuration: Double, newHoldAfterInhaleDuration: Double,
+        oldHoldAfterExhaleDuration: Double, newHoldAfterExhaleDuration: Double,
+        arousalLevel: Double,
+        normalizedBreathingArousal: Double
+    ) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        let event: [String: Any] = [
+            "type": "breathing_pattern_change",
+            "timestamp": timestamp,
+            "inhale_duration": [
+                "old": oldInhaleDuration,
+                "new": newInhaleDuration
+            ],
+            "exhale_duration": [
+                "old": oldExhaleDuration,
+                "new": newExhaleDuration
+            ],
+            "hold_after_inhale_duration": [
+                "old": oldHoldAfterInhaleDuration,
+                "new": newHoldAfterInhaleDuration
+            ],
+            "hold_after_exhale_duration": [
+                "old": oldHoldAfterExhaleDuration,
+                "new": newHoldAfterExhaleDuration
+            ],
+            "arousal_level": arousalLevel,
+            "normalized_breathing_arousal": normalizedBreathingArousal
+        ]
+        
+        events.append(event)
+        addToStreamingBuffer(event)
+        
+        print("DATA_LOG: Breathing pattern change - Inhale: \(String(format: "%.2f", oldInhaleDuration))s -> \(String(format: "%.2f", newInhaleDuration))s, HoldInhale: \(String(format: "%.2f", oldHoldAfterInhaleDuration))s -> \(String(format: "%.2f", newHoldAfterInhaleDuration))s, Exhale: \(String(format: "%.2f", oldExhaleDuration))s -> \(String(format: "%.2f", newExhaleDuration))s, HoldExhale: \(String(format: "%.2f", oldHoldAfterExhaleDuration))s -> \(String(format: "%.2f", newHoldAfterExhaleDuration))s. Arousal: \(String(format: "%.2f", arousalLevel)), NormBreathingArousal: \(String(format: "%.2f", normalizedBreathingArousal))")
+    }
+    
     // MARK: - Enhanced Data Structures (Kalibrate Implementation)
     
     /// Log enhanced identification performance data with comprehensive metrics

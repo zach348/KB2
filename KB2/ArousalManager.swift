@@ -73,6 +73,8 @@ class ArousalManager {
     var breathingExhaleDuration: TimeInterval = 6.0
     var breathingHold1Duration: TimeInterval = 1.5
     var breathingHold2Duration: TimeInterval = 1.0
+    var breathingHoldAfterInhaleDuration: TimeInterval = 1.5  // Hold after inhale
+    var breathingHoldAfterExhaleDuration: TimeInterval = 1.0  // Hold after exhale
     var needsHapticPatternUpdate: Bool = false
     var needsVisualDurationUpdate: Bool = false
     
@@ -247,16 +249,39 @@ class ArousalManager {
         let maxInhale: TimeInterval = 5.0
         let minExhale: TimeInterval = 5.0
         let maxExhale: TimeInterval = 6.5
+        let minHoldAfterInhale: TimeInterval = 0.5
+        let maxHoldAfterInhale: TimeInterval = 2.0
+        let minHoldAfterExhale: TimeInterval = 0.5
+        let maxHoldAfterExhale: TimeInterval = 1.5
         
         // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
         let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
         let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
+        let targetHoldAfterInhaleDuration = minHoldAfterInhale + (maxHoldAfterInhale - minHoldAfterInhale) * normalizedBreathingArousal
+        let targetHoldAfterExhaleDuration = minHoldAfterExhale + (maxHoldAfterExhale - minHoldAfterExhale) * normalizedBreathingArousal
         
         // Check if change exceeds tolerance
         let tolerance: TimeInterval = 0.1
         if abs(targetInhaleDuration - breathingInhaleDuration) > tolerance || 
-           abs(targetExhaleDuration - breathingExhaleDuration) > tolerance {
-            print("DIAGNOSTIC: Breathing duration change detected. Flagging for update...")
+           abs(targetExhaleDuration - breathingExhaleDuration) > tolerance ||
+           abs(targetHoldAfterInhaleDuration - breathingHoldAfterInhaleDuration) > tolerance ||
+           abs(targetHoldAfterExhaleDuration - breathingHoldAfterExhaleDuration) > tolerance {
+            print("DIAGNOSTIC: Breathing pattern change detected. Flagging for update...")
+            print("DIAGNOSTIC: Target pattern - Inhale: \(String(format: "%.1f", targetInhaleDuration))s, Hold1: \(String(format: "%.1f", targetHoldAfterInhaleDuration))s, Exhale: \(String(format: "%.1f", targetExhaleDuration))s, Hold2: \(String(format: "%.1f", targetHoldAfterExhaleDuration))s")
+            
+            // Log breathing pattern change to DataLogger
+            DataLogger.shared.logBreathingPatternChange(
+                oldInhaleDuration: breathingInhaleDuration,
+                newInhaleDuration: targetInhaleDuration,
+                oldExhaleDuration: breathingExhaleDuration,
+                newExhaleDuration: targetExhaleDuration,
+                oldHoldAfterInhaleDuration: breathingHoldAfterInhaleDuration,
+                newHoldAfterInhaleDuration: targetHoldAfterInhaleDuration,
+                oldHoldAfterExhaleDuration: breathingHoldAfterExhaleDuration,
+                newHoldAfterExhaleDuration: targetHoldAfterExhaleDuration,
+                arousalLevel: currentArousalLevel,
+                normalizedBreathingArousal: normalizedBreathingArousal
+            )
             
             // Don't update durations directly, just set flags
             needsVisualDurationUpdate = true // Flag for visual update at next cycle start
@@ -282,4 +307,4 @@ class ArousalManager {
         // Ensure we stay within valid range
         return max(0.0, min(initialLevel, result))
     }
-} 
+}
