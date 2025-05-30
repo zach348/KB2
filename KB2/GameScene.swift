@@ -7,6 +7,8 @@ import SpriteKit
 import GameplayKit
 import CoreHaptics
 import AVFoundation
+import SwiftUI // Added for UIHostingController
+import UIKit // Added for UIViewController presentation
 
 //====================================================================================================
 // MARK: - GLOBAL ENUMS
@@ -100,6 +102,7 @@ var arousalEstimator: ArousalEstimator? // Tracks the user's estimated arousal l
 
 // --- Game Session Tracking ---
 private var hasLoggedSessionStart = false
+private var isSessionCompleted = false // Added to prevent multiple completions
     
     // --- ADDED: Throttling properties for arousal updates ---
     private var lastArousalUpdateTime: TimeInterval = 0
@@ -456,6 +459,8 @@ private var hasLoggedSessionStart = false
         // Update session progress if in session mode
         if sessionMode {
             updateSessionProgressBar()
+            // The check for session completion (progress >= 1.0) is now handled within 
+            // updateSessionProgressBar and updateArousalForSession to ensure 'progress' is in scope.
         }
     }
 
@@ -1804,7 +1809,7 @@ private var hasLoggedSessionStart = false
     }
 
     private func updateArousalForSession() {
-        guard sessionMode else { return }
+        guard sessionMode, !isSessionCompleted else { return } // Do not update if session is already completed
         
         // Throttle updates to improve performance
         let currentTime = CACurrentMediaTime()
@@ -1816,6 +1821,15 @@ private var hasLoggedSessionStart = false
         
         let elapsedTime = currentTime - sessionStartTime
         let progress = min(1.0, elapsedTime / sessionDuration)
+
+        // Check for session completion FIRST (moved to updateUI and also checked here for safety)
+        if progress >= 1.0 {
+            if !isSessionCompleted {
+                 print("DEBUG: updateArousalForSession detected session completion. Calling handleSessionCompletion.")
+                handleSessionCompletion()
+            }
+            return // Stop further processing if session is done
+        }
         
         // Every 5 seconds, print the progress
         if Int(elapsedTime) % 5 == 0 && Int(elapsedTime) > 0 {
@@ -1923,11 +1937,23 @@ private var hasLoggedSessionStart = false
     
     private func updateSessionProgressBar() {
         guard sessionMode, let progressFill = sessionProgressFill, let timeLabel = sessionTimeLabel else { return }
-        
+        // Allow one final update if session was just completed to show 100%
+        if isSessionCompleted && progressFill.path?.boundingBox.width == (sessionProgressBar?.frame.width ?? 0) {
+             return
+        }
+
         let currentTime = CACurrentMediaTime()
         let elapsedTime = currentTime - sessionStartTime
-        let progress = min(1.0, elapsedTime / sessionDuration)
+        let progress = min(1.0, elapsedTime / sessionDuration) // progress is calculated here
         let timeRemaining = max(0, sessionDuration - elapsedTime)
+
+        // Check for session completion
+        if progress >= 1.0 && !isSessionCompleted {
+            print("DEBUG: updateSessionProgressBar detected session completion. Calling handleSessionCompletion.")
+            // Call handleSessionCompletion, but allow this UI update to complete to show 100%
+            // The isSessionCompleted flag will prevent repeated logic in handleSessionCompletion
+            handleSessionCompletion() 
+        }
         
         // Update progress bar fill
         let barWidth = (sessionProgressBar?.frame.width ?? 100)
@@ -2234,6 +2260,151 @@ private var hasLoggedSessionStart = false
         fadeOverlayNode.color = .black
         fadeOverlayNode.alpha = 0
     }
+
+    // --- ADDED: Session Completion and EMA Handling ---
+    private func handleSessionCompletion() {
+        guard !isSessionCompleted else {
+            print("DEBUG: handleSessionCompletion called but session already marked as completed.")
+            return
+        }
+        isSessionCompleted = true // Mark as completed to prevent multiple calls
+
+        print("--- Session Completed ---")
+        DataLogger.shared.logStateTransition(from: "session_active", to: "session_end")
+
+        // Stop all game activities
+        precisionTimer?.stop()
+        stopIdentificationTimeout()
+        stopBreathingAnimation()
+        stopThrottledMotionControl()
+        audioManager.stopEngine() // Assuming AudioManager has a stopEngine or similar method
+        
+        if hapticsReady {
+            hapticEngine?.stop(completionHandler: { error in
+                if let error = error { print("Error stopping haptic engine: \(error.localizedDescription)") }
+            })
+        }
+        
+        // Pause physics and clear actions
+        self.isPaused = true // This pauses SKActions as well
+        self.physicsWorld.speed = 0
+        self.removeAllActions() // Clear any pending scene actions
+
+        // Log final arousal levels before EMA
+        if let estimator = arousalEstimator {
+            DataLogger.shared.logArousalLevels(
+                systemArousal: currentArousalLevel,
+                userArousal: estimator.currentUserArousalLevel,
+                phase: "session_end_pre_ema"
+            )
+        } else {
+            DataLogger.shared.logArousalLevels(
+                systemArousal: currentArousalLevel,
+                userArousal: nil, // No estimator
+                phase: "session_end_pre_ema"
+            )
+        }
+        
+        // Present the post-session EMA
+        // Ensure this is done on the main thread as it involves UI updates
+        DispatchQueue.main.async { [weak self] in
+            self?.presentPostSessionEMA()
+        }
+    }
+
+    private func presentPostSessionEMA() {
+        print("Presenting Post-Session EMA")
+        guard let view = self.view, let rootViewController = view.window?.rootViewController else {
+            print("ERROR: Could not get rootViewController to present EMA.")
+            // Fallback: Directly transition to StartScreen if EMA cannot be presented
+            transitionToStartScreenAfterEMA()
+            return
+        }
+
+        let emaView = EMAView(emaType: .postSession) { [weak self, weak rootViewController] response in
+            guard let self = self, let strongRootViewController = rootViewController else { return }
+
+            // Log the EMA response
+            self.logPostSessionEMAResponse(response)
+
+            // Dismiss the EMA view
+            strongRootViewController.dismiss(animated: true) {
+                // Transition to StartScreen after dismissal is complete
+                self.transitionToStartScreenAfterEMA()
+            }
+        }
+
+        let hostingController = UIHostingController(rootView: emaView)
+        hostingController.modalPresentationStyle = .fullScreen
+        hostingController.view.backgroundColor = .clear // Allow scene to be visible underneath if not fully opaque
+        
+        // Ensure presentation is on main thread
+        if Thread.isMainThread {
+            rootViewController.present(hostingController, animated: true, completion: nil)
+        } else {
+            DispatchQueue.main.async {
+                rootViewController.present(hostingController, animated: true, completion: nil)
+            }
+        }
+    }
+    
+    private func logPostSessionEMAResponse(_ response: EMAResponse) {
+        let contextString = response.emaType.rawValue // Should be "post_session_ema"
+        
+        DataLogger.shared.logEMAResponse(
+            questionId: "ema_\(contextString)_stress",
+            questionText: "How stressed do you feel right now?",
+            response: response.stressLevel,
+            responseType: "VAS",
+            completionTime: response.completionTime,
+            context: contextString
+        )
+        
+        DataLogger.shared.logEMAResponse(
+            questionId: "ema_\(contextString)_calm_agitation",
+            questionText: "How calm or agitated do you feel right now?",
+            response: response.calmAgitationLevel,
+            responseType: "VAS",
+            completionTime: response.completionTime,
+            context: contextString
+        )
+        
+        DataLogger.shared.logEMAResponse(
+            questionId: "ema_\(contextString)_energy",
+            questionText: "How energetic or drained do you feel right now?",
+            response: response.energyLevel,
+            responseType: "VAS",
+            completionTime: response.completionTime,
+            context: contextString
+        )
+        
+        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Agitation=\(Int(response.calmAgitationLevel)), Energy=\(Int(response.energyLevel))")
+    }
+
+    private func transitionToStartScreenAfterEMA() {
+        print("Transitioning to StartScreen after EMA")
+        guard let view = self.view else {
+            print("ERROR: No SKView found to present StartScreen.")
+            return
+        }
+        
+        // Ensure cleanup of any remaining UIKit elements from StartScreen (though willMove(from:) should handle this)
+        // This is more of a safeguard.
+        view.subviews.forEach { subview in
+            if subview is UISlider || subview is UISegmentedControl {
+                subview.removeFromSuperview()
+            }
+        }
+
+        let startScreen = StartScreen(size: view.bounds.size)
+        startScreen.scaleMode = .aspectFill
+        
+        // Perform transition on the main thread
+        DispatchQueue.main.async {
+            view.presentScene(startScreen, transition: SKTransition.fade(withDuration: 0.5))
+        }
+    }
+    // --- END ADDED ---
 
 } // Final closing brace for GameScene Class
 

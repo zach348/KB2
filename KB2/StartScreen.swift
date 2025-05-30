@@ -19,13 +19,9 @@ class StartScreen: SKScene {
     private var sliderValue: Double = 15.0
     private var selectedProfile: SessionProfile = .fluctuating
     
-    // New EMA elements
-    private var arousalSlider: UISlider?
-    private var arousalLabel: SKLabelNode?
-    private var userReportedArousal: CGFloat = 0.7 // Default mid-high value
-    
     // Selected session parameters
     private var sessionDuration: TimeInterval = 15 * 60
+    // userReportedArousal is no longer needed here as it will be captured by EMAView
     
     override func didMove(to view: SKView) {
         backgroundColor = .darkGray
@@ -35,7 +31,7 @@ class StartScreen: SKScene {
         // Add the UISlider and UISegmentedControl as subviews of the SKView
         setupSlider(in: view)
         setupProfileSelector(in: view)
-        setupArousalSlider(in: view)
+        // setupArousalSlider(in: view) // Removed arousal slider setup
     }
     
     private func setupUI() {
@@ -79,33 +75,9 @@ class StartScreen: SKScene {
         profileLabel.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - 70) // Adjusted position
         addChild(profileLabel)
         
-        // Add arousal self-report label
-        let arousalSelfReportLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
-        arousalSelfReportLabel.text = "Current Arousal Level"
-        arousalSelfReportLabel.fontSize = 24
-        arousalSelfReportLabel.fontColor = .white
-        arousalSelfReportLabel.position = CGPoint(x: frame.midX, y: profileLabel.position.y - 80)
-        addChild(arousalSelfReportLabel)
-        
-        // Add arousal description
-        let arousalDescriptionLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
-        arousalDescriptionLabel.text = "Calm                  Alert                  Anxious"
-        arousalDescriptionLabel.fontSize = 14
-        arousalDescriptionLabel.fontColor = .lightGray
-        arousalDescriptionLabel.position = CGPoint(x: frame.midX, y: arousalSelfReportLabel.position.y - 60)
-        addChild(arousalDescriptionLabel)
-        
-        // Current arousal value label
-        arousalLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
-        arousalLabel?.text = arousalLevelDescription(for: userReportedArousal)
-        arousalLabel?.fontSize = 18
-        arousalLabel?.fontColor = .white
-        arousalLabel?.position = CGPoint(x: frame.midX, y: arousalSelfReportLabel.position.y - 30)
-        addChild(arousalLabel!)
-        
-        // Start button background - moved further down
+        // Start button background - moved further down, adjusted due to removal of arousal slider
         startButton = SKSpriteNode(color: .systemBlue, size: CGSize(width: 200, height: 60))
-        startButton.position = CGPoint(x: frame.midX, y: frame.midY - 220) // Moved down more
+        startButton.position = CGPoint(x: frame.midX, y: profileLabel.position.y - 120) // Adjusted position after removing arousal slider
         startButton.zPosition = 10
         startButton.name = "startButton"
         
@@ -177,29 +149,7 @@ class StartScreen: SKScene {
         view.addSubview(segmentedControl)
     }
     
-    private func setupArousalSlider(in view: SKView) {
-        // Create the arousal slider - position in lower half of screen
-        arousalSlider = UISlider(frame: CGRect(x: view.bounds.width * 0.15,
-                                              y: view.bounds.height * 0.65, // Adjusted to be between profile selector and start button
-                                              width: view.bounds.width * 0.7,
-                                              height: 30))
-        
-        guard let arousalSlider = arousalSlider else { return }
-        
-        arousalSlider.minimumValue = 0.0
-        arousalSlider.maximumValue = 1.0
-        arousalSlider.value = Float(userReportedArousal)
-        
-        // Appearance
-        arousalSlider.minimumTrackTintColor = .systemGreen
-        arousalSlider.maximumTrackTintColor = .systemRed
-        
-        // Add value changed action
-        arousalSlider.addTarget(self, action: #selector(arousalSliderChanged(_:)), for: .valueChanged)
-        
-        // Add to view
-        view.addSubview(arousalSlider)
-    }
+    // Removed setupArousalSlider method
     
     @objc private func sliderValueChanged(_ sender: UISlider) {
         sliderValue = Double(sender.value.rounded())
@@ -223,20 +173,7 @@ class StartScreen: SKScene {
         }
     }
     
-    @objc private func arousalSliderChanged(_ sender: UISlider) {
-        userReportedArousal = CGFloat(sender.value)
-        arousalLabel?.text = arousalLevelDescription(for: userReportedArousal)
-    }
-    
-    private func arousalLevelDescription(for level: CGFloat) -> String {
-        if level < 0.33 {
-            return "Calm/Relaxed (\(Int(level * 100))%)"
-        } else if level < 0.67 {
-            return "Alert/Focused (\(Int(level * 100))%)"
-        } else {
-            return "Energetic/Tense (\(Int(level * 100))%)"
-        }
-    }
+    // Removed arousalSliderChanged and arousalLevelDescription methods
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
@@ -260,47 +197,39 @@ class StartScreen: SKScene {
         let buttonNodes = self.children.filter { $0.name == "startButton" }
         buttonNodes.forEach { $0.run(sequence) }
         
-        // Log the self-reported arousal level
-        DataLogger.shared.logSelfReport(arousalLevel: userReportedArousal, phase: "pre-session")
-        
-        // Remove the slider and segmented control from the parent view
+        // Remove UIKit elements
         DispatchQueue.main.async { [weak self] in
             self?.slider?.removeFromSuperview()
             self?.segmentedControl?.removeFromSuperview()
-            self?.arousalSlider?.removeFromSuperview()
-            self?.startSession()
+            // self?.arousalSlider?.removeFromSuperview() // Already removed
+
+            // Call GameViewController to present pre-session EMA and then start game
+            if let gameVC = self?.view?.window?.rootViewController as? GameViewController {
+                // Pass selected parameters to GameViewController
+                // The userReportedArousal will be captured by the EMAView itself.
+                // We pass a default or placeholder here if needed by GameScene init,
+                // but GameScene should ideally get it from the EMA response.
+                // For now, we'll pass the defaultArousalLevel from StartScreen,
+                // GameScene will use the EMA response value once available.
+                gameVC.presentPreSessionEMAAndStartGame(
+                    sessionDuration: self?.sessionDuration ?? (15 * 60),
+                    sessionProfile: self?.selectedProfile ?? .fluctuating,
+                    initialArousalFromStartScreen: self?.defaultArousalLevel ?? 0.7 // Placeholder, will be overwritten by EMA
+                )
+            }
         }
     }
     
-    private func startSession() {
-        // Create and present the game scene with session mode enabled
-        if let view = self.view {
-            let scene = GameScene(size: view.bounds.size)
-            
-            // Initialize the ArousalEstimator with the user's self-reported arousal
-            let arousalEstimator = ArousalEstimator(initialArousal: userReportedArousal)
-            
-            // Configure session parameters
-            scene.sessionMode = true
-            scene.sessionDuration = sessionDuration
-            scene.initialArousalLevel = defaultArousalLevel  // System arousal starts high
-            scene.sessionProfile = selectedProfile
-            
-            // Provide the arousal estimator to the scene (we'll modify GameScene.swift next)
-            scene.arousalEstimator = arousalEstimator
-            
-            scene.scaleMode = .aspectFill
-            view.presentScene(scene, transition: SKTransition.fade(withDuration: 0.5))
-        }
-    }
-    
+    // startSession() is no longer called directly from here.
+    // GameViewController will handle starting the GameScene after EMA.
+
     override func willMove(from view: SKView) {
         // Clean up UIKit elements when the scene is removed
         slider?.removeFromSuperview()
         segmentedControl?.removeFromSuperview()
-        arousalSlider?.removeFromSuperview()
+        // arousalSlider?.removeFromSuperview() // Already removed
         slider = nil
         segmentedControl = nil
-        arousalSlider = nil
+        // arousalSlider = nil // Already removed
     }
-} 
+}

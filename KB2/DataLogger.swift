@@ -353,6 +353,29 @@ class DataLogger {
         
         print("DATA_LOG: Breathing pattern change - Inhale: \(String(format: "%.2f", oldInhaleDuration))s -> \(String(format: "%.2f", newInhaleDuration))s, HoldInhale: \(String(format: "%.2f", oldHoldAfterInhaleDuration))s -> \(String(format: "%.2f", newHoldAfterInhaleDuration))s, Exhale: \(String(format: "%.2f", oldExhaleDuration))s -> \(String(format: "%.2f", newExhaleDuration))s, HoldExhale: \(String(format: "%.2f", oldHoldAfterExhaleDuration))s -> \(String(format: "%.2f", newHoldAfterExhaleDuration))s. Arousal: \(String(format: "%.2f", arousalLevel)), NormBreathingArousal: \(String(format: "%.2f", normalizedBreathingArousal))")
     }
+
+    /// Log system and user arousal levels at a specific phase
+    func logArousalLevels(systemArousal: CGFloat, userArousal: CGFloat?, phase: String) {
+        let timestamp = Date().timeIntervalSince1970
+        var event: [String: Any] = [
+            "type": "arousal_levels",
+            "timestamp": timestamp,
+            "system_arousal": systemArousal,
+            "phase": phase
+        ]
+        if let uArousal = userArousal {
+            event["user_arousal"] = uArousal
+        }
+        
+        events.append(event)
+        addToStreamingBuffer(event)
+        
+        var logMessage = "DATA_LOG: Arousal Levels (\(phase)) - System: \(String(format: "%.2f", systemArousal))"
+        if let uArousal = userArousal {
+            logMessage += ", User: \(String(format: "%.2f", uArousal))"
+        }
+        print(logMessage)
+    }
     
     // MARK: - Enhanced Data Structures (Kalibrate Implementation)
     
