@@ -407,9 +407,10 @@ class DataLogger {
         targetBallIDs: Set<String>,
         distractorBallIDs: Set<String>,
         reactionTimeFromTaskStart: TimeInterval? = nil,
-        gameContext: [String: Any] = [:]
+        gameContext: [String: Any] = [:],
+        tapDuration: TimeInterval? = nil
     ) {
-        let event: [String: Any] = [
+        var event: [String: Any] = [
             "type": "detailed_tap_event",
             "timestamp": timestamp,
             "tap_location": ["x": tapLocation.x, "y": tapLocation.y],
@@ -421,6 +422,11 @@ class DataLogger {
             "reaction_time_from_task_start": reactionTimeFromTaskStart as Any,
             "game_context": gameContext
         ]
+        
+        // Add tap duration if available
+        if let duration = tapDuration {
+            event["tap_duration"] = duration
+        }
         
         events.append(event)
         addToStreamingBuffer(event)

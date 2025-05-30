@@ -37,6 +37,7 @@ class ArousalEstimator {
         let ballPositions: [String: CGPoint]  // ballID -> position at time of tap
         let targetBallIDs: Set<String>        // which balls were targets at time of tap
         let distractorBallIDs: Set<String>    // which balls were distractors at time of tap
+        let tapDuration: TimeInterval?        // time between touch down and touch up
     }
     
     /// Structure to store a comprehensive snapshot of all arousal-modulated game parameters
@@ -311,7 +312,8 @@ class ArousalEstimator {
         wasCorrect: Bool,
         ballPositions: [String: CGPoint],
         targetBallIDs: Set<String>,
-        distractorBallIDs: Set<String>
+        distractorBallIDs: Set<String>,
+        tapDuration: TimeInterval? = nil
     ) {
         let tapEvent = TapEventDetail(
             timestamp: timestamp,
@@ -320,7 +322,8 @@ class ArousalEstimator {
             wasCorrect: wasCorrect,
             ballPositions: ballPositions,
             targetBallIDs: targetBallIDs,
-            distractorBallIDs: distractorBallIDs
+            distractorBallIDs: distractorBallIDs,
+            tapDuration: tapDuration
         )
         
         currentTapEvents.append(tapEvent)
@@ -396,7 +399,7 @@ class ArousalEstimator {
     
     /// Convert TapEventDetail struct to dictionary for logging
     private func convertTapEventToDict(_ tapEvent: TapEventDetail) -> [String: Any] {
-        return [
+        var dict: [String: Any] = [
             "timestamp": tapEvent.timestamp,
             "tap_location": ["x": tapEvent.tapLocation.x, "y": tapEvent.tapLocation.y],
             "tapped_element_id": tapEvent.tappedElementID as Any,
@@ -405,6 +408,13 @@ class ArousalEstimator {
             "target_ball_ids": Array(tapEvent.targetBallIDs),
             "distractor_ball_ids": Array(tapEvent.distractorBallIDs)
         ]
+        
+        // Add tap duration if available
+        if let duration = tapEvent.tapDuration {
+            dict["tap_duration"] = duration
+        }
+        
+        return dict
     }
     
     /// Convert DynamicTaskStateSnapshot struct to dictionary for logging

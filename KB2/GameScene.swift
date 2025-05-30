@@ -129,6 +129,9 @@ private var hasLoggedSessionStart = false
     
     // --- Motion Control Throttling ---
     private var motionControlActionKey = "motionControlAction"
+    
+    // --- Touch Duration Tracking ---
+    private var activeTouchContext: [UITouch: (startTime: TimeInterval, startLocation: CGPoint, tappedBall: Ball?, sceneBallPositions: [String: CGPoint]?, sceneTargetIDs: Set<String>?, sceneDistractorIDs: Set<String>?)] = [:]
 
     // --- Precision Timer Property ---
     private var precisionTimer: PrecisionTimer? // ENSURE THIS LINE IS PRESENT
@@ -806,19 +809,78 @@ private var hasLoggedSessionStart = false
         if touches.count == 1 {
             for touch in touches {
                 let location = touch.location(in: self)
+                let currentTime = CACurrentMediaTime()
                 let tappedNodes = nodes(at: location)
                 print("DEBUG: Tap at \(location). Nodes hit: \(tappedNodes.map { $0.name ?? "Unnamed" })") // DEBUG
+                
+                // Find the tapped ball (if any)
+                var tappedBall: Ball? = nil
                 for node in tappedNodes {
-                    if let tappedBall = node as? Ball {
-                        print("DEBUG: Ball node identified: \(tappedBall.name ?? "Unknown")") // DEBUG
-                        handleBallTap(tappedBall)
+                    if let ball = node as? Ball {
+                        print("DEBUG: Ball node identified: \(ball.name ?? "Unknown")") // DEBUG
+                        tappedBall = ball
                         break // Process only the first ball tapped
-                    } else {
-                        // Allow touches to pass through overlay if needed, but log what was hit
-                        // print("DEBUG: Tapped node is not a Ball: \(node.name ?? "Unnamed"), Type: \(type(of: node))")
                     }
                 }
+                
+                // Store touch context for detailed logging
+                let ballPositions = Dictionary(uniqueKeysWithValues: balls.map { ($0.name ?? "unknown", $0.position) })
+                let targetIDs = Set(balls.filter { $0.isTarget }.compactMap { $0.name })
+                let distractorIDs = Set(balls.filter { !$0.isTarget }.compactMap { $0.name })
+                
+                activeTouchContext[touch] = (
+                    startTime: currentTime,
+                    startLocation: location,
+                    tappedBall: tappedBall,
+                    sceneBallPositions: ballPositions,
+                    sceneTargetIDs: targetIDs,
+                    sceneDistractorIDs: distractorIDs
+                )
+                
+                // Continue with immediate feedback for game responsiveness
+                if let ball = tappedBall {
+                    handleBallTap(ball)
+                }
             }
+        }
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard currentState == .identifying else {
+            // Clean up any stored contexts for non-identification touches
+            for touch in touches {
+                activeTouchContext.removeValue(forKey: touch)
+            }
+            return
+        }
+        
+        // Process each ended touch
+        for touch in touches {
+            guard let context = activeTouchContext.removeValue(forKey: touch) else {
+                continue // No stored context for this touch
+            }
+            
+            let endTime = CACurrentMediaTime()
+            let duration = endTime - context.startTime
+            
+            // Determine if this was a correct tap
+            let wasCorrect = context.tappedBall?.isTarget == true
+            
+            // Send detailed tap event to delegate (via arousalEstimator)
+            if let estimator = arousalEstimator {
+                estimator.recordDetailedTapEvent(
+                    timestamp: context.startTime,
+                    tapLocation: context.startLocation,
+                    tappedElementID: context.tappedBall?.name,
+                    wasCorrect: wasCorrect,
+                    ballPositions: context.sceneBallPositions ?? [:],
+                    targetBallIDs: context.sceneTargetIDs ?? [],
+                    distractorBallIDs: context.sceneDistractorIDs ?? [],
+                    tapDuration: duration
+                )
+            }
+            
+            print("DEBUG: Touch ended - Duration: \(String(format: "%.3f", duration))s, Correct: \(wasCorrect)") // DEBUG
         }
     }
     
