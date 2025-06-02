@@ -163,10 +163,94 @@ class AdaptiveDifficultyManager {
     }
     
     private func modulateDOMTargets(overallPerformanceScore: CGFloat) {
-        // THE CASCADE LOGIC - To be implemented in the next step
-        print("[ADM] Modulating DOM targets with performance score: \(overallPerformanceScore)")
-        // For now, just print the current values to show it's called
-        print("[ADM] Current DF: \(currentDiscriminabilityFactor), MeanSpeed: \(currentMeanBallSpeed), etc.")
+        // 1. Calculate initial adaptation signal (-1.0 to +1.0)
+        var remainingAdaptationSignalBudget = (overallPerformanceScore - 0.5) * 2.0
+
+        // Apply sensitivity and dead zone
+        if abs(remainingAdaptationSignalBudget) < config.adaptationSignalDeadZone {
+            remainingAdaptationSignalBudget = 0.0
+        }
+        remainingAdaptationSignalBudget *= config.adaptationSignalSensitivity
+        
+        print("[ADM] Modulating DOMs. Initial Budget: \(String(format: "%.3f", remainingAdaptationSignalBudget)) from PerfScore: \(String(format: "%.3f", overallPerformanceScore))")
+
+
+        // 2. Select DOM Hierarchy based on currentArousalLevel
+        let hierarchy = currentArousalLevel >= config.arousalThresholdForKPIAndHierarchySwitch ?
+                        config.domHierarchy_HighArousal :
+                        config.domHierarchy_LowMidArousal
+
+        // 3. Iterate through the hierarchy
+        for domTargetType in hierarchy {
+            if abs(remainingAdaptationSignalBudget) < 0.001 { // Budget effectively exhausted
+                print("[ADM] Budget exhausted or negligible (\(String(format: "%.4f", remainingAdaptationSignalBudget))). Stopping modulation.")
+                break
+            }
+
+            // A. Get current state and arousal-gated range for this DOM Target
+            let currentActualValue = getCurrentValue(for: domTargetType)
+            let arousalGated_Easiest = getArousalGatedEasiestSetting(for: domTargetType, currentArousal: currentArousalLevel)
+            let arousalGated_Hardest = getArousalGatedHardestSetting(for: domTargetType, currentArousal: currentArousalLevel)
+
+            // If range is zero (easiest == hardest), this DOM cannot adapt. Skip.
+            if abs(arousalGated_Hardest - arousalGated_Easiest) < 0.0001 { // Using a small epsilon
+                print("[ADM] DOM \(domTargetType) has no adaptation range [\(arousalGated_Easiest) - \(arousalGated_Hardest)]. Skipping.")
+                continue
+            }
+
+            // B. Convert currentActualValue to a Normalized Position (0.0 at Easiest, 1.0 at Hardest)
+            var currentNormalizedPosition = (currentActualValue - arousalGated_Easiest) / (arousalGated_Hardest - arousalGated_Easiest)
+            currentNormalizedPosition = max(0.0, min(1.0, currentNormalizedPosition)) // Clamp due to potential float inaccuracies or prior clamping
+
+            // C. Determine Desired Normalized Position based on Budget
+            let desiredNormalizedPositionAttempt = currentNormalizedPosition + remainingAdaptationSignalBudget
+            
+            // D. Calculate Actual Achievable Normalized Position and "Spent" Budget
+            let achievedNormalizedPosition = max(0.0, min(1.0, desiredNormalizedPositionAttempt))
+            
+            let signalSpentByThisDOM = achievedNormalizedPosition - currentNormalizedPosition
+            
+            // E. Update remainingAdaptationSignalBudget
+            remainingAdaptationSignalBudget -= signalSpentByThisDOM
+
+            // F. Convert achievedNormalizedPosition back to a raw target value for this DOM
+            var targetRawValue = arousalGated_Easiest + (arousalGated_Hardest - arousalGated_Easiest) * achievedNormalizedPosition
+
+            // G. Apply Smoothing and Set Value (Handle Integers)
+            let smoothingFactor = config.domSmoothingFactors[domTargetType] ?? 0.1 // Default smoothing
+
+            let smoothedNewValue: CGFloat
+            if domTargetType == .targetCount {
+                let currentActualIntValueAsFloat = CGFloat(currentTargetCount) // Use the precise current float value for smoothing if available, or the int casted
+                let smoothedFloatValue = currentActualIntValueAsFloat + (targetRawValue - currentActualIntValueAsFloat) * smoothingFactor
+                
+                var finalIntValue = Int(round(smoothedFloatValue))
+                
+                // Clamp to integer representation of arousal-gated limits
+                // Ensure correct clamping when easiest > hardest (e.g. target count at high arousal)
+                let intEasiest = Int(round(arousalGated_Easiest))
+                let intHardest = Int(round(arousalGated_Hardest))
+                
+                if intEasiest <= intHardest {
+                    finalIntValue = max(intEasiest, min(intHardest, finalIntValue))
+                } else { // Easiest is numerically greater than hardest (e.g. target count 4 easy, 2 hard)
+                    finalIntValue = max(intHardest, min(intEasiest, finalIntValue))
+                }
+                setCurrentValue(for: domTargetType, rawValue: CGFloat(finalIntValue))
+                smoothedNewValue = CGFloat(finalIntValue) // For logging
+            } else {
+                let smoothedFloatValue = currentActualValue + (targetRawValue - currentActualValue) * smoothingFactor
+                // Clamp to the float representation of arousal-gated limits
+                let finalClampedValue = max(min(arousalGated_Easiest, arousalGated_Hardest), min(max(arousalGated_Easiest, arousalGated_Hardest), smoothedFloatValue))
+                setCurrentValue(for: domTargetType, rawValue: finalClampedValue)
+                smoothedNewValue = finalClampedValue // For logging
+            }
+            
+            print("[ADM] Modulated \(domTargetType): Budget=\(String(format: "%.3f", remainingAdaptationSignalBudget + signalSpentByThisDOM)) -> Spent=\(String(format: "%.3f", signalSpentByThisDOM)) -> Rem=\(String(format: "%.3f", remainingAdaptationSignalBudget)). NormPos: \(String(format: "%.2f", currentNormalizedPosition)) -> AchievedNorm: \(String(format: "%.2f", achievedNormalizedPosition)). RawVal: \(String(format: "%.2f", currentActualValue)) -> TargetRaw: \(String(format: "%.2f", targetRawValue)) -> Smoothed: \(String(format: "%.2f", smoothedNewValue))")
+        }
+        if abs(remainingAdaptationSignalBudget) > 0.001 {
+             print("[ADM] Modulation complete. Unspent budget: \(String(format: "%.4f", remainingAdaptationSignalBudget))")
+        }
     }
 
     // MARK: - Helper Functions for DOM Target Management
