@@ -1297,4 +1297,34 @@ class DataLogger {
             print("DATA_LOG: Error saving session data: \(error)")
         }
     }
+
+    // MARK: - Adaptive Difficulty Logging
+    func logAdaptiveDifficultyStep(
+        arousalLevel: CGFloat,
+        performanceScore: CGFloat,
+        normalizedKPIs: [KPIType: CGFloat], // KPIType is from GameConfiguration
+        domValues: [DOMTargetType: CGFloat] // DOMTargetType is from GameConfiguration
+    ) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        // Convert KPIType and DOMTargetType keys to strings for JSON serialization
+        // Ensuring the correct global enums are used.
+        let kpisAsString = Dictionary(uniqueKeysWithValues: normalizedKPIs.map { (key: KPIType, value: CGFloat) -> (String, CGFloat) in (String(describing: key), value) })
+        let domsAsString = Dictionary(uniqueKeysWithValues: domValues.map { (key: DOMTargetType, value: CGFloat) -> (String, CGFloat) in (String(describing: key), value) })
+
+        let event: [String: Any] = [
+            "type": "adaptive_difficulty_step",
+            "timestamp": timestamp,
+            "arousal_level": arousalLevel,
+            "performance_score": performanceScore,
+            "normalized_kpis": kpisAsString,
+            "dom_values": domsAsString
+        ]
+        
+        events.append(event)
+        addToStreamingBuffer(event)
+        
+        print("DATA_LOG: Adaptive Difficulty Step - Arousal: \(String(format: "%.2f", arousalLevel)), PerfScore: \(String(format: "%.2f", performanceScore))")
+        // Consider logging more details if needed, e.g., specific DOM values
+    }
 }

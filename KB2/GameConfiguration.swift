@@ -8,12 +8,21 @@ import CoreGraphics // For CGFloat
 import SpriteKit // For SKColor
 
 // Enum for Difficulty Optimization Matrix (DOM) targets
-enum DOMTargetType {
+enum DOMTargetType: Hashable { // Made Hashable
     case discriminatoryLoad
     case meanBallSpeed
     case ballSpeedSD
     case responseTime
     case targetCount
+}
+
+// Enum for Key Performance Indicator (KPI) types
+enum KPIType: Hashable { // Made Hashable
+    case taskSuccess
+    case tfTtfRatio
+    case reactionTime
+    case responseDuration
+    case tapAccuracy
 }
 
 // Structure to hold KPI weights for adaptive difficulty
