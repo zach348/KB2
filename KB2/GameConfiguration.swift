@@ -1,11 +1,29 @@
 // Kalibrate/GameConfiguration.swift
 // Created: [Previous Date]
-// Updated: [Current Date] - Step 11 FIX 8: Revised Arousal Steps, Removed Hidden Color
+// Updated: [Current Date] - Added Adaptive Difficulty Manager Configuration
 // Role: Centralized configuration settings for the game parameters.
 
 import Foundation
 import CoreGraphics // For CGFloat
 import SpriteKit // For SKColor
+
+// Enum for Difficulty Optimization Matrix (DOM) targets
+enum DOMTargetType {
+    case discriminatoryLoad
+    case meanBallSpeed
+    case ballSpeedSD
+    case responseTime
+    case targetCount
+}
+
+// Structure to hold KPI weights for adaptive difficulty
+struct KPIWeights {
+    let taskSuccess: CGFloat
+    let tfTtfRatio: CGFloat
+    let reactionTime: CGFloat
+    let responseDuration: CGFloat
+    let tapAccuracy: CGFloat
+}
 
 // Add this before the struct definition
 enum SessionProfile {
@@ -129,6 +147,104 @@ struct GameConfiguration {
     // Default session profile
     let defaultSessionProfile: SessionProfile = .fluctuating
     
-    // --- Motion Control Fine Tuning ---
-    // MotionSettings struct remains separate for now.
+// --- Motion Control Fine Tuning ---
+// MotionSettings struct remains separate for now.
+
+    //====================================================================================================
+    // MARK: - ADAPTIVE DIFFICULTY CONFIGURATION
+    //====================================================================================================
+    
+    // --- DOM Target Parameter Ranges ---
+    // Target Count (fewer is easier at high arousal, more is harder)
+    let targetCount_MinArousal_EasiestSetting: Int = 4
+    let targetCount_MinArousal_HardestSetting: Int = 7
+    let targetCount_MaxArousal_EasiestSetting: Int = 1
+    let targetCount_MaxArousal_HardestSetting: Int = 2
+    
+    // Discriminability Factor (higher is easier - more different colors)
+    let discriminabilityFactor_MinArousal_EasiestSetting: CGFloat = 1.0
+    let discriminabilityFactor_MinArousal_HardestSetting: CGFloat = 0.65
+    let discriminabilityFactor_MaxArousal_EasiestSetting: CGFloat = 0.25
+    let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.0
+    
+    // Mean Ball Speed (lower is easier)
+    let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 50.0
+    let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 350.0
+    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 900.0
+    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1400.0
+    
+    // Ball Speed Standard Deviation (lower is easier)
+    let ballSpeedSD_MinArousal_EasiestSetting: CGFloat = 0.0
+    let ballSpeedSD_MinArousal_HardestSetting: CGFloat = 75.0
+    let ballSpeedSD_MaxArousal_EasiestSetting: CGFloat = 150.0
+    let ballSpeedSD_MaxArousal_HardestSetting: CGFloat = 300.0
+    
+    // Response Time for ID phase (higher is easier - more time to respond)
+    let responseTime_MinArousal_EasiestSetting: TimeInterval = 8.0
+    let responseTime_MinArousal_HardestSetting: TimeInterval = 4.0
+    let responseTime_MaxArousal_EasiestSetting: TimeInterval = 1.5
+    let responseTime_MaxArousal_HardestSetting: TimeInterval = 0.5
+    
+    // --- Arousal Thresholds for DOM Scaling ---
+    let arousalOperationalMinForDOMScaling: CGFloat = 0.35
+    let arousalOperationalMaxForDOMScaling: CGFloat = 1.0
+    let arousalThresholdForKPIAndHierarchySwitch: CGFloat = 0.7
+    
+    // --- KPI Weights ---
+    // High Arousal (>= 0.7)
+    let kpiWeights_HighArousal = KPIWeights(
+        taskSuccess: 0.35,
+        tfTtfRatio: 0.25,
+        reactionTime: 0.20,
+        responseDuration: 0.15,
+        tapAccuracy: 0.05
+    )
+    
+    // Low/Mid Arousal (0.35 < arousal < 0.7)
+    let kpiWeights_LowMidArousal = KPIWeights(
+        taskSuccess: 0.40,
+        tfTtfRatio: 0.30,
+        reactionTime: 0.05,
+        responseDuration: 0.15,
+        tapAccuracy: 0.10
+    )
+    
+    // --- DOM Target Hierarchies ---
+    // High Arousal Hierarchy (>= 0.7)
+    let domHierarchy_HighArousal: [DOMTargetType] = [
+        .discriminatoryLoad,
+        .meanBallSpeed,
+        .ballSpeedSD,
+        .responseTime,
+        .targetCount
+    ]
+    
+    // Low/Mid Arousal Hierarchy (0.35 < arousal < 0.7)
+    let domHierarchy_LowMidArousal: [DOMTargetType] = [
+        .targetCount,
+        .responseTime,
+        .discriminatoryLoad,
+        .meanBallSpeed,
+        .ballSpeedSD
+    ]
+    
+    // --- KPI Normalization Parameters ---
+    let reactionTime_BestExpected: TimeInterval = 0.2
+    let reactionTime_WorstExpected: TimeInterval = 1.75
+    let responseDuration_PerTarget_BestExpected: TimeInterval = 0.2
+    let responseDuration_PerTarget_WorstExpected: TimeInterval = 1.0
+    let tapAccuracy_BestExpected_Points: CGFloat = 0.0
+    let tapAccuracy_WorstExpected_Points: CGFloat = 225.0
+    
+    // --- Adaptive System Tuning Parameters ---
+    let initialStartupArousalForDefaults: CGFloat = 0.5
+    let domSmoothingFactors: [DOMTargetType: CGFloat] = [
+        .discriminatoryLoad: 0.15,
+        .meanBallSpeed: 0.10,
+        .ballSpeedSD: 0.08,
+        .responseTime: 0.12,
+        .targetCount: 0.20
+    ]
+    let adaptationSignalSensitivity: CGFloat = 1.0
+    let adaptationSignalDeadZone: CGFloat = 0.05
 }
