@@ -407,6 +407,56 @@ class GameSceneTests: XCTestCase {
         // Verify fade state reverted
         XCTAssertFalse(gameScene.breathingVisualsFaded)
     }
+
+    func testBallAppearanceOnTransitionToBreathingDuringFlash() {
+        gameScene.didMove(to: mockView)
+        gameScene.arousalEstimator = ArousalEstimator(initialArousal: 0.5) // Ensure ADM can access performance history if needed
+
+        // 1. Set to tracking state with some targets
+        gameScene.currentArousalLevel = 0.7 // Ensure in tracking range
+        XCTAssertEqual(gameScene.currentState, .tracking, "Should be in tracking state initially for test")
+        
+        gameScene.currentTargetCount = 2 // Ensure there are targets
+        gameScene.assignNewTargets() // This will make balls targets and start flashing them
+
+        // Verify some balls are targets and potentially flashing (isFlashSequenceRunning should be true)
+        let initialTargets = gameScene.balls.filter { $0.isTarget }
+        XCTAssertFalse(initialTargets.isEmpty, "Should have initial targets")
+        XCTAssertTrue(gameScene.isFlashSequenceRunning, "Flash sequence should be running after assigning new targets")
+
+        // 2. Trigger transition to breathing state
+        // This should call updateParametersFromArousal (updating activeDistractorColor)
+        // and then transitionToBreathingState (which should stop flash and set uniform color)
+        gameScene.currentArousalLevel = gameScene.gameConfiguration.trackingArousalThresholdLow - 0.1
+        
+        // Give SKActions a moment to process, especially if transition involves them.
+        // However, the critical color/state changes in transitionToBreathingState are immediate.
+        // For this test, immediate checks should be okay as removeAction is synchronous.
+
+        XCTAssertEqual(gameScene.currentState, .breathing, "Scene should have transitioned to breathing state")
+
+        // 3. Verify ball states
+        XCTAssertFalse(gameScene.balls.isEmpty, "Balls array should not be empty")
+        for ball in gameScene.balls {
+            XCTAssertFalse(ball.isTarget, "Ball \(ball.name ?? "Unnamed") should not be a target in breathing state.")
+            XCTAssertNil(ball.action(forKey: "flash"), "Ball \(ball.name ?? "Unnamed") should have no 'flash' action running.")
+            
+            // Compare with SKColor.withAlphaComponent(0) for full match if alpha is involved,
+            // or ensure your comparison method handles SKColor equality correctly.
+            // Direct equality check for SKColor can be tricky. Let's check components.
+            var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+            ball.fillColor.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+            
+            var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+            gameScene.activeDistractorColor.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+            
+            XCTAssertEqual(r1, r2, accuracy: 0.01, "Ball \(ball.name ?? "Unnamed") fill red component should match activeDistractorColor")
+            XCTAssertEqual(g1, g2, accuracy: 0.01, "Ball \(ball.name ?? "Unnamed") fill green component should match activeDistractorColor")
+            XCTAssertEqual(b1, b2, accuracy: 0.01, "Ball \(ball.name ?? "Unnamed") fill blue component should match activeDistractorColor")
+            // Alpha might differ if balls are faded during breathing, but fill color should be set.
+            // For this test, we primarily care about the RGB of the distractor color being applied.
+        }
+    }
     
     // MARK: - Audio System Tests
     
@@ -497,4 +547,4 @@ class GameSceneTests: XCTestCase {
         let targetCount = gameScene.balls.filter { $0.isTarget }.count
         XCTAssertEqual(targetCount, 0)
     }
-} 
+}

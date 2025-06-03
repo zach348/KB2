@@ -1258,6 +1258,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let targetPositions = MotionController.circlePoints(numPoints: balls.count, center: centerPoint, radius: gameConfiguration.breathingCircleMinRadius)
         guard targetPositions.count == balls.count else { return }
 
+        // ADDED: Stop any ongoing flash actions on balls before setting breathing appearance
+        for ball in balls {
+            ball.removeAction(forKey: "flash")
+        }
+
         for (index, ball) in balls.enumerated() {
             ball.physicsBody?.isDynamic = false; ball.physicsBody?.velocity = .zero; ball.storedVelocity = nil
             ball.isTarget = false // Ensure it's not a target
