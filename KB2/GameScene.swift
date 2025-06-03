@@ -1178,8 +1178,10 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             updateDynamicBreathingParameters()
             motionSettings.targetMeanSpeed = 0
             motionSettings.targetSpeedSD = 0
-            activeTargetColor = gameConfiguration.targetColor_LowArousal
-            activeDistractorColor = gameConfiguration.distractorColor_LowArousal
+            // activeTargetColor and activeDistractorColor should persist from the
+            // previous state (tracking/identifying) when transitioning into breathing.
+            // The balls will be made uniform using the current activeDistractorColor
+            // in transitionToBreathingState().
 
         case .paused:
             self.currentTimerFrequency = 1.0;
@@ -1258,9 +1260,13 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
         for (index, ball) in balls.enumerated() {
             ball.physicsBody?.isDynamic = false; ball.physicsBody?.velocity = .zero; ball.storedVelocity = nil
-            ball.isTarget = false
-            ball.updateAppearance(targetColor: gameConfiguration.targetColor_LowArousal, distractorColor: gameConfiguration.distractorColor_LowArousal)
-            ball.alpha = 1.0
+            ball.isTarget = false // Ensure it's not a target
+
+            // MODIFIED LINE: Use the scene's current active colors.
+            // Since isTarget is false, updateAppearance will use activeDistractorColor.
+            ball.updateAppearance(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
+            
+            ball.alpha = 1.0 // Ensure ball is visible if it was faded
             let moveAction = SKAction.move(to: targetPositions[index], duration: finalTransitionDuration)
             moveAction.timingMode = .easeInEaseOut; ball.run(moveAction)
         }

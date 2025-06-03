@@ -173,7 +173,7 @@ struct GameConfiguration {
     // Discriminability Factor (higher is easier - more different colors)
     let discriminabilityFactor_MinArousal_EasiestSetting: CGFloat = 1.0
     let discriminabilityFactor_MinArousal_HardestSetting: CGFloat = 0.65
-    let discriminabilityFactor_MaxArousal_EasiestSetting: CGFloat = 0.25
+    let discriminabilityFactor_MaxArousal_EasiestSetting: CGFloat = 0.4
     let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.0
     
     // Mean Ball Speed (lower is easier)
@@ -203,8 +203,8 @@ struct GameConfiguration {
     // High Arousal (>= 0.7)
     let kpiWeights_HighArousal = KPIWeights(
         taskSuccess: 0.35,
-        tfTtfRatio: 0.25,
-        reactionTime: 0.20,
+        tfTtfRatio: 0.2,
+        reactionTime: 0.25,
         responseDuration: 0.15,
         tapAccuracy: 0.05
     )
@@ -212,8 +212,8 @@ struct GameConfiguration {
     // Low/Mid Arousal (0.35 < arousal < 0.7)
     let kpiWeights_LowMidArousal = KPIWeights(
         taskSuccess: 0.40,
-        tfTtfRatio: 0.30,
-        reactionTime: 0.05,
+        tfTtfRatio: 0.2,
+        reactionTime: 0.15,
         responseDuration: 0.15,
         tapAccuracy: 0.10
     )
