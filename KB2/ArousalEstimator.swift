@@ -116,7 +116,7 @@ class ArousalEstimator {
     }
     
     /// Recent performance metrics history (most recent first)
-    private var recentPerformanceHistory: [IdentificationPerformance] = []
+    var recentPerformanceHistory: [IdentificationPerformance] = [] // Changed from private to internal (default)
     private let maxHistoryItems = 5
     
     /// Current identification task tracking

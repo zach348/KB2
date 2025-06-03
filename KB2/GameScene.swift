@@ -99,6 +99,7 @@ var breathingTransitionPoint: Double = 0.5  // Add this variable to store the ra
 
 // --- User Arousal Estimation ---
 var arousalEstimator: ArousalEstimator? // Tracks the user's estimated arousal level
+private var adaptiveDifficultyManager: AdaptiveDifficultyManager! // ADDED for Adaptive Difficulty
 
 // --- Game Session Tracking ---
 private var hasLoggedSessionStart = false
@@ -120,6 +121,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             if clampedValue != _currentArousalLevel {
                 _currentArousalLevel = clampedValue
                 //Removed Arousal Level Diagnostic logging
+                
+                // ADDED: Update AdaptiveDifficultyManager with the new arousal level
+                if let adm = self.adaptiveDifficultyManager { // Ensure ADM is initialized
+                    adm.updateArousalLevel(clampedValue)
+                }
+                
                 checkStateTransition(oldValue: oldValue, newValue: _currentArousalLevel)
                 updateParametersFromArousal() // This will now call audioManager.updateAudioParameters
                 checkBreathingFade()
@@ -295,6 +302,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             initialTimerFrequency: currentTimerFrequency, // Use existing GameScene's currentTimerFrequency
             initialTargetAudioFrequency: initialTargetAudioFreq
         )
+
+        // ADDED: Initialize AdaptiveDifficultyManager
+        let admInitialArousal = self.sessionMode ? self.initialArousalLevel : self._currentArousalLevel
+        self.adaptiveDifficultyManager = AdaptiveDifficultyManager(
+            configuration: self.gameConfiguration,
+            initialArousal: admInitialArousal
+        )
+        print("GameScene: AdaptiveDifficultyManager initialized with arousal: \(admInitialArousal)")
 
         setupPhysicsWorld(); setupWalls(); setupUI(); setupHaptics()
         // setupAudio() // REMOVED - handled by AudioManager init
@@ -738,6 +753,68 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         print("PROXY_TASK: Completing identification task at \(String(format: "%.2f", completionTime))s, success: \(success), found \(targetsFoundThisRound) of \(targetsToFind) targets")
         arousalEstimator?.completeIdentificationTask(at: completionTime, wasSuccessful: success)
 
+        // ADDED: Collect KPIs and forward to AdaptiveDifficultyManager
+        if let lastPerformance = self.arousalEstimator?.recentPerformanceHistory.first,
+           let adm = self.adaptiveDifficultyManager {
+
+            let taskSuccessKPI = lastPerformance.success
+            // Ensure targetsToFind for the completed round is used, not a future/stale value
+            let actualTargetsInCompletedRound = self.targetsToFind 
+            let tfTtfRatioKPI = actualTargetsInCompletedRound > 0 ? CGFloat(lastPerformance.correctTaps) / CGFloat(actualTargetsInCompletedRound) : 0.0
+            
+            // Use reactionTime from performance record; fallback to currentIdentificationDuration if no taps recorded
+            let reactionTimeKPI = lastPerformance.reactionTime ?? self.currentIdentificationDuration 
+            
+            var firstTapTimePerf: TimeInterval? = nil
+            var lastTapTimePerf: TimeInterval? = nil
+            if !lastPerformance.tapEvents.isEmpty {
+                firstTapTimePerf = lastPerformance.tapEvents.min(by: { $0.timestamp < $1.timestamp })?.timestamp
+                lastTapTimePerf = lastPerformance.tapEvents.max(by: { $0.timestamp < $1.timestamp })?.timestamp
+            }
+            
+            let responseDurationKPI: TimeInterval
+            if let first = firstTapTimePerf, let last = lastTapTimePerf, last > first {
+                responseDurationKPI = last - first
+            } else if lastPerformance.totalTaps > 0 {
+                responseDurationKPI = lastPerformance.duration // Fallback to task duration if taps exist but timing is off
+            } else {
+                responseDurationKPI = 0.0 // No taps, so no response duration
+            }
+
+            var totalAccuracyDistance: CGFloat = 0
+            var validAccuracyTaps: Int = 0
+            if !lastPerformance.tapEvents.isEmpty {
+                for tapEvent in lastPerformance.tapEvents {
+                    if let tappedBallName = tapEvent.tappedElementID, let tappedBallNode = self.balls.first(where: { $0.name == tappedBallName }) {
+                        totalAccuracyDistance += CGPointDistance(from: tappedBallNode.position, to: tapEvent.tapLocation)
+                        validAccuracyTaps += 1
+                    } else if !self.balls.isEmpty { // Tap missed a ball
+                        var minDistanceToBall = CGFloat.greatestFiniteMagnitude
+                        for ballNode in self.balls { // Iterate over scene's balls
+                            let distance = CGPointDistance(from: ballNode.position, to: tapEvent.tapLocation)
+                            if distance < minDistanceToBall {
+                                minDistanceToBall = distance
+                            }
+                        }
+                        totalAccuracyDistance += minDistanceToBall
+                        validAccuracyTaps += 1
+                    }
+                }
+            }
+            let averageTapAccuracyKPI = validAccuracyTaps > 0 ? totalAccuracyDistance / CGFloat(validAccuracyTaps) : gameConfiguration.tapAccuracy_WorstExpected_Points
+
+            adm.recordIdentificationPerformance(
+                taskSuccess: taskSuccessKPI,
+                tfTtfRatio: tfTtfRatioKPI,
+                reactionTime: reactionTimeKPI,
+                responseDuration: responseDurationKPI,
+                averageTapAccuracy: averageTapAccuracyKPI,
+                actualTargetsToFindInRound: actualTargetsInCompletedRound
+            )
+            print("GameScene: Sent KPIs to ADM. Success: \(taskSuccessKPI), TF/TTF: \(tfTtfRatioKPI), RT: \(reactionTimeKPI), RD: \(responseDurationKPI), Acc: \(averageTapAccuracyKPI)")
+        }
+        // END ADDED KPI Collection
+
         if success { score += 1 } 
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
         
@@ -1062,8 +1139,37 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             let idMaxRange = gameConfiguration.idIntervalMax_HighArousal - gameConfiguration.idIntervalMax_LowArousal
             currentMaxIDInterval = gameConfiguration.idIntervalMax_LowArousal + (idMaxRange * normalizedTrackingArousal)
             if currentMinIDInterval > currentMaxIDInterval { currentMinIDInterval = currentMaxIDInterval }
-            activeTargetColor = interpolateColor(from: gameConfiguration.targetColor_LowArousal, to: gameConfiguration.targetColor_HighArousal, t: normalizedTrackingArousal)
-            activeDistractorColor = interpolateColor(from: gameConfiguration.distractorColor_LowArousal, to: gameConfiguration.distractorColor_HighArousal, t: normalizedTrackingArousal)
+
+            // MODIFIED: Color logic to use AdaptiveDifficultyManager for discriminabilityFactor
+            // 1. Calculate arousal-driven base target color (ASM)
+            let baseTargetColor = interpolateColor(
+                from: gameConfiguration.targetColor_LowArousal,
+                to: gameConfiguration.targetColor_HighArousal,
+                t: normalizedTrackingArousal
+            )
+            self.activeTargetColor = baseTargetColor
+
+            // 2. Calculate arousal-driven base for "maximally distinct" distractor color (ASM)
+            let baseMaxDistinctDistractorColor = interpolateColor(
+                from: gameConfiguration.distractorColor_LowArousal,
+                to: gameConfiguration.distractorColor_HighArousal,
+                t: normalizedTrackingArousal
+            )
+
+            // 3. Get the currentDiscriminabilityFactor from ADM
+            //    Fallback to a mid-value if ADM not ready (should be ready after didMove)
+            let dfFromADM = self.adaptiveDifficultyManager?.currentDiscriminabilityFactor ??
+                            (gameConfiguration.discriminabilityFactor_MinArousal_EasiestSetting +
+                             (gameConfiguration.discriminabilityFactor_MinArousal_HardestSetting - gameConfiguration.discriminabilityFactor_MinArousal_EasiestSetting) * 0.5)
+
+            // 4. Calculate the activeDistractorColor using the DF from ADM
+            self.activeDistractorColor = interpolateColor(
+                from: self.activeTargetColor,
+                to: baseMaxDistinctDistractorColor,
+                t: dfFromADM
+            )
+            // END MODIFIED Color Logic
+            
             if currentState == .tracking { for ball in balls { ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor) } }
             needsHapticPatternUpdate = false
 

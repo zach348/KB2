@@ -44,3 +44,8 @@ func calculateNormalizedRGBDistance(color1: SKColor, color2: SKColor) -> CGFloat
     let distance = sqrt(deltaR * deltaR + deltaG * deltaG + deltaB * deltaB)
     return min(distance / maxPossibleDistance, 1.0) // Clamped to [0,1]
 }
+
+// Helper function to calculate Euclidean distance between two CGPoints
+func CGPointDistance(from point1: CGPoint, to point2: CGPoint) -> CGFloat {
+    return sqrt(pow(point2.x - point1.x, 2) + pow(point2.y - point1.y, 2))
+}
