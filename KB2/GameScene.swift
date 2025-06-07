@@ -2121,7 +2121,22 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             MotionController.applyCorrections(balls: self.balls, settings: self.motionSettings, scene: self)
         }
         
-        let sequence = SKAction.sequence([wait, update])
+        // Add continuous update for AdaptiveDifficultyManager
+        let updateADM = SKAction.run { [weak self] in
+            guard let self = self, let adm = self.adaptiveDifficultyManager else { return }
+            
+            // Continuously update DOM targets based on current arousal
+            adm.updateForCurrentArousal()
+            
+            // If we're in tracking state, update ball appearances to reflect any DF changes
+            if self.currentState == .tracking {
+                for ball in self.balls {
+                    ball.updateAppearance(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
+                }
+            }
+        }
+        
+        let sequence = SKAction.sequence([wait, update, updateADM])
         let repeatAction = SKAction.repeatForever(sequence)
         
         // Run the action on the scene

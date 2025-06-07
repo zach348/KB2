@@ -26,6 +26,13 @@ class AdaptiveDifficultyManager {
     private(set) var currentResponseTime: TimeInterval
     private(set) var currentTargetCount: Int // Stored as Int, converted to CGFloat for calcs
 
+    // Normalized positions (0.0-1.0) for each DOM target
+    // 0.0 = easiest setting, 1.0 = hardest setting
+    private var normalizedPositions: [DOMTargetType: CGFloat] = [:]
+
+    // Current valid ranges (min/max) for each DOM target at current arousal level
+    private var currentValidRanges: [DOMTargetType: (min: CGFloat, max: CGFloat)] = [:]
+
     // KPI History (for potential rolling averages - simple array for now)
     // private var recentTaskSuccesses: [Bool] = [] // Example
     // ... other KPI history properties ...
@@ -42,8 +49,16 @@ class AdaptiveDifficultyManager {
         self.currentResponseTime = 0.0
         self.currentTargetCount = 0
         
-        // Now, set their actual initial values using a helper method
-        setInitialDOMValues(arousal: initialArousal)
+        // Initialize normalized positions to middle of range (0.5)
+        for domType in [DOMTargetType.discriminatoryLoad, .meanBallSpeed, .ballSpeedSD, .responseTime, .targetCount] {
+            normalizedPositions[domType] = 0.5
+        }
+        
+        // Initialize current valid ranges based on initial arousal
+        updateValidRangesForCurrentArousal()
+        
+        // Initialize absolute DOM values based on normalized positions and ranges
+        updateAbsoluteValuesFromNormalizedPositions()
         
         print("[ADM] Initialized with arousal: \(initialArousal)")
         print("[ADM] Initial DF: \(currentDiscriminabilityFactor)")
@@ -53,19 +68,72 @@ class AdaptiveDifficultyManager {
         print("[ADM] Initial TargetCount: \(currentTargetCount)")
     }
 
+    // MARK: - Continuous Arousal Update Methods
+    
+    /// Updates the current valid ranges for all DOM targets based on current arousal
+    private func updateValidRangesForCurrentArousal() {
+        for domType in [DOMTargetType.discriminatoryLoad, .meanBallSpeed, .ballSpeedSD, .responseTime, .targetCount] {
+            let easiestSetting = getArousalGatedEasiestSetting(for: domType, currentArousal: currentArousalLevel)
+            let hardestSetting = getArousalGatedHardestSetting(for: domType, currentArousal: currentArousalLevel)
+            currentValidRanges[domType] = (min: min(easiestSetting, hardestSetting), 
+                                          max: max(easiestSetting, hardestSetting))
+        }
+        print("ADM current DF: ",self.currentDiscriminabilityFactor)
+    }
+    
+    /// Converts a normalized value (0-1) to an absolute value for a DOM target
+    private func normalizedToAbsoluteValue(normalizedValue: CGFloat, for domType: DOMTargetType) -> CGFloat {
+        guard let range = currentValidRanges[domType] else { return 0 }
+        
+        // Clamp normalized value between 0 and 1
+        let clampedNormalized = max(0.0, min(1.0, normalizedValue))
+        
+        // For most DOM targets, easiest is at 0.0 and hardest at 1.0
+        // But for some (like discriminatoryLoad), this may be reversed
+        let easiest = getArousalGatedEasiestSetting(for: domType, currentArousal: currentArousalLevel)
+        let hardest = getArousalGatedHardestSetting(for: domType, currentArousal: currentArousalLevel)
+        
+        // If easiest > hardest (e.g., in discriminatory load where higher value means easier)
+        // we need to reverse the interpolation
+        if easiest > hardest {
+            return easiest - (easiest - hardest) * clampedNormalized
+        } else {
+            return easiest + (hardest - easiest) * clampedNormalized
+        }
+    }
+    
+    /// Updates all absolute DOM values based on their normalized positions and current ranges
+    private func updateAbsoluteValuesFromNormalizedPositions() {
+        for (domType, normalizedPosition) in normalizedPositions {
+            let absoluteValue = normalizedToAbsoluteValue(normalizedValue: normalizedPosition, for: domType)
+            setCurrentValue(for: domType, rawValue: absoluteValue)
+        }
+    }
+    
+    /// Public method to continuously update DOM targets based on current arousal
+    public func updateForCurrentArousal() {
+        // Update valid ranges based on current arousal
+        updateValidRangesForCurrentArousal()
+        
+        // Update absolute values based on normalized positions and new ranges
+        updateAbsoluteValuesFromNormalizedPositions()
+    }
+    
+    /// Legacy method - kept for backwards compatibility but not used in the new system
     private func setInitialDOMValues(arousal: CGFloat) {
-        // Initialize DOMs to mid-point of their range for initialArousal
-        self.currentDiscriminabilityFactor = calculateInitialDOMValue(for: .discriminatoryLoad, arousal: arousal)
-        self.currentMeanBallSpeed = calculateInitialDOMValue(for: .meanBallSpeed, arousal: arousal)
-        self.currentBallSpeedSD = calculateInitialDOMValue(for: .ballSpeedSD, arousal: arousal)
-        self.currentResponseTime = TimeInterval(calculateInitialDOMValue(for: .responseTime, arousal: arousal))
-        self.currentTargetCount = Int(round(calculateInitialDOMValue(for: .targetCount, arousal: arousal)))
+        // This method is now a no-op as initialization is handled by 
+        // updateValidRangesForCurrentArousal and updateAbsoluteValuesFromNormalizedPositions
     }
 
     // MARK: - Public API
     func updateArousalLevel(_ arousal: CGFloat) {
+        let oldArousal = self.currentArousalLevel
         self.currentArousalLevel = max(0.0, min(1.0, arousal))
-        // Potentially log or react if arousal changes significantly, though DOM modulation handles continuous changes.
+        
+        // If arousal changed significantly, immediately update ranges and values
+        if abs(oldArousal - self.currentArousalLevel) > 0.001 {
+            updateForCurrentArousal()
+        }
     }
 
     func recordIdentificationPerformance(
@@ -174,11 +242,13 @@ class AdaptiveDifficultyManager {
         
         print("[ADM] Modulating DOMs. Initial Budget: \(String(format: "%.3f", remainingAdaptationSignalBudget)) from PerfScore: \(String(format: "%.3f", overallPerformanceScore))")
 
-
         // 2. Select DOM Hierarchy based on currentArousalLevel
         let hierarchy = currentArousalLevel >= config.arousalThresholdForKPIAndHierarchySwitch ?
                         config.domHierarchy_HighArousal :
                         config.domHierarchy_LowMidArousal
+
+        // Ensure valid ranges are up-to-date before modulation
+        updateValidRangesForCurrentArousal()
 
         // 3. Iterate through the hierarchy
         for domTargetType in hierarchy {
@@ -187,8 +257,8 @@ class AdaptiveDifficultyManager {
                 break
             }
 
-            // A. Get current state and arousal-gated range for this DOM Target
-            let currentActualValue = getCurrentValue(for: domTargetType)
+            // A. Get current normalized position and valid range for this DOM
+            let currentNormalizedPosition = normalizedPositions[domTargetType] ?? 0.5
             let arousalGated_Easiest = getArousalGatedEasiestSetting(for: domTargetType, currentArousal: currentArousalLevel)
             let arousalGated_Hardest = getArousalGatedHardestSetting(for: domTargetType, currentArousal: currentArousalLevel)
 
@@ -198,56 +268,31 @@ class AdaptiveDifficultyManager {
                 continue
             }
 
-            // B. Convert currentActualValue to a Normalized Position (0.0 at Easiest, 1.0 at Hardest)
-            var currentNormalizedPosition = (currentActualValue - arousalGated_Easiest) / (arousalGated_Hardest - arousalGated_Easiest)
-            currentNormalizedPosition = max(0.0, min(1.0, currentNormalizedPosition)) // Clamp due to potential float inaccuracies or prior clamping
-
-            // C. Determine Desired Normalized Position based on Budget
+            // B. Determine Desired Normalized Position based on Budget
             let desiredNormalizedPositionAttempt = currentNormalizedPosition + remainingAdaptationSignalBudget
             
-            // D. Calculate Actual Achievable Normalized Position and "Spent" Budget
+            // C. Calculate Actual Achievable Normalized Position and "Spent" Budget
             let achievedNormalizedPosition = max(0.0, min(1.0, desiredNormalizedPositionAttempt))
             
             let signalSpentByThisDOM = achievedNormalizedPosition - currentNormalizedPosition
             
-            // E. Update remainingAdaptationSignalBudget
+            // D. Update remainingAdaptationSignalBudget
             remainingAdaptationSignalBudget -= signalSpentByThisDOM
 
-            // F. Convert achievedNormalizedPosition back to a raw target value for this DOM
-            var targetRawValue = arousalGated_Easiest + (arousalGated_Hardest - arousalGated_Easiest) * achievedNormalizedPosition
-
-            // G. Apply Smoothing and Set Value (Handle Integers)
-            let smoothingFactor = config.domSmoothingFactors[domTargetType] ?? 0.1 // Default smoothing
-
-            let smoothedNewValue: CGFloat
-            if domTargetType == .targetCount {
-                let currentActualIntValueAsFloat = CGFloat(currentTargetCount) // Use the precise current float value for smoothing if available, or the int casted
-                let smoothedFloatValue = currentActualIntValueAsFloat + (targetRawValue - currentActualIntValueAsFloat) * smoothingFactor
-                
-                var finalIntValue = Int(round(smoothedFloatValue))
-                
-                // Clamp to integer representation of arousal-gated limits
-                // Ensure correct clamping when easiest > hardest (e.g. target count at high arousal)
-                let intEasiest = Int(round(arousalGated_Easiest))
-                let intHardest = Int(round(arousalGated_Hardest))
-                
-                if intEasiest <= intHardest {
-                    finalIntValue = max(intEasiest, min(intHardest, finalIntValue))
-                } else { // Easiest is numerically greater than hardest (e.g. target count 4 easy, 2 hard)
-                    finalIntValue = max(intHardest, min(intEasiest, finalIntValue))
-                }
-                setCurrentValue(for: domTargetType, rawValue: CGFloat(finalIntValue))
-                smoothedNewValue = CGFloat(finalIntValue) // For logging
-            } else {
-                let smoothedFloatValue = currentActualValue + (targetRawValue - currentActualValue) * smoothingFactor
-                // Clamp to the float representation of arousal-gated limits
-                let finalClampedValue = max(min(arousalGated_Easiest, arousalGated_Hardest), min(max(arousalGated_Easiest, arousalGated_Hardest), smoothedFloatValue))
-                setCurrentValue(for: domTargetType, rawValue: finalClampedValue)
-                smoothedNewValue = finalClampedValue // For logging
-            }
+            // E. Update the normalized position with smoothing
+            let normalizedSmoothing = config.domSmoothingFactors[domTargetType] ?? 0.1
+            let smoothedNormalizedPosition = currentNormalizedPosition + (achievedNormalizedPosition - currentNormalizedPosition) * normalizedSmoothing
             
-            print("[ADM] Modulated \(domTargetType): Budget=\(String(format: "%.3f", remainingAdaptationSignalBudget + signalSpentByThisDOM)) -> Spent=\(String(format: "%.3f", signalSpentByThisDOM)) -> Rem=\(String(format: "%.3f", remainingAdaptationSignalBudget)). NormPos: \(String(format: "%.2f", currentNormalizedPosition)) -> AchievedNorm: \(String(format: "%.2f", achievedNormalizedPosition)). RawVal: \(String(format: "%.2f", currentActualValue)) -> TargetRaw: \(String(format: "%.2f", targetRawValue)) -> Smoothed: \(String(format: "%.2f", smoothedNewValue))")
+            // Store the updated normalized position
+            normalizedPositions[domTargetType] = smoothedNormalizedPosition
+            
+            // F. Calculate and set the absolute value based on the new normalized position
+            let absoluteValue = normalizedToAbsoluteValue(normalizedValue: smoothedNormalizedPosition, for: domTargetType)
+            setCurrentValue(for: domTargetType, rawValue: absoluteValue)
+            
+            print("[ADM] Modulated \(domTargetType): Budget=\(String(format: "%.3f", remainingAdaptationSignalBudget + signalSpentByThisDOM)) -> Spent=\(String(format: "%.3f", signalSpentByThisDOM)) -> Rem=\(String(format: "%.3f", remainingAdaptationSignalBudget)). NormPos: \(String(format: "%.2f", currentNormalizedPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedNormalizedPosition)) -> AbsVal: \(String(format: "%.2f", absoluteValue))")
         }
+        
         if abs(remainingAdaptationSignalBudget) > 0.001 {
              print("[ADM] Modulation complete. Unspent budget: \(String(format: "%.4f", remainingAdaptationSignalBudget))")
         }
