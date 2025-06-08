@@ -178,16 +178,16 @@ struct GameConfiguration {
     let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.0
     
     // Mean Ball Speed (lower is easier)
-    let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 50.0
-    let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 350.0
-    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 900.0
-    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1400.0
+    let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 75.0
+    let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 300.0
+    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 850.0
+    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1300.0
     
     // Ball Speed Standard Deviation (lower is easier)
     let ballSpeedSD_MinArousal_EasiestSetting: CGFloat = 0.0
     let ballSpeedSD_MinArousal_HardestSetting: CGFloat = 75.0
-    let ballSpeedSD_MaxArousal_EasiestSetting: CGFloat = 150.0
-    let ballSpeedSD_MaxArousal_HardestSetting: CGFloat = 300.0
+    let ballSpeedSD_MaxArousal_EasiestSetting: CGFloat = 100.0
+    let ballSpeedSD_MaxArousal_HardestSetting: CGFloat = 250.0
     
     // Response Time for ID phase (higher is easier - more time to respond)
     let responseTime_MinArousal_EasiestSetting: TimeInterval = 8.0

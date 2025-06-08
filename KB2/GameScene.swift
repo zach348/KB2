@@ -1120,6 +1120,30 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     }
     
     //====================================================================================================
+    // MARK: - SPEED PARAMETER MANAGEMENT
+    //====================================================================================================
+    // Dedicated method to update speed parameters from ADM
+    private func updateSpeedParametersFromADM() {
+        // Skip speed updates if not in tracking or identifying
+        guard currentState == .tracking || currentState == .identifying else { return }
+        
+        // Get current speed values from ADM
+        let meanSpeedFromADM = self.adaptiveDifficultyManager?.currentMeanBallSpeed ??
+                               (gameConfiguration.meanBallSpeed_MinArousal_EasiestSetting +
+                                (gameConfiguration.meanBallSpeed_MinArousal_HardestSetting - gameConfiguration.meanBallSpeed_MinArousal_EasiestSetting) * 0.5)
+        
+        let speedSDFromADM = self.adaptiveDifficultyManager?.currentBallSpeedSD ??
+                             (gameConfiguration.ballSpeedSD_MinArousal_EasiestSetting +
+                              (gameConfiguration.ballSpeedSD_MinArousal_HardestSetting - gameConfiguration.ballSpeedSD_MinArousal_EasiestSetting) * 0.5)
+        
+        // Update motion settings with ADM values
+        self.motionSettings.targetMeanSpeed = meanSpeedFromADM
+        self.motionSettings.targetSpeedSD = speedSDFromADM
+        
+        print("GameScene: Updated speeds from ADM - Mean: \(String(format: "%.1f", meanSpeedFromADM)), SD: \(String(format: "%.1f", speedSDFromADM))")
+    }
+    
+    //====================================================================================================
     // MARK: - AROUSAL MANAGEMENT
     //====================================================================================================
     // --- Arousal Handling ---
@@ -1179,10 +1203,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 normalizedTrackingArousal = (clampedTrackingArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
             }
 
-            let speedRange = gameConfiguration.maxTargetSpeedAtTrackingThreshold - gameConfiguration.minTargetSpeedAtTrackingThreshold
-            motionSettings.targetMeanSpeed = gameConfiguration.minTargetSpeedAtTrackingThreshold + (speedRange * normalizedTrackingArousal)
-            let sdRange = gameConfiguration.maxTargetSpeedSDAtTrackingThreshold - gameConfiguration.minTargetSpeedSDAtTrackingThreshold
-            motionSettings.targetSpeedSD = gameConfiguration.minTargetSpeedSDAtTrackingThreshold + (sdRange * normalizedTrackingArousal)
+            // Speed parameters are now managed by ADM via updateSpeedParametersFromADM()
+            // which is called in the throttled motion control loop
             let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
             let calculatedTargetCount = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal) - (targetCountRange * normalizedTrackingArousal)
             // let oldTargetCount = self.currentTargetCount // Keep if needed for other logic
@@ -2183,6 +2205,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             
             // Recalculate colors based on the updated DF from ADM
             self.updateColorsFromCurrentDiscriminabilityFactor()
+            
+            // Update speed parameters from ADM
+            self.updateSpeedParametersFromADM()
             
             // If we're in tracking state, update ball appearances to reflect any DF changes
             if self.currentState == .tracking {
