@@ -558,7 +558,7 @@ class DataLogger {
         events.append(event)
         addToStreamingBuffer(event)
         
-        print("DATA_LOG: Task state snapshot - Arousal: \(String(format: "%.2f", currentArousalLevel)), Targets: \(targetCount), Speed: \(String(format: "%.1f", targetMeanSpeed))")
+        print("DATA_LOG: Task state snapshot - Arousal: \(String(format: "%.2f", currentArousalLevel)), Targets: \(targetCount), Speed: \(String(format: "%.1f", targetMeanSpeed))", "Active TC: \(activeTargetColor), DC: \(activeDistractorColor)")
     }
     
     /// Log session context information for comprehensive session analysis

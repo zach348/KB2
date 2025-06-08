@@ -127,7 +127,7 @@ class StartScreen: SKScene {
     
     private func setupProfileSelector(in view: SKView) {
         // Create the segmented control - moved up
-        segmentedControl = UISegmentedControl(items: ["Smooth", "Dynamic", "Challenge", "Variable"])
+        segmentedControl = UISegmentedControl(items: ["Smooth", "Dynamic", "Challenge", "Variable", "Manual"])
         segmentedControl.frame = CGRect(x: view.bounds.width * 0.15,
                                        y: view.bounds.height * 0.45, // Moved up
                                        width: view.bounds.width * 0.7,
@@ -168,6 +168,8 @@ class StartScreen: SKScene {
             selectedProfile = .challenge
         case 3:
             selectedProfile = .variable
+        case 4:
+            selectedProfile = .manual // "Manual"
         default:
             selectedProfile = .fluctuating // Default to "Dynamic"
         }

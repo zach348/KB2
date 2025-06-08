@@ -40,6 +40,7 @@ enum SessionProfile {
     case fluctuating       // Includes random small fluctuations
     case challenge         // Includes defined challenge phases
     case variable          // Unpredictable with both fluctuations and challenges
+    case manual            // No automatic arousal modulation, manual control only
 }
 
 struct GameConfiguration {

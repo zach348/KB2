@@ -333,6 +333,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             
             // Debug the session profile type with updated labels
             switch sessionProfile {
+            case .manual:
+                print("DIAGNOSITC: Using MANUAL session profile")
             case .standard:
                 print("DIAGNOSTIC: Using SMOOTH session profile - smooth curve, no challenges")
             case .fluctuating:
@@ -811,7 +813,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 averageTapAccuracy: averageTapAccuracyKPI,
                 actualTargetsToFindInRound: actualTargetsInCompletedRound
             )
+            
+            // Explicitly force a DOM update after recording performance
+            // This ensures that changes to normalized positions are immediately
+            // reflected in the absolute DOM values before the next gameplay phase
+            adm.updateForCurrentArousal()
+            
             print("GameScene: Sent KPIs to ADM. Success: \(taskSuccessKPI), TF/TTF: \(tfTtfRatioKPI), RT: \(reactionTimeKPI), RD: \(responseDurationKPI), Acc: \(averageTapAccuracyKPI)")
+            print("GameScene: Forced DOM update after identification phase")
         }
         // END ADDED KPI Collection
 
@@ -1058,6 +1067,59 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     }
 
     //====================================================================================================
+    // MARK: - COLOR & DISCRIMINABILITY MANAGEMENT
+    //====================================================================================================
+    // Dedicated method to update colors based on current discriminability factor
+    private func updateColorsFromCurrentDiscriminabilityFactor() {
+        // Skip color updates if not in tracking or identifying
+        guard currentState == .tracking || currentState == .identifying else { return }
+        
+        // 1. Calculate normalized arousal value for tracking state
+        let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
+        var normalizedTrackingArousal: CGFloat = 0.0
+        if trackingRange > 0 {
+            let clampedTrackingArousal = max(gameConfiguration.trackingArousalThresholdLow, min(currentArousalLevel, gameConfiguration.trackingArousalThresholdHigh))
+            normalizedTrackingArousal = (clampedTrackingArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange
+        }
+        
+        // 2. Calculate arousal-driven base target color
+        let baseTargetColor = interpolateColor(
+            from: gameConfiguration.targetColor_LowArousal,
+            to: gameConfiguration.targetColor_HighArousal,
+            t: normalizedTrackingArousal
+        )
+        self.activeTargetColor = baseTargetColor
+        
+        // 3. Calculate arousal-driven base for "maximally distinct" distractor color
+        let baseMaxDistinctDistractorColor = interpolateColor(
+            from: gameConfiguration.distractorColor_LowArousal,
+            to: gameConfiguration.distractorColor_HighArousal,
+            t: normalizedTrackingArousal
+        )
+        
+        // 4. Get the currentDiscriminabilityFactor from ADM
+        let dfFromADM = self.adaptiveDifficultyManager?.currentDiscriminabilityFactor ??
+                        (gameConfiguration.discriminabilityFactor_MinArousal_EasiestSetting +
+                         (gameConfiguration.discriminabilityFactor_MinArousal_HardestSetting - gameConfiguration.discriminabilityFactor_MinArousal_EasiestSetting) * 0.5)
+        
+        // 5. Calculate the activeDistractorColor using the DF from ADM
+        self.activeDistractorColor = interpolateColor(
+            from: self.activeTargetColor,
+            to: baseMaxDistinctDistractorColor,
+            t: dfFromADM
+        )
+        
+        print("GameScene: Updated colors - DF: \(String(format: "%.3f", dfFromADM))")
+        
+        // 6. Update ball appearances if in tracking state
+        if currentState == .tracking { 
+            for ball in balls { 
+                ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor) 
+            } 
+        }
+    }
+    
+    //====================================================================================================
     // MARK: - AROUSAL MANAGEMENT
     //====================================================================================================
     // --- Arousal Handling ---
@@ -1140,35 +1202,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             currentMaxIDInterval = gameConfiguration.idIntervalMax_LowArousal + (idMaxRange * normalizedTrackingArousal)
             if currentMinIDInterval > currentMaxIDInterval { currentMinIDInterval = currentMaxIDInterval }
 
-            // MODIFIED: Color logic to use AdaptiveDifficultyManager for discriminabilityFactor
-            // 1. Calculate arousal-driven base target color (ASM)
-            let baseTargetColor = interpolateColor(
-                from: gameConfiguration.targetColor_LowArousal,
-                to: gameConfiguration.targetColor_HighArousal,
-                t: normalizedTrackingArousal
-            )
-            self.activeTargetColor = baseTargetColor
-
-            // 2. Calculate arousal-driven base for "maximally distinct" distractor color (ASM)
-            let baseMaxDistinctDistractorColor = interpolateColor(
-                from: gameConfiguration.distractorColor_LowArousal,
-                to: gameConfiguration.distractorColor_HighArousal,
-                t: normalizedTrackingArousal
-            )
-
-            // 3. Get the currentDiscriminabilityFactor from ADM
-            //    Fallback to a mid-value if ADM not ready (should be ready after didMove)
-            let dfFromADM = self.adaptiveDifficultyManager?.currentDiscriminabilityFactor ??
-                            (gameConfiguration.discriminabilityFactor_MinArousal_EasiestSetting +
-                             (gameConfiguration.discriminabilityFactor_MinArousal_HardestSetting - gameConfiguration.discriminabilityFactor_MinArousal_EasiestSetting) * 0.5)
-
-            // 4. Calculate the activeDistractorColor using the DF from ADM
-            self.activeDistractorColor = interpolateColor(
-                from: self.activeTargetColor,
-                to: baseMaxDistinctDistractorColor,
-                t: dfFromADM
-            )
-            // END MODIFIED Color Logic
+            // Update the colors based on the current arousal and DF
+            updateColorsFromCurrentDiscriminabilityFactor()
             
             if currentState == .tracking { for ball in balls { ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor) } }
             needsHapticPatternUpdate = false
@@ -1820,6 +1855,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         var modifiedArousal = baseArousal
         
         switch sessionProfile {
+        case .manual:
+            break
         case .standard:
             // Standard curve, no modifications
             return baseArousal
@@ -1935,6 +1972,22 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         
         // Update the timestamp for next check
         lastArousalUpdateTime = currentTime
+        
+        // For manual profile, only update session progress and check completion
+        if sessionProfile == .manual {
+            let elapsedTime = currentTime - sessionStartTime
+            let progress = min(1.0, elapsedTime / sessionDuration)
+            
+            // Check for session completion
+            if progress >= 1.0 && !isSessionCompleted {
+                print("DEBUG: Manual profile session completion detected.")
+                handleSessionCompletion()
+            }
+            
+            // Update UI for session progress only, no arousal modulation
+            updateUI()
+            return
+        }
         
         let elapsedTime = currentTime - sessionStartTime
         let progress = min(1.0, elapsedTime / sessionDuration)
@@ -2128,6 +2181,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Continuously update DOM targets based on current arousal
             adm.updateForCurrentArousal()
             
+            // Recalculate colors based on the updated DF from ADM
+            self.updateColorsFromCurrentDiscriminabilityFactor()
+            
             // If we're in tracking state, update ball appearances to reflect any DF changes
             if self.currentState == .tracking {
                 for ball in self.balls {
@@ -2221,6 +2277,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         challengePhases.removeAll()
         
         switch sessionProfile {
+        case .manual:
+            break
         case .standard:
             // Standard profile has no challenges or fluctuations
             break

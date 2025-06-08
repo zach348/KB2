@@ -296,6 +296,10 @@ class AdaptiveDifficultyManager {
         if abs(remainingAdaptationSignalBudget) > 0.001 {
              print("[ADM] Modulation complete. Unspent budget: \(String(format: "%.4f", remainingAdaptationSignalBudget))")
         }
+        
+        // After updating the normalized positions, immediately convert them to absolute values
+        // This ensures changes take effect without waiting for arousal changes
+        updateAbsoluteValuesFromNormalizedPositions()
     }
 
     // MARK: - Helper Functions for DOM Target Management
