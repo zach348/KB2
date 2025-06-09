@@ -17,7 +17,7 @@ struct MotionSettings {
     // Adjustment factors (how aggressively to correct)
     var meanCorrectionFactorUp: CGFloat = 1.025  // Factor to increase speed towards mean
     var meanCorrectionFactorDown: CGFloat = 0.99 // Factor to decrease speed towards mean
-    var sdCorrectionFactorExpand: CGFloat = 1.01 // Factor to increase speed variance
+    var sdCorrectionFactorExpand: CGFloat = 1.005 // Factor to increase speed variance
     var sdCorrectionFactorContract: CGFloat = 0.975// Factor to decrease speed variance
     var rangeCorrectionFactorUp: CGFloat = 1.01  // Factor to nudge speed up from min
     var rangeCorrectionFactorDown: CGFloat = 0.96// Factor to nudge speed down from max

@@ -249,12 +249,12 @@ struct GameConfiguration {
     // --- Adaptive System Tuning Parameters ---
     let initialStartupArousalForDefaults: CGFloat = 0.5
     let domSmoothingFactors: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 0.30,  // Increased from 0.15 for more responsive color changes
-        .meanBallSpeed: 0.25,       // Increased from 0.10 for more noticeable speed changes
-        .ballSpeedSD: 0.20,         // Increased from 0.08 for more dynamic speed variation
-        .responseTime: 0.30,        // Increased from 0.12 for more responsive time adjustments
-        .targetCount: 0.40          // Increased from 0.20 for quicker target count changes
+        .discriminatoryLoad: 0.3,  // Increased from 0.15 for more responsive color changes
+        .meanBallSpeed: 0.15,       // Increased from 0.10 for more noticeable speed changes
+        .ballSpeedSD: 0.1,         // Increased from 0.08 for more dynamic speed variation
+        .responseTime: 0.2,        // Increased from 0.12 for more responsive time adjustments
+        .targetCount: 0.3          // Increased from 0.20 for quicker target count changes
     ]
-    let adaptationSignalSensitivity: CGFloat = 1.6  // Increased from 1.0 to amplify performance responses
+    let adaptationSignalSensitivity: CGFloat = 1.5  // Increased from 1.0 to amplify performance responses
     let adaptationSignalDeadZone: CGFloat = 0.02     // Reduced from 0.05 to react to smaller performance changes
 }
