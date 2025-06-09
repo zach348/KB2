@@ -121,7 +121,7 @@ class GameSceneTests: XCTestCase {
         // Setup scene with session mode enabled
         gameScene.sessionMode = true
         gameScene.sessionDuration = 300 // 5 minutes
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         
         // Trigger initialization
         gameScene.didMove(to: mockView)
@@ -129,7 +129,7 @@ class GameSceneTests: XCTestCase {
         // Verify initial state
         XCTAssertTrue(gameScene.sessionMode)
         XCTAssertEqual(gameScene.sessionDuration, 300)
-        XCTAssertEqual(gameScene.currentArousalLevel, 0.95, accuracy: 0.01)
+        XCTAssertEqual(gameScene.currentArousalLevel, 1.0, accuracy: 0.01)
     }
 
     func testArousalPowerCurve() {
@@ -137,7 +137,7 @@ class GameSceneTests: XCTestCase {
         gameScene.didMove(to: mockView)
         
         // Manually set initial arousal level for consistent testing
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         let breathingThreshold = gameScene.gameConfiguration.trackingArousalThresholdLow
         
         // Test at different progress points
@@ -155,7 +155,7 @@ class GameSceneTests: XCTestCase {
         // Setup scene with session mode
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10 // Short duration for testing
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         
         // Trigger initialization which sets sessionStartTime
         gameScene.didMove(to: mockView)

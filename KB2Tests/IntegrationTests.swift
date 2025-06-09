@@ -26,14 +26,14 @@ class IntegrationTests: XCTestCase {
         // Setup session mode
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         
         // Reset the scene
         gameScene.willMove(from: mockView)
         gameScene = GameScene(size: TestConstants.screenSize)
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         gameScene.didMove(to: mockView)
         
         // Record initial target count
@@ -49,7 +49,7 @@ class IntegrationTests: XCTestCase {
         }
         
         // Verify arousal has decreased
-        XCTAssertLessThan(gameScene.currentArousalLevel, 0.95)
+        XCTAssertLessThan(gameScene.currentArousalLevel, 1.0)
         
         // Verify target count has increased as arousal decreases
         XCTAssertGreaterThanOrEqual(gameScene.currentTargetCount, initialTargetCount)
@@ -115,14 +115,14 @@ class IntegrationTests: XCTestCase {
         // Setup session mode with power curve
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         
         // Reset the scene to apply session mode and initialize AudioManager correctly
         gameScene.willMove(from: mockView) // Clean up old scene
         gameScene = GameScene(size: TestConstants.screenSize) // Create new instance
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         gameScene.didMove(to: mockView) // Initialize new scene and its AudioManager
         
         // Record initial values
@@ -163,4 +163,4 @@ class IntegrationTests: XCTestCase {
             XCTAssertEqual(gameScene.currentState, .tracking)
         }
     }
-} 
+}

@@ -25,7 +25,7 @@ class SessionPatternTests: XCTestCase {
         // Test Standard profile
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         gameScene.sessionProfile = .standard
         
         gameScene.didMove(to: mockView)
@@ -38,7 +38,7 @@ class SessionPatternTests: XCTestCase {
         gameScene = GameScene(size: TestConstants.screenSize)
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         gameScene.sessionProfile = .challenge
         
         gameScene.didMove(to: mockView)
@@ -53,7 +53,7 @@ class SessionPatternTests: XCTestCase {
         // Setup session with fluctuating profile
         gameScene.sessionMode = true
         gameScene.sessionDuration = 100 // Longer duration for stable testing
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         gameScene.sessionProfile = .fluctuating
         
         gameScene.didMove(to: mockView)
@@ -99,7 +99,7 @@ class SessionPatternTests: XCTestCase {
         // Setup session with challenge profile
         gameScene.sessionMode = true
         gameScene.sessionDuration = 300 // 5 minutes
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         gameScene.sessionProfile = .challenge
         
         gameScene.didMove(to: mockView)
@@ -221,7 +221,7 @@ class SessionPatternTests: XCTestCase {
         // Setup session with variable profile that has both fluctuations and challenges
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         gameScene.sessionProfile = .variable
         
         gameScene.didMove(to: mockView)
@@ -296,7 +296,7 @@ class SessionPatternTests: XCTestCase {
         // Setup session
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10
-        gameScene.initialArousalLevel = 0.95
+        gameScene.initialArousalLevel = 1.0
         
         // Initialize game scene 
         gameScene.didMove(to: mockView)
@@ -348,4 +348,4 @@ class SessionPatternTests: XCTestCase {
             "Arousal after transition point should be below breathing threshold"
         )
     }
-} 
+}
