@@ -193,16 +193,18 @@ class ADMColorPipelineTests: XCTestCase {
         print("Initial DF: \(initialDF)")
         
         // When - Record mediocre performance that should land in dead zone (0.45-0.55)
-        // Targeting a score of approximately 0.5
+        // Targeting a score of exactly 0.5
+        // taskSuccess = true gives 0.40, tfTtfRatio = 0.5 gives 0.10, total = 0.50
+        // Set other metrics to worst values (contributing 0.0)
         adm.recordIdentificationPerformance(
             taskSuccess: true,                     // 1.0 * 0.40 = 0.40
             tfTtfRatio: 0.5,                      // 0.5 * 0.20 = 0.10
-            reactionTime: 0.975,                  // Midpoint between best and worst -> 0.5 * 0.15 = 0.075
-            responseDuration: 1.8,                // 0.6s per target (midpoint) -> 0.5 * 0.15 = 0.075
-            averageTapAccuracy: 112.5,            // Midpoint between best and worst -> 0.5 * 0.10 = 0.05
+            reactionTime: 2.0,                    // Worse than worst (1.75s) -> 0.0
+            responseDuration: 10.0,               // Much worse than worst -> 0.0
+            averageTapAccuracy: 500.0,            // Much worse than worst (225) -> 0.0
             actualTargetsToFindInRound: 3
         )
-        print("Expected performance score: ~0.5 (in 0.45-0.55 dead zone)")
+        print("Expected performance score: 0.50 (in 0.45-0.55 dead zone)")
         
         // Then
         let newDF = adm.currentDiscriminabilityFactor
