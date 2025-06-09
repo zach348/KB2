@@ -92,7 +92,7 @@ private var audioManager: AudioManager! // ADDED
 var sessionMode: Bool = false
 var sessionDuration: TimeInterval = 0
 var sessionStartTime: TimeInterval = 0
-var initialArousalLevel: CGFloat = 0.95
+var initialArousalLevel: CGFloat = 1.0
 var sessionProfile: SessionProfile = .standard // Default profile
 var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
 var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point

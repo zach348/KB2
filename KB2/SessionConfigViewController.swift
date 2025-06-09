@@ -191,7 +191,7 @@ class SessionConfigViewController: UIViewController {
         // Configure for session mode
         scene.sessionMode = true
         scene.sessionDuration = duration
-        scene.initialArousalLevel = 0.95 // Fixed high starting arousal
+        scene.initialArousalLevel = 1.0 // Fixed high starting arousal
         
         // Set session profile based on segment selection
         switch sessionProfileSegment.selectedSegmentIndex {
@@ -215,4 +215,4 @@ class SessionConfigViewController: UIViewController {
         // Present the scene
         skView.presentScene(scene)
     }
-} 
+}

@@ -130,7 +130,7 @@ struct GameConfiguration {
     //====================================================================================================
     let usePreciseAudio: Bool = true // Feature flag for PreciseAudioPulser
     let minAudioFrequency: Float = 75.0 // Min frequency for rhythmic audio
-    let maxAudioFrequency: Float = 525.0 // Max frequency for rhythmic audio
+    let maxAudioFrequency: Float = 350.0 // Max frequency for rhythmic audio
     let audioMinAmplitude: Float = 0.15   // Min amplitude for audio pulse
     let audioMaxAmplitude: Float = 0.325   // Max amplitude for audio pulse
     let audioPulseRateFactor: Double = 0.8 // Factor to derive pulser rate from timer frequency
@@ -178,16 +178,16 @@ struct GameConfiguration {
     let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.0
     
     // Mean Ball Speed (lower is easier)
-    let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 50.0
-    let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 300.0
+    let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 25.0
+    let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 125.0
     let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 750.0
     let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1150.0
     
     // Ball Speed Standard Deviation (lower is easier)
     let ballSpeedSD_MinArousal_EasiestSetting: CGFloat = 0.0
-    let ballSpeedSD_MinArousal_HardestSetting: CGFloat = 75.0
-    let ballSpeedSD_MaxArousal_EasiestSetting: CGFloat = 100.0
-    let ballSpeedSD_MaxArousal_HardestSetting: CGFloat = 250.0
+    let ballSpeedSD_MinArousal_HardestSetting: CGFloat = 25.0
+    let ballSpeedSD_MaxArousal_EasiestSetting: CGFloat = 75.0
+    let ballSpeedSD_MaxArousal_HardestSetting: CGFloat = 200.0
     
     // Response Time for ID phase (higher is easier - more time to respond)
     let responseTime_MinArousal_EasiestSetting: TimeInterval = 8.0
@@ -249,12 +249,12 @@ struct GameConfiguration {
     // --- Adaptive System Tuning Parameters ---
     let initialStartupArousalForDefaults: CGFloat = 0.5
     let domSmoothingFactors: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 0.35,  // Increased from 0.15 for more responsive color changes
-        .meanBallSpeed: 0.30,       // Increased from 0.10 for more noticeable speed changes
-        .ballSpeedSD: 0.25,         // Increased from 0.08 for more dynamic speed variation
+        .discriminatoryLoad: 0.30,  // Increased from 0.15 for more responsive color changes
+        .meanBallSpeed: 0.25,       // Increased from 0.10 for more noticeable speed changes
+        .ballSpeedSD: 0.20,         // Increased from 0.08 for more dynamic speed variation
         .responseTime: 0.30,        // Increased from 0.12 for more responsive time adjustments
         .targetCount: 0.40          // Increased from 0.20 for quicker target count changes
     ]
-    let adaptationSignalSensitivity: CGFloat = 1.75  // Increased from 1.0 to amplify performance responses
+    let adaptationSignalSensitivity: CGFloat = 1.6  // Increased from 1.0 to amplify performance responses
     let adaptationSignalDeadZone: CGFloat = 0.02     // Reduced from 0.05 to react to smaller performance changes
 }

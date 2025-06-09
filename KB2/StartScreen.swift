@@ -7,7 +7,7 @@ class StartScreen: SKScene {
     private let minSessionMinutes: Double = 5.0
     private let maxSessionMinutes: Double = 30.0
     private let initialSessionMinutes: Double = 15.0
-    private let defaultArousalLevel: CGFloat = 0.95
+    private let defaultArousalLevel: CGFloat = 1.0
     
     // UI Elements
     private var titleLabel: SKLabelNode!
@@ -192,7 +192,7 @@ class StartScreen: SKScene {
     
     private func handleStartButtonTap() {
         // Visual feedback
-        let scaleDown = SKAction.scale(to: 0.95, duration: 0.1)
+        let scaleDown = SKAction.scale(to: 0.95, duration: 0.1) // This is an animation scale, not related to arousal
         let scaleUp = SKAction.scale(to: 1.0, duration: 0.1)
         let sequence = SKAction.sequence([scaleDown, scaleUp])
         
