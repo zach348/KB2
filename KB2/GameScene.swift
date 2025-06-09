@@ -353,6 +353,10 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         }
         
         updateParametersFromArousal() // This will now also update audioManager
+        
+        // ADDED: Update target count from ADM before creating balls
+        updateTargetCountFromADM()
+        
         createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
         setupTimer();
@@ -785,25 +789,54 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
             var totalAccuracyDistance: CGFloat = 0
             var validAccuracyTaps: Int = 0
+            
             if !lastPerformance.tapEvents.isEmpty {
                 for tapEvent in lastPerformance.tapEvents {
-                    if let tappedBallName = tapEvent.tappedElementID, let tappedBallNode = self.balls.first(where: { $0.name == tappedBallName }) {
-                        totalAccuracyDistance += CGPointDistance(from: tappedBallNode.position, to: tapEvent.tapLocation)
-                        validAccuracyTaps += 1
-                    } else if !self.balls.isEmpty { // Tap missed a ball
-                        var minDistanceToBall = CGFloat.greatestFiniteMagnitude
-                        for ballNode in self.balls { // Iterate over scene's balls
-                            let distance = CGPointDistance(from: ballNode.position, to: tapEvent.tapLocation)
-                            if distance < minDistanceToBall {
-                                minDistanceToBall = distance
-                            }
-                        }
-                        totalAccuracyDistance += minDistanceToBall
-                        validAccuracyTaps += 1
+            // Check if tap hit a specific ball
+            if let tappedBallName = tapEvent.tappedElementID {
+                // Find the tapped ball by iterating through balls
+                var foundBall: Ball? = nil
+                for ball in self.balls {
+                    if ball.name == tappedBallName {
+                        foundBall = ball
+                        break
                     }
                 }
+                
+                // If we found the ball, calculate distance
+                if let tappedBallNode = foundBall {
+                    let ballPos = tappedBallNode.position
+                    let tapPos = tapEvent.tapLocation
+                    let distance = CGPointDistance(from: ballPos, to: tapPos)
+                    totalAccuracyDistance += distance
+                    validAccuracyTaps += 1
+                }
+            } else if !self.balls.isEmpty {
+                // Tap missed all balls - find distance to nearest ball
+                var minDistanceToBall = CGFloat.greatestFiniteMagnitude
+                
+                for ballNode in self.balls {
+                    let ballPos = ballNode.position
+                    let tapPos = tapEvent.tapLocation
+                    let distance = CGPointDistance(from: ballPos, to: tapPos)
+                    
+                    if distance < minDistanceToBall {
+                        minDistanceToBall = distance
+                    }
+                }
+                
+                totalAccuracyDistance += minDistanceToBall
+                validAccuracyTaps += 1
             }
-            let averageTapAccuracyKPI = validAccuracyTaps > 0 ? totalAccuracyDistance / CGFloat(validAccuracyTaps) : gameConfiguration.tapAccuracy_WorstExpected_Points
+                }
+            }
+            
+            let averageTapAccuracyKPI: CGFloat
+            if validAccuracyTaps > 0 {
+                averageTapAccuracyKPI = totalAccuracyDistance / CGFloat(validAccuracyTaps)
+            } else {
+                averageTapAccuracyKPI = gameConfiguration.tapAccuracy_WorstExpected_Points
+            }
 
             adm.recordIdentificationPerformance(
                 taskSuccess: taskSuccessKPI,
@@ -1144,6 +1177,39 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     }
     
     //====================================================================================================
+    // MARK: - TARGET COUNT MANAGEMENT
+    //====================================================================================================
+    // Dedicated method to update target count from ADM
+    private func updateTargetCountFromADM() {
+        // Skip target count updates if not in tracking or identifying
+        guard currentState == .tracking || currentState == .identifying else { return }
+        
+        // Get current target count from ADM
+        let targetCountFromADM: Int
+        if let admTargetCount = self.adaptiveDifficultyManager?.currentTargetCount {
+            targetCountFromADM = admTargetCount
+        } else {
+            // Calculate fallback value
+            let easyCount = CGFloat(gameConfiguration.targetCount_MinArousal_EasiestSetting)
+            let hardCount = CGFloat(gameConfiguration.targetCount_MinArousal_HardestSetting)
+            let midpoint = easyCount + (hardCount - easyCount) * 0.5
+            targetCountFromADM = Int(midpoint)
+        }
+        
+        // Only update and reassign targets if the count has changed
+        if targetCountFromADM != self.currentTargetCount {
+            let oldCount = self.currentTargetCount
+            self.currentTargetCount = targetCountFromADM
+            print("GameScene: Updated target count from ADM - Old: \(oldCount), New: \(targetCountFromADM)")
+            
+            // Reassign targets with the new count (will flash if targets are added)
+            if currentState == .tracking && !isFlashSequenceRunning {
+                assignNewTargets()
+            }
+        }
+    }
+    
+    //====================================================================================================
     // MARK: - AROUSAL MANAGEMENT
     //====================================================================================================
     // --- Arousal Handling ---
@@ -1205,10 +1271,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
             // Speed parameters are now managed by ADM via updateSpeedParametersFromADM()
             // which is called in the throttled motion control loop
-            let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
-            let calculatedTargetCount = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal) - (targetCountRange * normalizedTrackingArousal)
-            // let oldTargetCount = self.currentTargetCount // Keep if needed for other logic
-            self.currentTargetCount = max(gameConfiguration.minTargetsAtHighTrackingArousal, min(gameConfiguration.maxTargetsAtLowTrackingArousal, Int(calculatedTargetCount.rounded())))
+            // Target count is also now managed by ADM via updateTargetCountFromADM()
 
             let idDurationRange = gameConfiguration.maxIdentificationDurationAtLowArousal - gameConfiguration.minIdentificationDurationAtHighArousal
             self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal - (idDurationRange * normalizedTrackingArousal)
@@ -2208,6 +2271,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             
             // Update speed parameters from ADM
             self.updateSpeedParametersFromADM()
+            
+            // Update target count from ADM
+            self.updateTargetCountFromADM()
             
             // If we're in tracking state, update ball appearances to reflect any DF changes
             if self.currentState == .tracking {

@@ -178,10 +178,10 @@ struct GameConfiguration {
     let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.0
     
     // Mean Ball Speed (lower is easier)
-    let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 75.0
+    let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 50.0
     let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 300.0
-    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 850.0
-    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1300.0
+    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 750.0
+    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1150.0
     
     // Ball Speed Standard Deviation (lower is easier)
     let ballSpeedSD_MinArousal_EasiestSetting: CGFloat = 0.0
@@ -193,7 +193,7 @@ struct GameConfiguration {
     let responseTime_MinArousal_EasiestSetting: TimeInterval = 8.0
     let responseTime_MinArousal_HardestSetting: TimeInterval = 4.0
     let responseTime_MaxArousal_EasiestSetting: TimeInterval = 1.5
-    let responseTime_MaxArousal_HardestSetting: TimeInterval = 0.5
+    let responseTime_MaxArousal_HardestSetting: TimeInterval = 0.75
     
     // --- Arousal Thresholds for DOM Scaling ---
     let arousalOperationalMinForDOMScaling: CGFloat = 0.35

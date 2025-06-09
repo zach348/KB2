@@ -50,8 +50,13 @@ class AdaptiveDifficultyManager {
         self.currentTargetCount = 0
         
         // Initialize normalized positions to middle of range (0.5)
+        // EXCEPT targetCount which starts at easiest (0.0)
         for domType in [DOMTargetType.discriminatoryLoad, .meanBallSpeed, .ballSpeedSD, .responseTime, .targetCount] {
-            normalizedPositions[domType] = 0.5
+            if domType == .targetCount {
+                normalizedPositions[domType] = 0.25 // Start at easier end of range
+            } else {
+                normalizedPositions[domType] = 0.5 // Others start at midpoint
+            }
         }
         
         // Initialize current valid ranges based on initial arousal
@@ -78,7 +83,6 @@ class AdaptiveDifficultyManager {
             currentValidRanges[domType] = (min: min(easiestSetting, hardestSetting), 
                                           max: max(easiestSetting, hardestSetting))
         }
-        print("ADM current DF: ",self.currentDiscriminabilityFactor)
     }
     
     /// Converts a normalized value (0-1) to an absolute value for a DOM target
@@ -107,6 +111,17 @@ class AdaptiveDifficultyManager {
         for (domType, normalizedPosition) in normalizedPositions {
             let absoluteValue = normalizedToAbsoluteValue(normalizedValue: normalizedPosition, for: domType)
             setCurrentValue(for: domType, rawValue: absoluteValue)
+            
+            // Diagnostic logging for target count
+            if domType == .targetCount {
+                let range = currentValidRanges[domType] ?? (min: 0, max: 0)
+                print("[ADM] TargetCount Update:")
+                print("  - Arousal: \(String(format: "%.3f", currentArousalLevel))")
+                print("  - Normalized Position: \(String(format: "%.3f", normalizedPosition))")
+                print("  - Valid Range: [\(String(format: "%.1f", range.min)) - \(String(format: "%.1f", range.max))]")
+                print("  - Absolute Value (pre-round): \(String(format: "%.3f", absoluteValue))")
+                print("  - Final Target Count: \(Int(round(absoluteValue)))")
+            }
         }
     }
     

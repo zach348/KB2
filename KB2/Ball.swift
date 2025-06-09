@@ -52,7 +52,6 @@ class Ball: SKShapeNode {
         self.strokeColor = color
          // When appearance is explicitly updated, it's not hidden
         self.isVisuallyHidden = false
-        print("target color: ", targetColor, " distractor color: ", distractorColor)
     }
 
     // --- Hiding/Revealing for Identification ---
