@@ -46,7 +46,7 @@ enum SessionProfile {
 struct GameConfiguration {
 
     // --- General ---
-    let numberOfBalls: Int = 10
+    let numberOfBalls: Int = 12
 
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
@@ -88,7 +88,7 @@ struct GameConfiguration {
     let distractorColor_HighArousal: SKColor = SKColor(red: 0.8, green: 0.6, blue: 0.2, alpha: 1.0) // Orange-Yellow
     // REMOVED: hiddenColor (will use activeDistractorColor)
     let flashColor: SKColor = .white // Color for flash animation
-    let flashSpeedFactor: CGFloat = 0.7 // Speed multiplier for flash iterations (0.7 = 30% faster)
+    let flashSpeedFactor: CGFloat = 0.85 // Speed multiplier for flash iterations (0.7 = 30% faster)
 
     // --- TODO: Add ranges/factors for predictability ---
 
