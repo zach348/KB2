@@ -2610,8 +2610,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
             // Dismiss the EMA view
             strongRootViewController.dismiss(animated: true) {
-                // Transition to StartScreen after dismissal is complete
-                self.transitionToStartScreenAfterEMA()
+                // Present the survey modal after EMA is dismissed
+                self.presentSurveyModal()
             }
         }
 
@@ -2662,6 +2662,58 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Agitation=\(Int(response.calmAgitationLevel)), Energy=\(Int(response.energyLevel))")
     }
 
+    private func presentSurveyModal() {
+        print("Presenting Survey Modal")
+        guard let view = self.view, let rootViewController = view.window?.rootViewController else {
+            print("ERROR: Could not get rootViewController to present survey modal.")
+            // Fallback: Directly transition to StartScreen if survey modal cannot be presented
+            transitionToStartScreenAfterEMA()
+            return
+        }
+        
+        // Create the survey view with completion handlers
+        let surveyView = SurveyView(
+            onConfirm: { [weak self, weak rootViewController] in
+                // User tapped "I'll help!"
+                // Open survey URL and dismiss the modal
+                self?.openSurveyURL()
+                rootViewController?.dismiss(animated: true) {
+                    self?.transitionToStartScreenAfterEMA()
+                }
+            },
+            onDecline: { [weak self, weak rootViewController] in
+                // User tapped "No thanks"
+                // Dismiss the modal and go back to start screen
+                rootViewController?.dismiss(animated: true) {
+                    self?.transitionToStartScreenAfterEMA()
+                }
+            }
+        )
+        
+        let hostingController = UIHostingController(rootView: surveyView)
+        hostingController.modalPresentationStyle = .fullScreen
+        hostingController.view.backgroundColor = .clear // Allow scene to be visible underneath
+        
+        // Ensure presentation is on main thread
+        if Thread.isMainThread {
+            rootViewController.present(hostingController, animated: true, completion: nil)
+        } else {
+            DispatchQueue.main.async {
+                rootViewController.present(hostingController, animated: true, completion: nil)
+            }
+        }
+    }
+    
+    private func openSurveyURL() {
+        let surveyURLString = "https://www.surveymonkey.com/r/HXFLWWG"
+        if let url = URL(string: surveyURLString) {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            print("Opening survey URL: \(surveyURLString)")
+        } else {
+            print("ERROR: Invalid survey URL")
+        }
+    }
+    
     private func transitionToStartScreenAfterEMA() {
         print("Transitioning to StartScreen after EMA")
         guard let view = self.view else {

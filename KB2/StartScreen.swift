@@ -45,7 +45,7 @@ class StartScreen: SKScene {
         
         // Subtitle
         let subtitleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
-        subtitleLabel.text = "Arousal Regulation Training"
+        subtitleLabel.text = "(Don't forget your headphones...)"
         subtitleLabel.fontSize = 20
         subtitleLabel.fontColor = .lightGray
         subtitleLabel.position = CGPoint(x: frame.midX, y: titleLabel.position.y - 40)
