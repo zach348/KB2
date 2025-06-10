@@ -4,7 +4,7 @@ import UIKit
 class StartScreen: SKScene {
     
     // Constants
-    private let minSessionMinutes: Double = 5.0
+    private let minSessionMinutes: Double = 7.0
     private let maxSessionMinutes: Double = 30.0
     private let initialSessionMinutes: Double = 15.0
     private let defaultArousalLevel: CGFloat = 1.0
