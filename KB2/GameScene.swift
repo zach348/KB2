@@ -1202,10 +1202,10 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             self.currentTargetCount = targetCountFromADM
             print("GameScene: Updated target count from ADM - Old: \(oldCount), New: \(targetCountFromADM)")
             
-            // Reassign targets with the new count (will flash if targets are added)
-            if currentState == .tracking && !isFlashSequenceRunning {
-                assignNewTargets()
-            }
+            // Call removed - target assignment should wait until next scheduled shift
+//            if currentState == .tracking && !isFlashSequenceRunning {
+//                assignNewTargets()
+//            }
         }
     }
     
