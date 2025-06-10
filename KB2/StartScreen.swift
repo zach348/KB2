@@ -15,9 +15,7 @@ class StartScreen: SKScene {
     private var startButton: SKSpriteNode!
     private var startButtonLabel: SKLabelNode!
     private var slider: UISlider!
-    private var segmentedControl: UISegmentedControl!
     private var sliderValue: Double = 15.0
-    private var selectedProfile: SessionProfile = .fluctuating
     
     // Selected session parameters
     private var sessionDuration: TimeInterval = 15 * 60
@@ -28,9 +26,8 @@ class StartScreen: SKScene {
         
         setupUI()
         
-        // Add the UISlider and UISegmentedControl as subviews of the SKView
+        // Add the UISlider as a subview of the SKView
         setupSlider(in: view)
-        setupProfileSelector(in: view)
         // setupArousalSlider(in: view) // Removed arousal slider setup
     }
     
@@ -67,17 +64,9 @@ class StartScreen: SKScene {
         explanationLabel.position = CGPoint(x: frame.midX, y: durationLabel.position.y - 40)
         addChild(explanationLabel)
         
-        // Profile selector label - moved up further to prevent occlusion
-        let profileLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
-        profileLabel.text = "Session Type"
-        profileLabel.fontSize = 24
-        profileLabel.fontColor = .white
-        profileLabel.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - 70) // Adjusted position
-        addChild(profileLabel)
-        
         // Start button background - moved further down, adjusted due to removal of arousal slider
         startButton = SKSpriteNode(color: .systemBlue, size: CGSize(width: 200, height: 60))
-        startButton.position = CGPoint(x: frame.midX, y: profileLabel.position.y - 120) // Adjusted position after removing arousal slider
+        startButton.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - 120) // Adjusted position after removing arousal slider
         startButton.zPosition = 10
         startButton.name = "startButton"
         
@@ -125,54 +114,12 @@ class StartScreen: SKScene {
         view.addSubview(slider)
     }
     
-    private func setupProfileSelector(in view: SKView) {
-        // Create the segmented control - moved up
-        segmentedControl = UISegmentedControl(items: ["Smooth", "Dynamic", "Challenge", "Variable", "Manual"])
-        segmentedControl.frame = CGRect(x: view.bounds.width * 0.15,
-                                       y: view.bounds.height * 0.45, // Moved up
-                                       width: view.bounds.width * 0.7,
-                                       height: 35)
-        
-        // Set default selection
-        segmentedControl.selectedSegmentIndex = 1 // 'Dynamic' by default
-        
-        // Set up appearance
-        segmentedControl.backgroundColor = .darkGray
-        segmentedControl.selectedSegmentTintColor = .systemBlue
-        segmentedControl.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
-        segmentedControl.setTitleTextAttributes([.foregroundColor: UIColor.lightGray], for: .normal)
-        
-        // Add action for selection change
-        segmentedControl.addTarget(self, action: #selector(profileSelectionChanged(_:)), for: .valueChanged)
-        
-        // Add to view
-        view.addSubview(segmentedControl)
-    }
-    
     // Removed setupArousalSlider method
     
     @objc private func sliderValueChanged(_ sender: UISlider) {
         sliderValue = Double(sender.value.rounded())
         sessionDuration = sliderValue * 60 // Convert to seconds
         durationLabel.text = "Session Duration: \(Int(sliderValue)) minutes"
-    }
-    
-    @objc private func profileSelectionChanged(_ sender: UISegmentedControl) {
-        // Update the selected profile based on segment index
-        switch sender.selectedSegmentIndex {
-        case 0:
-            selectedProfile = .standard // "Smooth"
-        case 1:
-            selectedProfile = .fluctuating // "Dynamic"
-        case 2:
-            selectedProfile = .challenge
-        case 3:
-            selectedProfile = .variable
-        case 4:
-            selectedProfile = .manual // "Manual"
-        default:
-            selectedProfile = .fluctuating // Default to "Dynamic"
-        }
     }
     
     // Removed arousalSliderChanged and arousalLevelDescription methods
@@ -202,8 +149,6 @@ class StartScreen: SKScene {
         // Remove UIKit elements
         DispatchQueue.main.async { [weak self] in
             self?.slider?.removeFromSuperview()
-            self?.segmentedControl?.removeFromSuperview()
-            // self?.arousalSlider?.removeFromSuperview() // Already removed
 
             // Call GameViewController to present pre-session EMA and then start game
             if let gameVC = self?.view?.window?.rootViewController as? GameViewController {
@@ -215,7 +160,7 @@ class StartScreen: SKScene {
                 // GameScene will use the EMA response value once available.
                 gameVC.presentPreSessionEMAAndStartGame(
                     sessionDuration: self?.sessionDuration ?? (15 * 60),
-                    sessionProfile: self?.selectedProfile ?? .fluctuating,
+                    sessionProfile: .fluctuating, // Hardcode to dynamic profile
                     initialArousalFromStartScreen: self?.defaultArousalLevel ?? 0.7 // Placeholder, will be overwritten by EMA
                 )
             }
@@ -228,10 +173,6 @@ class StartScreen: SKScene {
     override func willMove(from view: SKView) {
         // Clean up UIKit elements when the scene is removed
         slider?.removeFromSuperview()
-        segmentedControl?.removeFromSuperview()
-        // arousalSlider?.removeFromSuperview() // Already removed
         slider = nil
-        segmentedControl = nil
-        // arousalSlider = nil // Already removed
     }
 }
