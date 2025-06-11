@@ -15,6 +15,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
+        
+        // --- Configure DataLogger for Cloud Upload ---
+        // URL for the Velo backend function
+        let veloURL = "https://kalibrate.me/_functions/sessionData"
+        
+        // API key stored in Wix Secrets Manager
+        let apiKey = "OPkKiCS6$z2CD$jR!&oyZPikFUZnD&oJq@7ZrbzZ"
+        
+        DataLogger.shared.configureCloudExport(endpointURL: veloURL, apiKey: apiKey)
+        DataLogger.shared.startNetworkMonitoring() // To handle offline queuing
+        
         return true
     }
 
@@ -37,4 +48,3 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 
 }
-

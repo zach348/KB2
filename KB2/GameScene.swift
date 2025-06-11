@@ -321,6 +321,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         audioManager.startEngine() // MODIFIED
         
         if sessionMode {
+            // Start a new data logging session
+            DataLogger.shared.startSession()
+            
             sessionStartTime = CACurrentMediaTime()
             _currentArousalLevel = initialArousalLevel
             
@@ -2607,6 +2610,10 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
             // Log the EMA response
             self.logPostSessionEMAResponse(response)
+
+            // End the session and trigger the cloud upload.
+            // This is the final data collection point for the session.
+            DataLogger.shared.endSession()
 
             // Dismiss the EMA view
             strongRootViewController.dismiss(animated: true) {

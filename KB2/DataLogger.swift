@@ -59,7 +59,7 @@ class DataLogger {
         print("DATA_LOG: Session started - ID: \(currentSessionId!)")
     }
     
-    /// End the current session and save to file
+    /// End the current session, save to file, and upload to the cloud.
     func endSession() {
         guard let sessionId = currentSessionId else {
             print("DATA_LOG: Warning - No active session to end")
@@ -74,14 +74,26 @@ class DataLogger {
         ]
         events.append(event)
         
+        // Save a local copy first
         saveSessionToFile()
         
-        // Reset session state
+        // Attempt to upload the session data to the cloud
+        uploadCurrentSessionToCloud { success, error in
+            if success {
+                print("DATA_LOG: Cloud upload successful for session \(sessionId).")
+            } else {
+                // If the upload fails, the data is still saved locally.
+                // The syncAllSessionsToCloud() method could be used later to retry.
+                print("DATA_LOG: Cloud upload failed for session \(sessionId): \(error ?? "Unknown error")")
+            }
+        }
+        
+        // Reset session state for the next run
         currentSessionId = nil
         sessionStartTime = nil
         events.removeAll()
         
-        print("DATA_LOG: Session ended - ID: \(sessionId)")
+        print("DATA_LOG: Session ended and processed - ID: \(sessionId)")
     }
     
     // MARK: - Public Methods
@@ -1167,32 +1179,57 @@ class DataLogger {
         }
     }
     
-    /// Upload current session data to cloud
+    /// Upload current session data directly to the configured cloud endpoint.
+    /// This method sends the in-memory event data without creating a temporary file.
     func uploadCurrentSessionToCloud(completion: @escaping (Bool, String?) -> Void) {
-        guard let sessionId = currentSessionId else {
+        guard isCloudExportEnabled,
+              let endpoint = cloudEndpointURL,
+              let apiKey = cloudAPIKey else {
+            let message = "Cloud export not properly configured. Call configureCloudExport() from your app's startup sequence."
+            print("DATA_LOG: \(message)")
+            completion(false, message)
+            return
+        }
+
+        guard currentSessionId != nil else {
             completion(false, "No active session to upload")
             return
         }
-        
-        // Create temporary export file
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("kb2_cloud_\(sessionId).json")
-        
-        do {
-            if let jsonString = exportAsJSON() {
-                try jsonString.write(to: tempURL, atomically: true, encoding: .utf8)
-                
-                uploadToCloud(sessionFilePath: tempURL) { success, error in
-                    // Clean up temporary file
-                    try? FileManager.default.removeItem(at: tempURL)
-                    completion(success, error)
-                }
-            } else {
-                completion(false, "Failed to export session data")
-            }
-        } catch {
-            completion(false, "Failed to create temporary file: \(error.localizedDescription)")
+
+        // exportAsJSON() creates the JSON structure that includes the session_id and all events.
+        guard let jsonString = exportAsJSON(), let jsonData = jsonString.data(using: .utf8) else {
+            completion(false, "Failed to serialize session data to JSON.")
+            return
         }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = jsonData
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, "Upload network error: \(error.localizedDescription)")
+                    return
+                }
+
+                if let httpResponse = response as? HTTPURLResponse {
+                    if (200...299).contains(httpResponse.statusCode) {
+                        completion(true, nil)
+                    } else {
+                        var responseBody = "No response body"
+                        if let data = data, let bodyString = String(data: data, encoding: .utf8) {
+                            responseBody = bodyString
+                        }
+                        completion(false, "Server error: HTTP \(httpResponse.statusCode). Response: \(responseBody)")
+                    }
+                } else {
+                    completion(false, "Invalid server response received.")
+                }
+            }
+        }.resume()
     }
     
     /// Process queued cloud uploads when network becomes available
