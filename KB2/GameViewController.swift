@@ -45,6 +45,9 @@ class GameViewController: UIViewController {
 
     // This method will be called by StartScreen
     func presentPreSessionEMAAndStartGame(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalFromStartScreen: CGFloat) {
+        // Start a new data logging session BEFORE presenting the pre-session EMA
+        DataLogger.shared.startSession()
+
         let emaView = EMAView(emaType: .preSession) { [weak self] emaResponse in
             // Log the EMA response
             self?.logPreSessionEMAResponse(emaResponse)

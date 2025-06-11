@@ -321,9 +321,6 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         audioManager.startEngine() // MODIFIED
         
         if sessionMode {
-            // Start a new data logging session
-            DataLogger.shared.startSession()
-            
             sessionStartTime = CACurrentMediaTime()
             _currentArousalLevel = initialArousalLevel
             
@@ -1827,8 +1824,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 print("DIAGNOSTIC: Initial arousal mismatch is \(String(format: "%.2f", difference))")
             }
             
-            // Log session phase
-            DataLogger.shared.logStateTransition(from: "none", to: "session_start")
+            // Log session phase is now handled by startSession()
         }
         
         // Update arousal for session mode

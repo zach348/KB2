@@ -40,15 +40,25 @@ class DataLogger {
     
     private init() {
         // Private initializer for singleton pattern
+        // Ensure the logger starts in a clean state.
+        events.removeAll()
     }
     
     // MARK: - Session Management
     
     /// Start a new logging session
     func startSession() {
+        // If a session is already active, end it before starting a new one.
+        if currentSessionId != nil {
+            print("DATA_LOG: Warning - A new session is being started while another is active. Ending the previous session first.")
+            endSession()
+        }
+        
+        // Now, clear the events for the new session. This is the only place events should be cleared before a session starts.
+        events.removeAll()
+        
         currentSessionId = UUID().uuidString
         sessionStartTime = Date().timeIntervalSince1970
-        events.removeAll()
         
         let event: [String: Any] = [
             "type": "session_start",
