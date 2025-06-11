@@ -560,8 +560,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             let numberOfFlashes = max(Int(minFlashes), min(Int(maxFlashes), Int(calculatedFloatFlashes.rounded())))
             
             // --- Calculate Flash Duration based on Arousal (Inverse mapping) ---
-            let minFlashDuration: TimeInterval = 0.75 // High arousal (changed from 1.5)
-            let maxFlashDuration: TimeInterval = 2.0 // Low arousal (changed from 2.5)
+            let minFlashDuration: TimeInterval = 0.85 // High arousal (changed from 1.5)
+            let maxFlashDuration: TimeInterval = 2.25 // Low arousal (changed from 2.5)
             let calculatedFlashDuration = minFlashDuration + (maxFlashDuration - minFlashDuration) * (1.0 - normalizedTrackingArousal)
             
             newlyAssignedTargets.forEach { $0.flashAsNewTarget(targetColor: activeTargetColor, flashColor: currentFlashColor, duration: calculatedFlashDuration, flashes: numberOfFlashes) }
