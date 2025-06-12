@@ -13,6 +13,7 @@ class DataLogger {
     private var events: [[String: Any]] = []
     private var currentSessionId: String?
     private var sessionStartTime: TimeInterval?
+    private var userId: String?
     
     // Real-time streaming properties
     private var isStreamingEnabled: Bool = false
@@ -42,6 +43,9 @@ class DataLogger {
         // Private initializer for singleton pattern
         // Ensure the logger starts in a clean state.
         events.removeAll()
+        
+        // Fetch the persistent user ID when the logger is first created.
+        self.userId = UserIDManager.getUserId()
     }
     
     // MARK: - Session Management
@@ -723,6 +727,7 @@ class DataLogger {
     /// Export current session data as JSON string
     func exportAsJSON() -> String? {
         let exportData: [String: Any] = [
+            "user_id": self.userId ?? "unknown",
             "session_id": currentSessionId ?? "unknown",
             "export_timestamp": Date().timeIntervalSince1970,
             "event_count": events.count,
