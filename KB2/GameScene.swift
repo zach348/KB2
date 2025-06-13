@@ -1491,10 +1491,10 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                  let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
                  let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange
 
-                 let minInhale: TimeInterval = 3.5 // TODO: Refactor these magic numbers
-                 let maxInhale: TimeInterval = 5.0
-                 let minExhale: TimeInterval = 5.0
-                 let maxExhale: TimeInterval = 6.5
+                 let minInhale = gameConfiguration.dynamicBreathingMinInhaleDuration
+                 let maxInhale = gameConfiguration.dynamicBreathingMaxInhaleDuration
+                 let minExhale = gameConfiguration.dynamicBreathingMinExhaleDuration
+                 let maxExhale = gameConfiguration.dynamicBreathingMaxExhaleDuration
 
                  let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
                  let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
@@ -1720,11 +1720,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
         let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange // Range 0.0 to 1.0
 
-        // Define target duration ranges (Example: Inhale 3.5s-5.0s, Exhale 6.5s-5.0s)
-        let minInhale: TimeInterval = 3.5
-        let maxInhale: TimeInterval = 5.0
-        let minExhale: TimeInterval = 5.0
-        let maxExhale: TimeInterval = 6.5
+        // Define target duration ranges using GameConfiguration
+        let minInhale = gameConfiguration.dynamicBreathingMinInhaleDuration
+        let maxInhale = gameConfiguration.dynamicBreathingMaxInhaleDuration
+        let minExhale = gameConfiguration.dynamicBreathingMinExhaleDuration
+        let maxExhale = gameConfiguration.dynamicBreathingMaxExhaleDuration
 
         // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
         let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal

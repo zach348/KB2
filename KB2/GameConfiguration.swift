@@ -98,12 +98,17 @@ struct GameConfiguration {
     let breathingHoldAfterInhaleDuration: TimeInterval = 1.5
     let breathingExhaleDuration: TimeInterval = 6.0
     let breathingHoldAfterExhaleDuration: TimeInterval = 1.0
+    // NEW: Dynamic breathing min/max durations for inhale/exhale, driven by arousal
+    let dynamicBreathingMinInhaleDuration: TimeInterval = 3.5
+    let dynamicBreathingMaxInhaleDuration: TimeInterval = 5.0
+    let dynamicBreathingMinExhaleDuration: TimeInterval = 5.0
+    let dynamicBreathingMaxExhaleDuration: TimeInterval = 6.5
     
-    // Dynamic breathing duration ranges (for arousal-based adjustment)
-    let breathingInhaleDuration_Min: TimeInterval = 3.5
-    let breathingInhaleDuration_Max: TimeInterval = 5.0
-    let breathingExhaleDuration_Min: TimeInterval = 5.0
-    let breathingExhaleDuration_Max: TimeInterval = 6.5
+    // Dynamic breathing duration ranges (for arousal-based adjustment) - RETAINED FOR NOW, POTENTIALLY FOR HOLDS
+    let breathingInhaleDuration_Min: TimeInterval = 3.5 // Matches dynamicBreathingMinInhaleDuration
+    let breathingInhaleDuration_Max: TimeInterval = 5.0 // Matches dynamicBreathingMaxInhaleDuration
+    let breathingExhaleDuration_Min: TimeInterval = 5.0 // Matches dynamicBreathingMinExhaleDuration
+    let breathingExhaleDuration_Max: TimeInterval = 6.5 // Matches dynamicBreathingMaxExhaleDuration
     let breathingHoldAfterInhaleDuration_Min: TimeInterval = 0.5
     let breathingHoldAfterInhaleDuration_Max: TimeInterval = 2.0
     let breathingHoldAfterExhaleDuration_Min: TimeInterval = 0.5
