@@ -46,9 +46,9 @@ class VHAManager {
     
     // Breathing settings
     private var currentBreathingInhaleDuration: TimeInterval = 4.0
-    private var currentBreathingHold1Duration: TimeInterval = 1.5
+    private var currentBreathingHoldAfterInhaleDuration: TimeInterval = 1.5
     private var currentBreathingExhaleDuration: TimeInterval = 6.0
-    private var currentBreathingHold2Duration: TimeInterval = 1.0
+    private var currentBreathingHoldAfterExhaleDuration: TimeInterval = 1.0
     
     // External state flag
     private var isFlashSequenceRunning: Bool = false
@@ -109,14 +109,14 @@ class VHAManager {
     }
     
     func updateBreathingParameters(inhaleDuration: TimeInterval,
-                                  hold1Duration: TimeInterval,
+                                  holdAfterInhaleDuration: TimeInterval,
                                   exhaleDuration: TimeInterval,
-                                  hold2Duration: TimeInterval) {
+                                  holdAfterExhaleDuration: TimeInterval) {
         // Store new durations
         self.currentBreathingInhaleDuration = inhaleDuration
-        self.currentBreathingHold1Duration = hold1Duration
+        self.currentBreathingHoldAfterInhaleDuration = holdAfterInhaleDuration
         self.currentBreathingExhaleDuration = exhaleDuration
-        self.currentBreathingHold2Duration = hold2Duration
+        self.currentBreathingHoldAfterExhaleDuration = holdAfterExhaleDuration
     }
     
     func updateFlashSequenceStatus(isRunning: Bool, cooldownEndTime: TimeInterval) {
@@ -195,9 +195,9 @@ class VHAManager {
             // Generate initial breathing pattern & player
             if let initialPattern = generateBreathingHapticPattern(
                 inhaleDuration: currentBreathingInhaleDuration,
-                hold1Duration: currentBreathingHold1Duration,
+                holdAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration,
                 exhaleDuration: currentBreathingExhaleDuration,
-                hold2Duration: currentBreathingHold2Duration) {
+                holdAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration) {
                 
                 breathingHapticPlayer = try hapticEngine?.makePlayer(with: initialPattern)
             } else {
@@ -270,9 +270,9 @@ class VHAManager {
         // Generate new pattern with current durations
         guard let newPattern = generateBreathingHapticPattern(
             inhaleDuration: currentBreathingInhaleDuration,
-            hold1Duration: currentBreathingHold1Duration,
+            holdAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration,
             exhaleDuration: currentBreathingExhaleDuration,
-            hold2Duration: currentBreathingHold2Duration) else {
+            holdAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration) else {
                 
             print("ERROR: Failed to generate new breathing haptic pattern during update.")
             return
@@ -339,9 +339,9 @@ class VHAManager {
     // Parameterized function to generate haptic breathing pattern
     private func generateBreathingHapticPattern(
         inhaleDuration: TimeInterval, 
-        hold1Duration: TimeInterval, 
+        holdAfterInhaleDuration: TimeInterval, 
         exhaleDuration: TimeInterval, 
-        hold2Duration: TimeInterval) -> CHHapticPattern? {
+        holdAfterExhaleDuration: TimeInterval) -> CHHapticPattern? {
             
         guard let engine = hapticEngine else { return nil }
         
@@ -390,7 +390,7 @@ class VHAManager {
         // Hold After Inhale Phase
         relativeTime = 0
         
-        while relativeTime < hold1Duration - 0.01 {
+        while relativeTime < holdAfterInhaleDuration - 0.01 {
             let absoluteTime = phaseStartTime + relativeTime
             
             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
@@ -405,7 +405,7 @@ class VHAManager {
             relativeTime += minimumDelay
         }
         
-        phaseStartTime += hold1Duration
+        phaseStartTime += holdAfterInhaleDuration
 
         // Exhale Phase
         relativeTime = 0
@@ -439,7 +439,7 @@ class VHAManager {
             }
         }
         
-        // No Hold2 Events (could add them if needed)
+        // No HoldAfterExhale Events (could add them if needed)
 
         // Sort events by time and create pattern
         allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
@@ -458,4 +458,4 @@ class VHAManager {
     func isEngineRunning() -> Bool {
         return hapticsReady && audioReady && (precisionTimer?.isRunning ?? false)
     }
-} 
+}
