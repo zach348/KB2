@@ -71,10 +71,8 @@ class ArousalManager {
     // Dynamic breathing parameters
     var breathingInhaleDuration: TimeInterval = 4.0
     var breathingExhaleDuration: TimeInterval = 6.0
-    var breathingHold1Duration: TimeInterval = 1.5
-    var breathingHold2Duration: TimeInterval = 1.0
-    var breathingHoldAfterInhaleDuration: TimeInterval = 1.5  // Hold after inhale
-    var breathingHoldAfterExhaleDuration: TimeInterval = 1.0  // Hold after exhale
+    var breathingHoldAfterInhaleDuration: TimeInterval = 1.5
+    var breathingHoldAfterExhaleDuration: TimeInterval = 1.0
     var needsHapticPatternUpdate: Bool = false
     var needsVisualDurationUpdate: Bool = false
     
@@ -244,15 +242,15 @@ class ArousalManager {
         let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
         let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange // Range 0.0 to 1.0
         
-        // Define target duration ranges
-        let minInhale: TimeInterval = 3.5
-        let maxInhale: TimeInterval = 5.0
-        let minExhale: TimeInterval = 5.0
-        let maxExhale: TimeInterval = 6.5
-        let minHoldAfterInhale: TimeInterval = 0.5
-        let maxHoldAfterInhale: TimeInterval = 2.0
-        let minHoldAfterExhale: TimeInterval = 0.5
-        let maxHoldAfterExhale: TimeInterval = 1.5
+        // Get target duration ranges from configuration
+        let minInhale = gameConfiguration.breathingInhaleDuration_Min
+        let maxInhale = gameConfiguration.breathingInhaleDuration_Max
+        let minExhale = gameConfiguration.breathingExhaleDuration_Min
+        let maxExhale = gameConfiguration.breathingExhaleDuration_Max
+        let minHoldAfterInhale = gameConfiguration.breathingHoldAfterInhaleDuration_Min
+        let maxHoldAfterInhale = gameConfiguration.breathingHoldAfterInhaleDuration_Max
+        let minHoldAfterExhale = gameConfiguration.breathingHoldAfterExhaleDuration_Min
+        let maxHoldAfterExhale = gameConfiguration.breathingHoldAfterExhaleDuration_Max
         
         // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
         let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
@@ -267,7 +265,7 @@ class ArousalManager {
            abs(targetHoldAfterInhaleDuration - breathingHoldAfterInhaleDuration) > tolerance ||
            abs(targetHoldAfterExhaleDuration - breathingHoldAfterExhaleDuration) > tolerance {
             print("DIAGNOSTIC: Breathing pattern change detected. Flagging for update...")
-            print("DIAGNOSTIC: Target pattern - Inhale: \(String(format: "%.1f", targetInhaleDuration))s, Hold1: \(String(format: "%.1f", targetHoldAfterInhaleDuration))s, Exhale: \(String(format: "%.1f", targetExhaleDuration))s, Hold2: \(String(format: "%.1f", targetHoldAfterExhaleDuration))s")
+            print("DIAGNOSTIC: Target pattern - Inhale: \(String(format: "%.1f", targetInhaleDuration))s, HoldAfterInhale: \(String(format: "%.1f", targetHoldAfterInhaleDuration))s, Exhale: \(String(format: "%.1f", targetExhaleDuration))s, HoldAfterExhale: \(String(format: "%.1f", targetHoldAfterExhaleDuration))s")
             
             // Log breathing pattern change to DataLogger
             DataLogger.shared.logBreathingPatternChange(

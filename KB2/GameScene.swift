@@ -191,9 +191,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     
     // --- ADDED: Properties for Dynamic Breathing Durations ---
     internal var currentBreathingInhaleDuration: TimeInterval = GameConfiguration().breathingInhaleDuration
-    internal var currentBreathingHold1Duration: TimeInterval = GameConfiguration().breathingHoldAfterInhaleDuration
+    internal var currentBreathingHoldAfterInhaleDuration: TimeInterval = GameConfiguration().breathingHoldAfterInhaleDuration
     internal var currentBreathingExhaleDuration: TimeInterval = GameConfiguration().breathingExhaleDuration
-    internal var currentBreathingHold2Duration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
+    internal var currentBreathingHoldAfterExhaleDuration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
     private var needsHapticPatternUpdate: Bool = false
     // --- ADDED: Flag for deferred visual duration update ---
     private var needsVisualDurationUpdate: Bool = false
@@ -674,9 +674,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             flashSpeedFactor: gameConfiguration.flashSpeedFactor,
             normalizedFeedbackArousal: calculateNormalizedFeedbackArousal(),
             currentBreathingInhaleDuration: currentState == .breathing ? currentBreathingInhaleDuration : nil,
-            currentBreathingHoldAfterInhaleDuration: currentState == .breathing ? currentBreathingHold1Duration : nil,
+            currentBreathingHoldAfterInhaleDuration: currentState == .breathing ? currentBreathingHoldAfterInhaleDuration : nil,
             currentBreathingExhaleDuration: currentState == .breathing ? currentBreathingExhaleDuration : nil,
-            currentBreathingHoldAfterExhaleDuration: currentState == .breathing ? currentBreathingHold2Duration : nil,
+            currentBreathingHoldAfterExhaleDuration: currentState == .breathing ? currentBreathingHoldAfterExhaleDuration : nil,
             snapshotTimestamp: currentTime
         )
     }
@@ -1515,14 +1515,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
         }; inhaleAction.timingMode = .easeInEaseOut
-        let hold1Visual = SKAction.wait(forDuration: currentBreathingHold1Duration)
+        let holdAfterInhaleVisual = SKAction.wait(forDuration: currentBreathingHoldAfterInhaleDuration)
         let exhaleAction = SKAction.customAction(withDuration: currentBreathingExhaleDuration) { _, elapsedTime in
             let fraction = elapsedTime / CGFloat(self.currentBreathingExhaleDuration)
             let currentRadius = self.gameConfiguration.breathingCircleMaxRadius - (self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius) * fraction
             let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
         }; exhaleAction.timingMode = .easeInEaseOut
-        let hold2Visual = SKAction.wait(forDuration: currentBreathingHold2Duration)
+        let holdAfterExhaleVisual = SKAction.wait(forDuration: currentBreathingHoldAfterExhaleDuration)
         let setInhaleCue = SKAction.run { [weak self] in 
             guard let self = self else { return }
             self.updateBreathingPhase(.inhale)
@@ -1531,7 +1531,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 self.breathingCueLabel.isHidden = true
             }
         }
-        let setHold1Cue = SKAction.run { [weak self] in 
+        let setHoldAfterInhaleCue = SKAction.run { [weak self] in 
             guard let self = self else { return }
             self.updateBreathingPhase(.holdAfterInhale)
             // Ensure label stays hidden after first cycle
@@ -1547,7 +1547,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 self.breathingCueLabel.isHidden = true
             }
         }
-        let setHold2Cue = SKAction.run { [weak self] in 
+        let setHoldAfterExhaleCue = SKAction.run { [weak self] in 
             guard let self = self else { return }
             self.updateBreathingPhase(.holdAfterExhale)
             // Ensure label stays hidden after first cycle
@@ -1560,9 +1560,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         }
         let sequence = SKAction.sequence([
             restartHaptics, setInhaleCue, inhaleAction,
-            setHold1Cue, hold1Visual,
+            setHoldAfterInhaleCue, holdAfterInhaleVisual,
             setExhaleCue, exhaleAction,
-            setHold2Cue, hold2Visual
+            setHoldAfterExhaleCue, holdAfterExhaleVisual
         ])
 
         // --- ADDED: Check and apply deferred haptic update at end of cycle ---
@@ -1622,9 +1622,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
             // --- MODIFIED: Generate initial breathing pattern & player ---
             if let initialPattern = generateBreathingHapticPattern(inhaleDuration: currentBreathingInhaleDuration,
-                                                                   hold1Duration: currentBreathingHold1Duration,
+                                                                   holdAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration,
                                                                    exhaleDuration: currentBreathingExhaleDuration,
-                                                                   hold2Duration: currentBreathingHold2Duration) {
+                                                                   holdAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration) {
                  breathingHapticPlayer = try hapticEngine?.makePlayer(with: initialPattern)
              } else {
                  print("ERROR: Failed to create initial breathing haptic pattern.")
@@ -1645,7 +1645,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     }
 
     // --- MODIFIED: Parameterized function to generate pattern ---
-    private func generateBreathingHapticPattern(inhaleDuration: TimeInterval, hold1Duration: TimeInterval, exhaleDuration: TimeInterval, hold2Duration: TimeInterval) -> CHHapticPattern? {
+    private func generateBreathingHapticPattern(inhaleDuration: TimeInterval, holdAfterInhaleDuration: TimeInterval, exhaleDuration: TimeInterval, holdAfterExhaleDuration: TimeInterval) -> CHHapticPattern? {
          guard let engine = hapticEngine else { return nil }
          var allBreathingEvents: [CHHapticEvent] = []
          var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
@@ -1673,14 +1673,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
          // Hold After Inhale Phase
          relativeTime = 0
-         while relativeTime < hold1Duration - 0.01 {
+         while relativeTime < holdAfterInhaleDuration - 0.01 {
              let absoluteTime = phaseStartTime + relativeTime
              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
              relativeTime += minimumDelay
          }
-         phaseStartTime += hold1Duration
+         phaseStartTime += holdAfterInhaleDuration
 
          // Exhale Phase
          relativeTime = 0
@@ -1700,7 +1700,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
               relativeTime += delay; currentDelayFactor -= accelFactor
               if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
          }
-         // No Hold2 Events
+         // No HoldAfterExhale Events
 
          allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
          guard !allBreathingEvents.isEmpty else { return nil }
@@ -1743,10 +1743,10 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 newInhaleDuration: targetInhaleDuration,
                 oldExhaleDuration: currentBreathingExhaleDuration,
                 newExhaleDuration: targetExhaleDuration,
-                oldHoldAfterInhaleDuration: currentBreathingHold1Duration,
-                newHoldAfterInhaleDuration: currentBreathingHold1Duration, // Hold durations not changing in this implementation
-                oldHoldAfterExhaleDuration: currentBreathingHold2Duration,
-                newHoldAfterExhaleDuration: currentBreathingHold2Duration, // Hold durations not changing in this implementation
+                oldHoldAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration,
+                newHoldAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration, // Hold durations not changing in this implementation
+                oldHoldAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration,
+                newHoldAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration, // Hold durations not changing in this implementation
                 arousalLevel: currentArousalLevel,
                 normalizedBreathingArousal: normalizedBreathingArousal
             )
@@ -1771,9 +1771,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
         // Generate new pattern with current durations
         guard let newPattern = generateBreathingHapticPattern(inhaleDuration: currentBreathingInhaleDuration,
-                                                               hold1Duration: currentBreathingHold1Duration,
+                                                               holdAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration,
                                                                exhaleDuration: currentBreathingExhaleDuration,
-                                                               hold2Duration: currentBreathingHold2Duration) else {
+                                                               holdAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration) else {
             print("ERROR: Failed to generate new breathing haptic pattern during update.")
             return
         }

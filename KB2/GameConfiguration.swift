@@ -93,16 +93,30 @@ struct GameConfiguration {
     // --- TODO: Add ranges/factors for predictability ---
 
     // --- Breathing Task ---
+    // Base/default breathing durations
     let breathingInhaleDuration: TimeInterval = 4.0
     let breathingHoldAfterInhaleDuration: TimeInterval = 1.5
     let breathingExhaleDuration: TimeInterval = 6.0
     let breathingHoldAfterExhaleDuration: TimeInterval = 1.0
+    
+    // Dynamic breathing duration ranges (for arousal-based adjustment)
+    let breathingInhaleDuration_Min: TimeInterval = 3.5
+    let breathingInhaleDuration_Max: TimeInterval = 5.0
+    let breathingExhaleDuration_Min: TimeInterval = 5.0
+    let breathingExhaleDuration_Max: TimeInterval = 6.5
+    let breathingHoldAfterInhaleDuration_Min: TimeInterval = 0.5
+    let breathingHoldAfterInhaleDuration_Max: TimeInterval = 2.0
+    let breathingHoldAfterExhaleDuration_Min: TimeInterval = 0.5
+    let breathingHoldAfterExhaleDuration_Max: TimeInterval = 1.5
+    
+    // Breathing animation settings
     let breathingCircleMinRadius: CGFloat = 60.0
     let breathingCircleMaxRadius: CGFloat = 180.0
     let transitionSpeedFactor: CGFloat = 0.8
     let breathingMinTransitionSpeed: CGFloat = 50.0
     let maxTransitionDuration: TimeInterval = 4.0
-    // Breathing Haptics
+    
+    // Breathing haptics
     let breathingHapticIntensity: Float = 0.8
     let breathingHapticSharpnessMin: Float = 0.35
     let breathingHapticSharpnessMax: Float = 0.8
