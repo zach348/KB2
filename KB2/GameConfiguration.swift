@@ -94,25 +94,27 @@ struct GameConfiguration {
 
     // --- Breathing Task ---
     // Base/default breathing durations
-    let breathingInhaleDuration: TimeInterval = 4.0
-    let breathingHoldAfterInhaleDuration: TimeInterval = 1.5
-    let breathingExhaleDuration: TimeInterval = 6.0
+    let breathingInhaleDuration: TimeInterval = 5.0
+    let breathingHoldAfterInhaleDuration: TimeInterval = 0.5
+    let breathingExhaleDuration: TimeInterval = 5.0
     let breathingHoldAfterExhaleDuration: TimeInterval = 1.0
     // NEW: Dynamic breathing min/max durations for inhale/exhale, driven by arousal
     let dynamicBreathingMinInhaleDuration: TimeInterval = 3.5
     let dynamicBreathingMaxInhaleDuration: TimeInterval = 5.0
     let dynamicBreathingMinExhaleDuration: TimeInterval = 5.0
-    let dynamicBreathingMaxExhaleDuration: TimeInterval = 6.5
+    let dynamicBreathingMaxExhaleDuration: TimeInterval = 8.0
     
     // Dynamic breathing duration ranges (for arousal-based adjustment) - RETAINED FOR NOW, POTENTIALLY FOR HOLDS
     let breathingInhaleDuration_Min: TimeInterval = 3.5 // Matches dynamicBreathingMinInhaleDuration
     let breathingInhaleDuration_Max: TimeInterval = 5.0 // Matches dynamicBreathingMaxInhaleDuration
     let breathingExhaleDuration_Min: TimeInterval = 5.0 // Matches dynamicBreathingMinExhaleDuration
-    let breathingExhaleDuration_Max: TimeInterval = 6.5 // Matches dynamicBreathingMaxExhaleDuration
-    let breathingHoldAfterInhaleDuration_Min: TimeInterval = 0.5
-    let breathingHoldAfterInhaleDuration_Max: TimeInterval = 2.0
-    let breathingHoldAfterExhaleDuration_Min: TimeInterval = 0.5
-    let breathingHoldAfterExhaleDuration_Max: TimeInterval = 1.5
+    let breathingExhaleDuration_Max: TimeInterval = 8.0 // Matches dynamicBreathingMaxExhaleDuration
+    
+    // Proportions for dynamic hold durations (as percentage of inhale/exhale duration)
+    let holdAfterInhaleProportion_LowArousal: CGFloat = 0.30  // 30% of inhale duration at minimum arousal
+    let holdAfterInhaleProportion_HighArousal: CGFloat = 0.05 // 5% of inhale duration at tracking threshold
+    let holdAfterExhaleProportion_LowArousal: CGFloat = 0.50  // 50% of exhale duration at minimum arousal
+    let holdAfterExhaleProportion_HighArousal: CGFloat = 0.20 // 20% of exhale duration at tracking threshold
     
     // Breathing animation settings
     let breathingCircleMinRadius: CGFloat = 60.0
