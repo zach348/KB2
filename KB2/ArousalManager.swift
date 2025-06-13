@@ -243,20 +243,25 @@ class ArousalManager {
         let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange // Range 0.0 to 1.0
         
         // Get target duration ranges from configuration
-        let minInhale = gameConfiguration.breathingInhaleDuration_Min
-        let maxInhale = gameConfiguration.breathingInhaleDuration_Max
-        let minExhale = gameConfiguration.breathingExhaleDuration_Min
-        let maxExhale = gameConfiguration.breathingExhaleDuration_Max
-        let minHoldAfterInhale = gameConfiguration.breathingHoldAfterInhaleDuration_Min
-        let maxHoldAfterInhale = gameConfiguration.breathingHoldAfterInhaleDuration_Max
-        let minHoldAfterExhale = gameConfiguration.breathingHoldAfterExhaleDuration_Min
-        let maxHoldAfterExhale = gameConfiguration.breathingHoldAfterExhaleDuration_Max
+        let minInhale = gameConfiguration.dynamicBreathingMinInhaleDuration
+        let maxInhale = gameConfiguration.dynamicBreathingMaxInhaleDuration
+        let minExhale = gameConfiguration.dynamicBreathingMinExhaleDuration
+        let maxExhale = gameConfiguration.dynamicBreathingMaxExhaleDuration
         
         // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
         let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
         let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
-        let targetHoldAfterInhaleDuration = minHoldAfterInhale + (maxHoldAfterInhale - minHoldAfterInhale) * normalizedBreathingArousal
-        let targetHoldAfterExhaleDuration = minHoldAfterExhale + (maxHoldAfterExhale - minHoldAfterExhale) * normalizedBreathingArousal
+        
+        // Calculate proportional hold durations
+        // Hold after inhale: 30% at low arousal -> 5% at high arousal
+        let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportion_LowArousal + 
+            (gameConfiguration.holdAfterInhaleProportion_HighArousal - gameConfiguration.holdAfterInhaleProportion_LowArousal) * normalizedBreathingArousal
+        let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
+        
+        // Hold after exhale: 50% at low arousal -> 20% at high arousal
+        let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportion_LowArousal + 
+            (gameConfiguration.holdAfterExhaleProportion_HighArousal - gameConfiguration.holdAfterExhaleProportion_LowArousal) * normalizedBreathingArousal
+        let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)
         
         // Check if change exceeds tolerance
         let tolerance: TimeInterval = 0.1
@@ -265,7 +270,8 @@ class ArousalManager {
            abs(targetHoldAfterInhaleDuration - breathingHoldAfterInhaleDuration) > tolerance ||
            abs(targetHoldAfterExhaleDuration - breathingHoldAfterExhaleDuration) > tolerance {
             print("DIAGNOSTIC: Breathing pattern change detected. Flagging for update...")
-            print("DIAGNOSTIC: Target pattern - Inhale: \(String(format: "%.1f", targetInhaleDuration))s, HoldAfterInhale: \(String(format: "%.1f", targetHoldAfterInhaleDuration))s, Exhale: \(String(format: "%.1f", targetExhaleDuration))s, HoldAfterExhale: \(String(format: "%.1f", targetHoldAfterExhaleDuration))s")
+            print("DIAGNOSTIC: Target pattern - Inhale: \(String(format: "%.1f", targetInhaleDuration))s, Exhale: \(String(format: "%.1f", targetExhaleDuration))s")
+            print("DIAGNOSTIC: Target holds - After Inhale: \(String(format: "%.1f", targetHoldAfterInhaleDuration))s, After Exhale: \(String(format: "%.1f", targetHoldAfterExhaleDuration))s")
             
             // Log breathing pattern change to DataLogger
             DataLogger.shared.logBreathingPatternChange(
