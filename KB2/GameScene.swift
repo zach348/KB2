@@ -87,6 +87,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 // --- Configuration ---
 internal let gameConfiguration = GameConfiguration()
 private var audioManager: AudioManager! // ADDED
+private var lastUploadedProgressIncrement: Int = 0 // ADDED for partial uploads
+private var isPartialUploadInProgress: Bool = false // ADDED to prevent rapid partial uploads
 
 // --- Session Management Properties ---
 var sessionMode: Bool = false
@@ -2097,16 +2099,41 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 handleSessionCompletion()
             }
             
-            // Update UI for session progress only, no arousal modulation
-            updateUI()
-            return
-        }
-        
-        let elapsedTime = currentTime - sessionStartTime
-        let progress = min(1.0, elapsedTime / sessionDuration)
+        // Update UI for session progress only, no arousal modulation
+        updateUI()
+        return
+    }
+    
+    let elapsedTime = currentTime - sessionStartTime
+    let progress = min(1.0, elapsedTime / sessionDuration)
 
-        // Check for session completion FIRST (moved to updateUI and also checked here for safety)
-        if progress >= 1.0 {
+    // --- ADDED: Partial data upload logic ---
+    if sessionMode && !isSessionCompleted && !isPartialUploadInProgress { // Check isPartialUploadInProgress
+        let currentProgressPercent = Int(progress * 100)
+        let currentIncrement = (currentProgressPercent / 10) * 10 // Calculate the current 10% bucket
+
+        if currentIncrement > lastUploadedProgressIncrement && currentIncrement < 100 {
+            // We've crossed a new 10% threshold (but not the final 100% mark)
+            isPartialUploadInProgress = true // Set flag before calling
+            DataLogger.shared.logPartialUploadMarker(progressPercent: currentIncrement) // <-- Log marker event
+            print("DATA_LOG: Attempting partial upload for \(currentIncrement)% progress.")
+            DataLogger.shared.uploadPartialSessionData { [weak self] success, error in
+                guard let self = self else { return }
+                if success {
+                    print("DATA_LOG: Partial upload successful for \(currentIncrement)% progress.")
+                    self.lastUploadedProgressIncrement = currentIncrement
+                } else {
+                    print("DATA_LOG: Partial upload FAILED for \(currentIncrement)% progress. Error: \(error ?? "Unknown")")
+                    // We don't update lastUploadedProgressIncrement on failure, so it will retry on a subsequent frame
+                }
+                self.isPartialUploadInProgress = false // Clear flag after completion
+            }
+        }
+    }
+    // --- END ADDED ---
+
+    // Check for session completion FIRST (moved to updateUI and also checked here for safety)
+    if progress >= 1.0 {
             if !isSessionCompleted {
                  print("DEBUG: updateArousalForSession detected session completion. Calling handleSessionCompletion.")
                 handleSessionCompletion()

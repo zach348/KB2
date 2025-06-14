@@ -51,7 +51,7 @@ class DataLogger {
     // MARK: - Session Management
     
     /// Start a new logging session
-    func startSession() {
+    func startSession(sessionDuration: TimeInterval) { // <-- ADDED sessionDuration parameter
         // If a session is already active, end it before starting a new one.
         if currentSessionId != nil {
             print("DATA_LOG: Warning - A new session is being started while another is active. Ending the previous session first.")
@@ -67,10 +67,11 @@ class DataLogger {
         let event: [String: Any] = [
             "type": "session_start",
             "timestamp": sessionStartTime!,
-            "session_id": currentSessionId!
+            "session_id": currentSessionId!,
+            "configured_duration_seconds": sessionDuration // <-- ADDED configured duration
         ]
         events.append(event)
-        print("DATA_LOG: Session started - ID: \(currentSessionId!)")
+        print("DATA_LOG: Session started - ID: \(currentSessionId!), Duration: \(sessionDuration)s")
     }
     
     /// End the current session, save to file, and upload to the cloud.
@@ -108,6 +109,25 @@ class DataLogger {
         events.removeAll()
         
         print("DATA_LOG: Session ended and processed - ID: \(sessionId)")
+    }
+
+    /// Logs a marker event indicating a partial upload has occurred.
+    func logPartialUploadMarker(progressPercent: Int) {
+        guard let sessionId = currentSessionId else {
+            print("DATA_LOG: Warning - No active session to log partial upload marker for.")
+            return
+        }
+        let timestamp = Date().timeIntervalSince1970
+        let event: [String: Any] = [
+            "type": "partial_upload_marker",
+            "timestamp": timestamp,
+            "session_id": sessionId,
+            "progress_percent": progressPercent
+        ]
+        events.append(event)
+        // This event will be included in the next partial or full upload.
+        // We don't add it to streamingBuffer as it's meta-data about the upload itself.
+        print("DATA_LOG: Logged partial upload marker for \(progressPercent)% progress.")
     }
     
     // MARK: - Public Methods
@@ -1141,6 +1161,59 @@ class DataLogger {
         cloudAPIKey = nil
         cloudUploadQueue.removeAll()
         print("DATA_LOG: Cloud export disabled")
+    }
+
+    /// Uploads the current accumulated session data as a partial update.
+    /// This does not end the session or clear local events.
+    func uploadPartialSessionData(completion: @escaping (Bool, String?) -> Void) {
+        guard isCloudExportEnabled,
+              let endpoint = cloudEndpointURL,
+              let apiKey = cloudAPIKey else {
+            let message = "Cloud export not properly configured for partial upload. Call configureCloudExport()."
+            print("DATA_LOG: \(message)")
+            completion(false, message)
+            return
+        }
+
+        guard currentSessionId != nil else {
+            completion(false, "No active session to send partial data for.")
+            return
+        }
+
+        guard let jsonString = exportAsJSON(), let jsonData = jsonString.data(using: .utf8) else {
+            completion(false, "Failed to serialize partial session data to JSON.")
+            return
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = jsonData
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, "Partial upload network error: \(error.localizedDescription)")
+                    return
+                }
+
+                if let httpResponse = response as? HTTPURLResponse {
+                    if (200...299).contains(httpResponse.statusCode) {
+                        print("DATA_LOG: Partial session data uploaded successfully for session \(self.currentSessionId ?? "unknown").")
+                        completion(true, nil)
+                    } else {
+                        var responseBody = "No response body"
+                        if let data = data, let bodyString = String(data: data, encoding: .utf8) {
+                            responseBody = bodyString
+                        }
+                        completion(false, "Partial upload server error: HTTP \(httpResponse.statusCode). Response: \(responseBody)")
+                    }
+                } else {
+                    completion(false, "Invalid server response for partial upload.")
+                }
+            }
+        }.resume()
     }
     
     /// Upload session data to configured cloud endpoint
