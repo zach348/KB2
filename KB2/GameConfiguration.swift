@@ -116,6 +116,9 @@ struct GameConfiguration {
     let holdAfterExhaleProportion_LowArousal: CGFloat = 0.50  // 50% of exhale duration at minimum arousal
     let holdAfterExhaleProportion_HighArousal: CGFloat = 0.20 // 20% of exhale duration at tracking threshold
     
+    // NEW: Proportion of exhale that occurs *before* the first hold (now mid-exhale)
+    let preHoldExhaleProportion: TimeInterval = 0.0075 // 5% of exhale, then hold, then remaining 95%
+    
     // Breathing animation settings
     let breathingCircleMinRadius: CGFloat = 60.0
     let breathingCircleMaxRadius: CGFloat = 180.0

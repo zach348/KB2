@@ -17,7 +17,7 @@ import UIKit // Added for UIViewController presentation
 enum GameState { case tracking, identifying, paused, breathing }
 
 // --- Breathing Phase Enum ---
-enum BreathingPhase { case idle, inhale, holdAfterInhale, exhale, holdAfterExhale }
+enum BreathingPhase { case idle, inhale, partialExhale, holdMidExhale, remainderExhale, holdAfterExhale }
 
 //====================================================================================================
 // MARK: - AUDIO BUFFER CACHE
@@ -1525,59 +1525,64 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // --- END ADDED ---
 
         let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
+
+        // --- Phase 1: Inhale ---
         let inhaleAction = SKAction.customAction(withDuration: currentBreathingInhaleDuration) { _, elapsedTime in
             let fraction = elapsedTime / CGFloat(self.currentBreathingInhaleDuration)
             let currentRadius = self.gameConfiguration.breathingCircleMinRadius + (self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius) * fraction
             let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
-        }; inhaleAction.timingMode = .easeInEaseOut
-        let holdAfterInhaleVisual = SKAction.wait(forDuration: currentBreathingHoldAfterInhaleDuration)
-        let exhaleAction = SKAction.customAction(withDuration: currentBreathingExhaleDuration) { _, elapsedTime in
-            let fraction = elapsedTime / CGFloat(self.currentBreathingExhaleDuration)
-            let currentRadius = self.gameConfiguration.breathingCircleMaxRadius - (self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius) * fraction
+        }
+        inhaleAction.timingMode = .easeInEaseOut
+        let setInhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.inhale) }
+
+        // --- Phase 2: Partial Exhale ---
+        let partialExhaleDuration = currentBreathingExhaleDuration * gameConfiguration.preHoldExhaleProportion
+        let partialExhaleAction = SKAction.customAction(withDuration: partialExhaleDuration) { _, elapsedTime in
+            let fraction = elapsedTime / CGFloat(partialExhaleDuration)
+            let radiusChange = (self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius) * CGFloat(self.gameConfiguration.preHoldExhaleProportion)
+            let startRadius = self.gameConfiguration.breathingCircleMaxRadius
+            let currentRadius = startRadius - (radiusChange * fraction)
             let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
             for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
-        }; exhaleAction.timingMode = .easeInEaseOut
+        }
+        partialExhaleAction.timingMode = .easeInEaseOut
+        let setPartialExhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.partialExhale) }
+
+        // --- Phase 3: Mid-Exhale Hold (formerly holdAfterInhale) ---
+        let holdMidExhaleVisual = SKAction.wait(forDuration: currentBreathingHoldAfterInhaleDuration)
+        let setHoldMidExhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.holdMidExhale) }
+
+        // --- Phase 4: Remainder of Exhale ---
+        let remainderExhaleDuration = currentBreathingExhaleDuration * (1.0 - gameConfiguration.preHoldExhaleProportion)
+        let remainderExhaleAction = SKAction.customAction(withDuration: remainderExhaleDuration) { _, elapsedTime in
+            let fraction = elapsedTime / CGFloat(remainderExhaleDuration)
+            let totalRadiusChange = self.gameConfiguration.breathingCircleMaxRadius - self.gameConfiguration.breathingCircleMinRadius
+            let remainingRadiusChange = totalRadiusChange * CGFloat(1.0 - self.gameConfiguration.preHoldExhaleProportion)
+            let startRadius = self.gameConfiguration.breathingCircleMaxRadius - (totalRadiusChange * CGFloat(self.gameConfiguration.preHoldExhaleProportion))
+            let currentRadius = startRadius - (remainingRadiusChange * fraction)
+            let positions = MotionController.circlePoints(numPoints: self.balls.count, center: centerPoint, radius: currentRadius)
+            for (index, ball) in self.balls.enumerated() { if index < positions.count { ball.position = positions[index] } }
+        }
+        remainderExhaleAction.timingMode = .easeInEaseOut
+        let setRemainderExhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.remainderExhale) }
+
+        // --- Phase 5: Hold After Exhale ---
         let holdAfterExhaleVisual = SKAction.wait(forDuration: currentBreathingHoldAfterExhaleDuration)
-        let setInhaleCue = SKAction.run { [weak self] in 
-            guard let self = self else { return }
-            self.updateBreathingPhase(.inhale)
-            // Ensure label stays hidden after first cycle
-            if self.completedFirstBreathingCycle {
-                self.breathingCueLabel.isHidden = true
-            }
-        }
-        let setHoldAfterInhaleCue = SKAction.run { [weak self] in 
-            guard let self = self else { return }
-            self.updateBreathingPhase(.holdAfterInhale)
-            // Ensure label stays hidden after first cycle
-            if self.completedFirstBreathingCycle {
-                self.breathingCueLabel.isHidden = true
-            }
-        }
-        let setExhaleCue = SKAction.run { [weak self] in 
-            guard let self = self else { return }
-            self.updateBreathingPhase(.exhale)
-            // Ensure label stays hidden after first cycle
-            if self.completedFirstBreathingCycle {
-                self.breathingCueLabel.isHidden = true
-            }
-        }
-        let setHoldAfterExhaleCue = SKAction.run { [weak self] in 
-            guard let self = self else { return }
-            self.updateBreathingPhase(.holdAfterExhale)
-            // Ensure label stays hidden after first cycle
-            if self.completedFirstBreathingCycle {
-                self.breathingCueLabel.isHidden = true
-            }
-        }
+        let setHoldAfterExhaleCue = SKAction.run { [weak self] in self?.updateBreathingPhase(.holdAfterExhale) }
+
+        // --- Haptics ---
         let restartHaptics = SKAction.run { [weak self] in
              try? self?.breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
         }
+
+        // --- Assemble Sequence ---
         let sequence = SKAction.sequence([
-            restartHaptics, setInhaleCue, inhaleAction,
-            setHoldAfterInhaleCue, holdAfterInhaleVisual,
-            setExhaleCue, exhaleAction,
+            restartHaptics,
+            setInhaleCue, inhaleAction,
+            setPartialExhaleCue, partialExhaleAction,
+            setHoldMidExhaleCue, holdMidExhaleVisual,
+            setRemainderExhaleCue, remainderExhaleAction,
             setHoldAfterExhaleCue, holdAfterExhaleVisual
         ])
 
@@ -1607,11 +1612,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Only update the breathing cue label text if this is the first cycle
         if !completedFirstBreathingCycle {
             switch newPhase {
-            case .idle: breathingCueLabel.text = ""
-            case .inhale: breathingCueLabel.text = "Inhale"
-            case .holdAfterInhale: breathingCueLabel.text = "Hold"
-            case .exhale: breathingCueLabel.text = "Exhale"
-            case .holdAfterExhale: breathingCueLabel.text = "Hold"
+            case .idle: 
+                breathingCueLabel.text = ""
+            case .inhale: 
+                breathingCueLabel.text = "Inhale"
+            case .partialExhale, .remainderExhale: 
+                breathingCueLabel.text = "Exhale"
+            case .holdMidExhale, .holdAfterExhale: 
+                breathingCueLabel.text = "Hold"
             }
             breathingCueLabel.isHidden = false
         } else {
@@ -1662,33 +1670,50 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
     // --- MODIFIED: Parameterized function to generate pattern ---
     private func generateBreathingHapticPattern(inhaleDuration: TimeInterval, holdAfterInhaleDuration: TimeInterval, exhaleDuration: TimeInterval, holdAfterExhaleDuration: TimeInterval) -> CHHapticPattern? {
-         guard let engine = hapticEngine else { return nil }
+         guard hapticEngine != nil else { return nil }
          var allBreathingEvents: [CHHapticEvent] = []
-         var phaseStartTime: TimeInterval = 0.0; var inhaleEventTimes: [TimeInterval] = []
+         var phaseStartTime: TimeInterval = 0.0
 
          let hapticIntensity = gameConfiguration.breathingHapticIntensity
          let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
          let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
          let accelFactor = gameConfiguration.breathingHapticAccelFactor
 
-         // Inhale Phase
-         var relativeTime: TimeInterval = 0; var currentDelayFactor: Double = 1.0
+         // --- Phase 1: Inhale ---
+         var relativeTime: TimeInterval = 0
+         var currentDelayFactor: Double = 1.0
          let baseInhaleDelay = inhaleDuration / 23.0
          let sharpnessRangeInhale = sharpnessMax - sharpnessMin
          while relativeTime < inhaleDuration - 0.01 {
-             let absoluteTime = phaseStartTime + relativeTime; inhaleEventTimes.append(absoluteTime)
+             let absoluteTime = phaseStartTime + relativeTime
              let fraction = relativeTime / inhaleDuration
              let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-             let delay = baseInhaleDelay / currentDelayFactor; relativeTime += delay; currentDelayFactor += accelFactor
+             let delay = baseInhaleDelay / currentDelayFactor
+             relativeTime += delay
+             currentDelayFactor += accelFactor
          }
-         let minimumDelay = inhaleEventTimes.count > 1 ? (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
          phaseStartTime += inhaleDuration
 
-         // Hold After Inhale Phase
+         // --- Phase 2: Partial Exhale ---
+         let partialExhaleDuration = exhaleDuration * gameConfiguration.preHoldExhaleProportion
          relativeTime = 0
+         let numPartialExhaleTaps = 2 // A couple of distinct taps
+         if partialExhaleDuration > 0.1 {
+             for i in 0..<numPartialExhaleTaps {
+                 let absoluteTime = phaseStartTime + (Double(i) * (partialExhaleDuration / Double(numPartialExhaleTaps)))
+                 let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity * 0.8) // Slightly less intense
+                 let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
+                 allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
+             }
+         }
+         phaseStartTime += partialExhaleDuration
+
+         // --- Phase 3: Mid-Exhale Hold (formerly holdAfterInhale) ---
+         relativeTime = 0
+         let minimumDelay = 0.1 // Spaced out taps for hold
          while relativeTime < holdAfterInhaleDuration - 0.01 {
              let absoluteTime = phaseStartTime + relativeTime
              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
@@ -1698,25 +1723,24 @@ private var isSessionCompleted = false // Added to prevent multiple completions
          }
          phaseStartTime += holdAfterInhaleDuration
 
-         // Exhale Phase
+         // --- Phase 4: Remainder of Exhale ---
+         let remainderExhaleDuration = exhaleDuration * (1.0 - gameConfiguration.preHoldExhaleProportion)
          relativeTime = 0
-         let baseExhaleDelay = exhaleDuration / 23.0
-         let numSteps = inhaleEventTimes.count
-         let maxFactor = 1.0 + accelFactor * Double(numSteps)
-         currentDelayFactor = maxFactor
+         let baseExhaleDelay = remainderExhaleDuration / 20.0
          let sharpnessRangeExhale = sharpnessMax - sharpnessMin
-         while relativeTime < exhaleDuration - 0.01 {
+         while relativeTime < remainderExhaleDuration - 0.01 {
               let absoluteTime = phaseStartTime + relativeTime
-              let fraction = relativeTime / exhaleDuration
+              let fraction = relativeTime / remainderExhaleDuration
               let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
               let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
               let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
               allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-              let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
-              relativeTime += delay; currentDelayFactor -= accelFactor
-              if currentDelayFactor < 1.0 { currentDelayFactor = 1.0 }
+              relativeTime += baseExhaleDelay
          }
-         // No HoldAfterExhale Events
+         phaseStartTime += remainderExhaleDuration
+         
+         // --- Phase 5: Hold After Exhale (No haptics) ---
+         // No events are added for this phase.
 
          allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
          guard !allBreathingEvents.isEmpty else { return nil }
