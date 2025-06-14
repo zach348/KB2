@@ -40,12 +40,19 @@ struct EMAView: View {
             
             VStack(spacing: 30) {
                 // Title
-                Text(emaType.title)
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.top, 20)
+                VStack {
+                    Text(emaType.title)
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true) // Allow text to wrap
+                    
+                    Text("(Your responses are anonymous)")
+                        .font(.footnote)
+                        .foregroundColor(.gray)
+                }
+                .padding(.top, 20)
                 
                 Spacer()
                 
