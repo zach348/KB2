@@ -10,6 +10,7 @@ class DataLogger {
     
     static let shared = DataLogger()
     
+    private let dataProcessingQueue = DispatchQueue(label: "com.kb2.dataLogger.processing", qos: .utility)
     private var events: [[String: Any]] = []
     private var currentSessionId: String?
     private var sessionStartTime: TimeInterval?
@@ -33,6 +34,9 @@ class DataLogger {
     private var cloudUploadQueue: [URL] = []
     private var isCloudExportEnabled: Bool = false
     
+    // Dedicated URLSession to avoid main-thread initialization during gameplay
+    private let urlSession: URLSession
+    
     // Event subscribers for real-time data distribution
     private var eventSubscribers: [(([String: Any]) -> Void)] = []
     private let subscriberQueue = DispatchQueue(label: "datalogger.subscribers", qos: .utility)
@@ -40,94 +44,152 @@ class DataLogger {
     // MARK: - Initialization
     
     private init() {
+        // Create dedicated URLSession to avoid main-thread initialization during gameplay
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30.0
+        config.timeoutIntervalForResource = 60.0
+        self.urlSession = URLSession(configuration: config)
+        
         // Private initializer for singleton pattern
         // Ensure the logger starts in a clean state.
         events.removeAll()
         
         // Fetch the persistent user ID when the logger is first created.
         self.userId = UserIDManager.getUserId()
+        
+        // Perform a lightweight operation to ensure URLSession is fully initialized
+        // This prevents any lazy initialization from happening during gameplay
+        _ = self.urlSession.configuration
+    }
+    
+    // MARK: - Network Pre-warming
+    
+    /// Pre-warm the network stack to prevent first-upload audio interference
+    /// Call this during app startup, before any gameplay or audio begins
+    func prewarmNetworkStack(completion: @escaping (Bool) -> Void = { _ in }) {
+        guard let testURL = URL(string: "https://httpbin.org/head") else {
+            print("DATA_LOG: Network prewarming failed - invalid test URL")
+            completion(false)
+            return
+        }
+        
+        // Perform on background queue to avoid blocking main thread
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else {
+                completion(false)
+                return
+            }
+            
+            // Create a lightweight HEAD request to fully initialize network stack
+            var request = URLRequest(url: testURL)
+            request.httpMethod = "HEAD"
+            request.timeoutInterval = 5.0
+            
+            print("DATA_LOG: Pre-warming network stack...")
+            
+            let task = self.urlSession.dataTask(with: request) { _, response, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("DATA_LOG: Network prewarming completed with error (expected): \(error.localizedDescription)")
+                        // Even with errors, the network stack is now initialized
+                        completion(true)
+                    } else {
+                        print("DATA_LOG: Network prewarming completed successfully")
+                        completion(true)
+                    }
+                }
+            }
+            
+            task.resume()
+        }
     }
     
     // MARK: - Session Management
     
     /// Start a new logging session
     func startSession(sessionDuration: TimeInterval) { // <-- ADDED sessionDuration parameter
-        // If a session is already active, end it before starting a new one.
-        if currentSessionId != nil {
-            print("DATA_LOG: Warning - A new session is being started while another is active. Ending the previous session first.")
-            endSession()
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            // If a session is already active, end it before starting a new one.
+            if self.currentSessionId != nil {
+                print("DATA_LOG: Warning - A new session is being started while another is active. Ending the previous session first.")
+                self.endSession() // endSession will be dispatched on this queue
+            }
+            
+            // Now, clear the events for the new session.
+            self.events.removeAll()
+            
+            self.currentSessionId = UUID().uuidString
+            self.sessionStartTime = Date().timeIntervalSince1970
+            
+            let event: [String: Any] = [
+                "type": "session_start",
+                "timestamp": self.sessionStartTime!,
+                "session_id": self.currentSessionId!,
+                "configured_duration_seconds": sessionDuration // <-- ADDED configured duration
+            ]
+            self.events.append(event)
+            print("DATA_LOG: Session started - ID: \(self.currentSessionId!), Duration: \(sessionDuration)s")
         }
-        
-        // Now, clear the events for the new session. This is the only place events should be cleared before a session starts.
-        events.removeAll()
-        
-        currentSessionId = UUID().uuidString
-        sessionStartTime = Date().timeIntervalSince1970
-        
-        let event: [String: Any] = [
-            "type": "session_start",
-            "timestamp": sessionStartTime!,
-            "session_id": currentSessionId!,
-            "configured_duration_seconds": sessionDuration // <-- ADDED configured duration
-        ]
-        events.append(event)
-        print("DATA_LOG: Session started - ID: \(currentSessionId!), Duration: \(sessionDuration)s")
     }
     
     /// End the current session, save to file, and upload to the cloud.
     func endSession() {
-        guard let sessionId = currentSessionId else {
-            print("DATA_LOG: Warning - No active session to end")
-            return
-        }
-        
-        let timestamp = Date().timeIntervalSince1970
-        let event: [String: Any] = [
-            "type": "session_end",
-            "timestamp": timestamp,
-            "session_id": sessionId
-        ]
-        events.append(event)
-        
-        // Save a local copy first
-        saveSessionToFile()
-        
-        // Attempt to upload the session data to the cloud
-        uploadCurrentSessionToCloud { success, error in
-            if success {
-                print("DATA_LOG: Cloud upload successful for session \(sessionId).")
-            } else {
-                // If the upload fails, the data is still saved locally.
-                // The syncAllSessionsToCloud() method could be used later to retry.
-                print("DATA_LOG: Cloud upload failed for session \(sessionId): \(error ?? "Unknown error")")
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self, let sessionId = self.currentSessionId else {
+                print("DATA_LOG: Warning - No active session to end")
+                return
             }
+            
+            let timestamp = Date().timeIntervalSince1970
+            let event: [String: Any] = [
+                "type": "session_end",
+                "timestamp": timestamp,
+                "session_id": sessionId
+            ]
+            self.events.append(event)
+            
+            // Save a local copy first
+            self.saveSessionToFile()
+            
+            // Attempt to upload the session data to the cloud
+            self.uploadCurrentSessionToCloud { success, error in
+                if success {
+                    print("DATA_LOG: Cloud upload successful for session \(sessionId).")
+                } else {
+                    print("DATA_LOG: Cloud upload failed for session \(sessionId): \(error ?? "Unknown error")")
+                }
+            }
+            
+            // Reset session state for the next run
+            self.currentSessionId = nil
+            self.sessionStartTime = nil
+            self.events.removeAll()
+            
+            print("DATA_LOG: Session ended and processed - ID: \(sessionId)")
         }
-        
-        // Reset session state for the next run
-        currentSessionId = nil
-        sessionStartTime = nil
-        events.removeAll()
-        
-        print("DATA_LOG: Session ended and processed - ID: \(sessionId)")
     }
 
     /// Logs a marker event indicating a partial upload has occurred.
     func logPartialUploadMarker(progressPercent: Int) {
-        guard let sessionId = currentSessionId else {
-            print("DATA_LOG: Warning - No active session to log partial upload marker for.")
-            return
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self, let sessionId = self.currentSessionId else {
+                print("DATA_LOG: Warning - No active session to log partial upload marker for.")
+                return
+            }
+            let timestamp = Date().timeIntervalSince1970
+            let event: [String: Any] = [
+                "type": "partial_upload_marker",
+                "timestamp": timestamp,
+                "session_id": sessionId,
+                "progress_percent": progressPercent
+            ]
+            self.events.append(event)
+            // This event will be included in the next partial or full upload.
+            // We don't add it to streamingBuffer as it's meta-data about the upload itself.
+            print("DATA_LOG: Logged partial upload marker for \(progressPercent)% progress.")
         }
-        let timestamp = Date().timeIntervalSince1970
-        let event: [String: Any] = [
-            "type": "partial_upload_marker",
-            "timestamp": timestamp,
-            "session_id": sessionId,
-            "progress_percent": progressPercent
-        ]
-        events.append(event)
-        // This event will be included in the next partial or full upload.
-        // We don't add it to streamingBuffer as it's meta-data about the upload itself.
-        print("DATA_LOG: Logged partial upload marker for \(progressPercent)% progress.")
     }
     
     // MARK: - Public Methods
@@ -142,7 +204,9 @@ class DataLogger {
             "phase": phase
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         print("DATA_LOG: Self-report (\(phase)) - Arousal Level: \(String(format: "%.2f", arousalLevel))")
     }
@@ -157,7 +221,9 @@ class DataLogger {
             "new_state": newState
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: State transition from \(oldState) to \(newState)")
     }
     
@@ -177,7 +243,9 @@ class DataLogger {
             "ball_id": ballId ?? "unknown"
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         print("DATA_LOG: Tap event - Correct: \(isCorrect), RT: \(String(format: "%.3f", reactionTime))s, Accuracy: \(String(format: "%.2f", accuracy))px")
     }
@@ -199,7 +267,9 @@ class DataLogger {
             "current_phase": currentPhase
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Game performance - Score: \(score), Streak: \(streak), Hit Rate: \(String(format: "%.1f", hitRate * 100))%")
     }
     
@@ -216,7 +286,9 @@ class DataLogger {
             "context": context
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Audio feedback - Type: \(feedbackType), Sound: \(soundFile)")
     }
     
@@ -236,7 +308,9 @@ class DataLogger {
             event["performance_metric"] = metric
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Difficulty adjusted - \(String(format: "%.2f", oldDifficulty)) → \(String(format: "%.2f", newDifficulty)) (\(reason))")
     }
     
@@ -255,7 +329,9 @@ class DataLogger {
             "context": context
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: EMA response - \(questionId): \(response) (\(String(format: "%.2f", completionTime))s)")
     }
     
@@ -293,7 +369,9 @@ class DataLogger {
             event["attitude"] = attitudeData
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         // Note: IMU logging typically doesn't print to console due to high frequency
     }
     
@@ -309,7 +387,9 @@ class DataLogger {
             "configuration": configuration
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Session configured - Participant: \(participantId), Condition: \(studyCondition)")
     }
     
@@ -333,7 +413,9 @@ class DataLogger {
             event["quality"] = qualityMeasure
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Physiological data - \(dataType): \(String(format: "%.2f", value)) \(unit)")
     }
     
@@ -356,7 +438,9 @@ class DataLogger {
             event["features"] = featureVector
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Arousal estimated - \(String(format: "%.3f", estimatedArousal)) from \(source)")
     }
     
@@ -394,7 +478,9 @@ class DataLogger {
             "normalized_breathing_arousal": normalizedBreathingArousal
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         
         print("DATA_LOG: Breathing pattern change - Inhale: \(String(format: "%.2f", oldInhaleDuration))s -> \(String(format: "%.2f", newInhaleDuration))s, HoldInhale: \(String(format: "%.2f", oldHoldAfterInhaleDuration))s -> \(String(format: "%.2f", newHoldAfterInhaleDuration))s, Exhale: \(String(format: "%.2f", oldExhaleDuration))s -> \(String(format: "%.2f", newExhaleDuration))s, HoldExhale: \(String(format: "%.2f", oldHoldAfterExhaleDuration))s -> \(String(format: "%.2f", newHoldAfterExhaleDuration))s. Arousal: \(String(format: "%.2f", arousalLevel)), NormBreathingArousal: \(String(format: "%.2f", normalizedBreathingArousal))")
@@ -413,7 +499,9 @@ class DataLogger {
             event["user_arousal"] = uArousal
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         
         var logMessage = "DATA_LOG: Arousal Levels (\(phase)) - System: \(String(format: "%.2f", systemArousal))"
@@ -457,7 +545,9 @@ class DataLogger {
             "task_state_snapshot": taskStateSnapshot
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         
         print("DATA_LOG: Enhanced ID performance - Duration: \(String(format: "%.2f", duration))s, Success: \(success), Accuracy: \(String(format: "%.1f", accuracy * 100))%")
@@ -497,7 +587,9 @@ class DataLogger {
             event["tap_duration"] = duration
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         
         print("DATA_LOG: Detailed tap - Correct: \(wasCorrect), Element: \(tappedElementID ?? "none"), Targets: \(targetBallIDs.count), Distractors: \(distractorBallIDs.count)")
@@ -601,7 +693,9 @@ class DataLogger {
             ]
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         
         print("DATA_LOG: Task state snapshot - Arousal: \(String(format: "%.2f", currentArousalLevel)), Targets: \(targetCount), Speed: \(String(format: "%.1f", targetMeanSpeed))", "Active TC: \(activeTargetColor), DC: \(activeDistractorColor)")
@@ -633,7 +727,9 @@ class DataLogger {
             "environmental_factors": environmentalFactors
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         
         print("DATA_LOG: Session context - Start: \(timeOfDay) (\(dayOfWeek)), Duration: \(String(format: "%.1f", sessionDuration))s, Profile: \(sessionProfile)")
         print("DATA_LOG: - Initial arousal: \(String(format: "%.2f", initialArousalLevel))")
@@ -651,7 +747,9 @@ class DataLogger {
             "analysis_context": analysisContext
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         
         print("DATA_LOG: Performance history - \(performanceRecords.count) records logged")
     }
@@ -676,7 +774,9 @@ class DataLogger {
             "metadata": metadata
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         
         print("DATA_LOG: Enhanced arousal data - Level: \(String(format: "%.3f", currentLevel)), History: \(historyCount) records")
@@ -697,55 +797,70 @@ class DataLogger {
             event["description"] = description
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Custom event - \(eventType): \(description)")
     }
     
     /// Print a summary of collected data
     func printSummary() {
-        print("DATA_LOG: Summary of \(events.count) events collected")
-        
-        // Group events by type
-        var eventCounts: [String: Int] = [:]
-        for event in events {
-            guard let type = event["type"] as? String else { continue }
-            eventCounts[type] = (eventCounts[type] ?? 0) + 1
-        }
-        
-        // Print count by type
-        for (type, count) in eventCounts {
-            print("DATA_LOG: - \(type): \(count) events")
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else { return }
+            print("DATA_LOG: Summary of \(self.events.count) events collected")
+            
+            // Group events by type
+            var eventCounts: [String: Int] = [:]
+            for event in self.events {
+                guard let type = event["type"] as? String else { continue }
+                eventCounts[type] = (eventCounts[type] ?? 0) + 1
+            }
+            
+            // Print count by type
+            for (type, count) in eventCounts {
+                print("DATA_LOG: - \(type): \(count) events")
+            }
         }
     }
     
     // MARK: - Data Export and Analysis
     
     /// Export current session data as CSV string
-    func exportAsCSV() -> String {
-        var csvLines: [String] = []
-        
-        // CSV Header
-        csvLines.append("timestamp,session_id,event_type,data")
-        
-        // Data rows
-        for event in events {
-            let timestamp = event["timestamp"] as? TimeInterval ?? 0
-            let sessionId = currentSessionId ?? "unknown"
-            let eventType = event["type"] as? String ?? "unknown"
+    func exportAsCSV(completion: @escaping (String) -> Void) {
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else {
+                completion("")
+                return
+            }
             
-            // Convert event data to JSON string for CSV
-            if let jsonData = try? JSONSerialization.data(withJSONObject: event, options: .fragmentsAllowed),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                let escapedJson = jsonString.replacingOccurrences(of: "\"", with: "\"\"")
-                csvLines.append("\(timestamp),\(sessionId),\(eventType),\"\(escapedJson)\"")
+            var csvLines: [String] = []
+            
+            // CSV Header
+            csvLines.append("timestamp,session_id,event_type,data")
+            
+            // Data rows
+            for event in self.events {
+                let timestamp = event["timestamp"] as? TimeInterval ?? 0
+                let sessionId = self.currentSessionId ?? "unknown"
+                let eventType = event["type"] as? String ?? "unknown"
+                
+                // Convert event data to JSON string for CSV
+                if let jsonData = try? JSONSerialization.data(withJSONObject: event, options: .fragmentsAllowed),
+                   let jsonString = String(data: jsonData, encoding: .utf8) {
+                    let escapedJson = jsonString.replacingOccurrences(of: "\"", with: "\"\"")
+                    csvLines.append("\(timestamp),\(sessionId),\(eventType),\"\(escapedJson)\"")
+                }
+            }
+            
+            let csvString = csvLines.joined(separator: "\n")
+            DispatchQueue.main.async {
+                completion(csvString)
             }
         }
-        
-        return csvLines.joined(separator: "\n")
     }
     
     /// Export current session data as JSON string
-    func exportAsJSON() -> String? {
+    private func exportAsJSON() -> String? {
         let exportData: [String: Any] = [
             "user_id": self.userId ?? "unknown",
             "session_id": currentSessionId ?? "unknown",
@@ -764,42 +879,51 @@ class DataLogger {
     }
     
     /// Get data summary statistics
-    func getDataSummary() -> [String: Any] {
-        guard !events.isEmpty else {
-            return ["event_count": 0, "session_duration": 0]
-        }
-        
-        // Calculate session duration
-        let timestamps = events.compactMap { $0["timestamp"] as? TimeInterval }
-        let sessionDuration = timestamps.isEmpty ? 0 : (timestamps.max()! - timestamps.min()!)
-        
-        // Count events by type
-        var eventCounts: [String: Int] = [:]
-        for event in events {
-            if let type = event["type"] as? String {
-                eventCounts[type] = (eventCounts[type] ?? 0) + 1
+    func getDataSummary(completion: @escaping ([String: Any]) -> Void) {
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self, !self.events.isEmpty else {
+                DispatchQueue.main.async { completion(["event_count": 0, "session_duration": 0]) }
+                return
+            }
+            
+            // Calculate session duration
+            let timestamps = self.events.compactMap { $0["timestamp"] as? TimeInterval }
+            let sessionDuration = timestamps.isEmpty ? 0 : (timestamps.max()! - timestamps.min()!)
+            
+            // Count events by type
+            var eventCounts: [String: Int] = [:]
+            for event in self.events {
+                if let type = event["type"] as? String {
+                    eventCounts[type] = (eventCounts[type] ?? 0) + 1
+                }
+            }
+            
+            // Calculate data rate (events per second)
+            let dataRate = sessionDuration > 0 ? Double(self.events.count) / sessionDuration : 0
+            
+            let summary: [String: Any] = [
+                "session_id": self.currentSessionId ?? "unknown",
+                "event_count": self.events.count,
+                "session_duration": sessionDuration,
+                "data_rate_eps": dataRate,
+                "event_types": eventCounts,
+                "first_timestamp": timestamps.min() ?? 0,
+                "last_timestamp": timestamps.max() ?? 0
+            ]
+            
+            DispatchQueue.main.async {
+                completion(summary)
             }
         }
-        
-        // Calculate data rate (events per second)
-        let dataRate = sessionDuration > 0 ? Double(events.count) / sessionDuration : 0
-        
-        return [
-            "session_id": currentSessionId ?? "unknown",
-            "event_count": events.count,
-            "session_duration": sessionDuration,
-            "data_rate_eps": dataRate,
-            "event_types": eventCounts,
-            "first_timestamp": timestamps.min() ?? 0,
-            "last_timestamp": timestamps.max() ?? 0
-        ]
     }
     
     // MARK: - Batch Operations
     
     /// Log multiple events at once for high-frequency data
     func logBatchEvents(_ batchEvents: [[String: Any]]) {
-        events.append(contentsOf: batchEvents)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(contentsOf: batchEvents)
+        }
         print("DATA_LOG: Batch logged \(batchEvents.count) events")
     }
     
@@ -838,66 +962,86 @@ class DataLogger {
     // MARK: - Data Validation and Integrity
     
     /// Validate data integrity and report issues
-    func validateDataIntegrity() -> [String] {
-        var issues: [String] = []
-        
-        // Check for missing timestamps
-        let eventsWithoutTimestamp = events.filter { $0["timestamp"] == nil }
-        if !eventsWithoutTimestamp.isEmpty {
-            issues.append("Found \(eventsWithoutTimestamp.count) events without timestamps")
-        }
-        
-        // Check for missing event types
-        let eventsWithoutType = events.filter { $0["type"] == nil }
-        if !eventsWithoutType.isEmpty {
-            issues.append("Found \(eventsWithoutType.count) events without type")
-        }
-        
-        // Check timestamp ordering
-        let timestamps = events.compactMap { $0["timestamp"] as? TimeInterval }
-        let sortedTimestamps = timestamps.sorted()
-        if timestamps != sortedTimestamps {
-            issues.append("Events are not in chronological order")
-        }
-        
-        // Check for duplicate events (same timestamp and type)
-        var seenEvents: Set<String> = []
-        for event in events {
-            if let timestamp = event["timestamp"] as? TimeInterval,
-               let type = event["type"] as? String {
-                let key = "\(timestamp)_\(type)"
-                if seenEvents.contains(key) {
-                    issues.append("Found duplicate event: \(type) at \(timestamp)")
+    func validateDataIntegrity(completion: @escaping ([String]) -> Void) {
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
+            
+            var issues: [String] = []
+            
+            // Check for missing timestamps
+            let eventsWithoutTimestamp = self.events.filter { $0["timestamp"] == nil }
+            if !eventsWithoutTimestamp.isEmpty {
+                issues.append("Found \(eventsWithoutTimestamp.count) events without timestamps")
+            }
+            
+            // Check for missing event types
+            let eventsWithoutType = self.events.filter { $0["type"] == nil }
+            if !eventsWithoutType.isEmpty {
+                issues.append("Found \(eventsWithoutType.count) events without type")
+            }
+            
+            // Check timestamp ordering
+            let timestamps = self.events.compactMap { $0["timestamp"] as? TimeInterval }
+            let sortedTimestamps = timestamps.sorted()
+            if timestamps != sortedTimestamps {
+                issues.append("Events are not in chronological order")
+            }
+            
+            // Check for duplicate events (same timestamp and type)
+            var seenEvents: Set<String> = []
+            for event in self.events {
+                if let timestamp = event["timestamp"] as? TimeInterval,
+                   let type = event["type"] as? String {
+                    let key = "\(timestamp)_\(type)"
+                    if seenEvents.contains(key) {
+                        issues.append("Found duplicate event: \(type) at \(timestamp)")
+                    }
+                    seenEvents.insert(key)
                 }
-                seenEvents.insert(key)
+            }
+            
+            if issues.isEmpty {
+                print("DATA_LOG: Data integrity validation passed")
+            } else {
+                print("DATA_LOG: Data integrity issues found: \(issues.count)")
+                for issue in issues {
+                    print("DATA_LOG: - \(issue)")
+                }
+            }
+            
+            DispatchQueue.main.async {
+                completion(issues)
             }
         }
-        
-        if issues.isEmpty {
-            print("DATA_LOG: Data integrity validation passed")
-        } else {
-            print("DATA_LOG: Data integrity issues found: \(issues.count)")
-            for issue in issues {
-                print("DATA_LOG: - \(issue)")
-            }
-        }
-        
-        return issues
     }
     
     /// Get memory usage statistics
-    func getMemoryUsage() -> [String: Any] {
-        let eventCount = events.count
-        let estimatedSize = events.reduce(0) { total, event in
-            // Rough estimation of memory usage per event
-            return total + MemoryLayout.size(ofValue: event) + 200 // Base overhead
+    func getMemoryUsage(completion: @escaping ([String: Any]) -> Void) {
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion([:]) }
+                return
+            }
+            
+            let eventCount = self.events.count
+            let estimatedSize = self.events.reduce(0) { total, event in
+                // Rough estimation of memory usage per event
+                return total + MemoryLayout.size(ofValue: event) + 200 // Base overhead
+            }
+            
+            let usage: [String: Any] = [
+                "event_count": eventCount,
+                "estimated_memory_bytes": estimatedSize,
+                "estimated_memory_mb": Double(estimatedSize) / (1024 * 1024)
+            ]
+            
+            DispatchQueue.main.async {
+                completion(usage)
+            }
         }
-        
-        return [
-            "event_count": eventCount,
-            "estimated_memory_bytes": estimatedSize,
-            "estimated_memory_mb": Double(estimatedSize) / (1024 * 1024)
-        ]
     }
     
     // MARK: - Integration Utilities
@@ -920,7 +1064,9 @@ class DataLogger {
             "game_context": gameContext
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Game state: \(oldState) → \(newState)")
     }
     
@@ -935,7 +1081,9 @@ class DataLogger {
             "category": category
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Annotation [\(category)]: \(text)")
     }
     
@@ -960,49 +1108,66 @@ class DataLogger {
             event["cpu_usage_percent"] = cpu
         }
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         print("DATA_LOG: Performance - FPS: \(framerate ?? 0), Memory: \(memoryUsage ?? 0)MB")
     }
     
     /// Get events filtered by type and time range
-    func getFilteredEvents(types: [String]? = nil, fromTime: TimeInterval? = nil, toTime: TimeInterval? = nil) -> [[String: Any]] {
-        return events.filter { event in
-            // Filter by type if specified
-            if let types = types,
-               let eventType = event["type"] as? String,
-               !types.contains(eventType) {
-                return false
+    func getFilteredEvents(types: [String]? = nil, fromTime: TimeInterval? = nil, toTime: TimeInterval? = nil, completion: @escaping ([[String: Any]]) -> Void) {
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion([]) }
+                return
             }
             
-            // Filter by time range if specified
-            if let timestamp = event["timestamp"] as? TimeInterval {
-                if let fromTime = fromTime, timestamp < fromTime {
+            let filtered = self.events.filter { event in
+                // Filter by type if specified
+                if let types = types,
+                   let eventType = event["type"] as? String,
+                   !types.contains(eventType) {
                     return false
                 }
-                if let toTime = toTime, timestamp > toTime {
-                    return false
+                
+                // Filter by time range if specified
+                if let timestamp = event["timestamp"] as? TimeInterval {
+                    if let fromTime = fromTime, timestamp < fromTime {
+                        return false
+                    }
+                    if let toTime = toTime, timestamp > toTime {
+                        return false
+                    }
                 }
+                
+                return true
             }
             
-            return true
+            DispatchQueue.main.async {
+                completion(filtered)
+            }
         }
     }
     
     /// Clear old events to manage memory usage
     func clearEventsOlderThan(_ timeInterval: TimeInterval) {
-        let cutoffTime = Date().timeIntervalSince1970 - timeInterval
-        let initialCount = events.count
-        
-        events = events.filter { event in
-            if let timestamp = event["timestamp"] as? TimeInterval {
-                return timestamp >= cutoffTime
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            let cutoffTime = Date().timeIntervalSince1970 - timeInterval
+            let initialCount = self.events.count
+            
+            self.events = self.events.filter { event in
+                if let timestamp = event["timestamp"] as? TimeInterval {
+                    return timestamp >= cutoffTime
+                }
+                return true // Keep events without timestamps
             }
-            return true // Keep events without timestamps
-        }
-        
-        let removedCount = initialCount - events.count
-        if removedCount > 0 {
-            print("DATA_LOG: Cleared \(removedCount) old events")
+            
+            let removedCount = initialCount - self.events.count
+            if removedCount > 0 {
+                print("DATA_LOG: Cleared \(removedCount) old events")
+            }
         }
     }
     
@@ -1166,158 +1331,188 @@ class DataLogger {
     /// Uploads the current accumulated session data as a partial update.
     /// This does not end the session or clear local events.
     func uploadPartialSessionData(completion: @escaping (Bool, String?) -> Void) {
-        guard isCloudExportEnabled,
-              let endpoint = cloudEndpointURL,
-              let apiKey = cloudAPIKey else {
-            let message = "Cloud export not properly configured for partial upload. Call configureCloudExport()."
-            print("DATA_LOG: \(message)")
-            completion(false, message)
-            return
-        }
-
-        guard currentSessionId != nil else {
-            completion(false, "No active session to send partial data for.")
-            return
-        }
-
-        guard let jsonString = exportAsJSON(), let jsonData = jsonString.data(using: .utf8) else {
-            completion(false, "Failed to serialize partial session data to JSON.")
-            return
-        }
-
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = jsonData
-
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    completion(false, "Partial upload network error: \(error.localizedDescription)")
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion(false, "DataLogger deallocated.") }
+                return
+            }
+            
+            guard self.isCloudExportEnabled,
+                  let endpoint = self.cloudEndpointURL,
+                  let apiKey = self.cloudAPIKey else {
+                let message = "Cloud export not properly configured for partial upload. Call configureCloudExport()."
+                print("DATA_LOG: \(message)")
+                DispatchQueue.main.async { completion(false, message) }
+                return
+            }
+            
+            guard self.currentSessionId != nil else {
+                DispatchQueue.main.async { completion(false, "No active session to send partial data for.") }
+                return
+            }
+            
+            guard let jsonString = self.exportAsJSON(), let jsonData = jsonString.data(using: .utf8) else {
+                DispatchQueue.main.async { completion(false, "Failed to serialize partial session data to JSON.") }
+                return
+            }
+            
+            // Add small delay to ensure network activity doesn't interfere with audio
+            print("DATA_LOG: Scheduling upload with audio-safe timing...")
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self = self else {
+                    DispatchQueue.main.async { completion(false, "DataLogger deallocated during upload delay.") }
                     return
                 }
+                
+                var request = URLRequest(url: endpoint)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                request.httpBody = jsonData
 
-                if let httpResponse = response as? HTTPURLResponse {
-                    if (200...299).contains(httpResponse.statusCode) {
-                        print("DATA_LOG: Partial session data uploaded successfully for session \(self.currentSessionId ?? "unknown").")
-                        completion(true, nil)
-                    } else {
-                        var responseBody = "No response body"
-                        if let data = data, let bodyString = String(data: data, encoding: .utf8) {
-                            responseBody = bodyString
+                self.urlSession.dataTask(with: request) { data, response, error in
+                    DispatchQueue.main.async {
+                        if let error = error {
+                            completion(false, "Partial upload network error: \(error.localizedDescription)")
+                            return
                         }
-                        completion(false, "Partial upload server error: HTTP \(httpResponse.statusCode). Response: \(responseBody)")
+                        
+                        if let httpResponse = response as? HTTPURLResponse {
+                            if (200...299).contains(httpResponse.statusCode) {
+                                print("DATA_LOG: Partial session data uploaded successfully for session \(self.currentSessionId ?? "unknown").")
+                                completion(true, nil)
+                            } else {
+                                var responseBody = "No response body"
+                                if let data = data, let bodyString = String(data: data, encoding: .utf8) {
+                                    responseBody = bodyString
+                                }
+                                completion(false, "Partial upload server error: HTTP \(httpResponse.statusCode). Response: \(responseBody)")
+                            }
+                        } else {
+                            completion(false, "Invalid server response for partial upload.")
+                        }
                     }
-                } else {
-                    completion(false, "Invalid server response for partial upload.")
-                }
+                }.resume()
             }
-        }.resume()
+        }
     }
     
     /// Upload session data to configured cloud endpoint
     func uploadToCloud(sessionFilePath: URL, completion: @escaping (Bool, String?) -> Void) {
-        guard isCloudExportEnabled,
-              let endpoint = cloudEndpointURL,
-              let apiKey = cloudAPIKey else {
-            completion(false, "Cloud export not properly configured")
-            return
-        }
-        
-        guard isNetworkAvailable else {
-            // Queue for later upload
-            cloudUploadQueue.append(sessionFilePath)
-            completion(false, "Network unavailable - queued for upload")
-            return
-        }
-        
-        // Create upload request
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        
-        do {
-            let fileData = try Data(contentsOf: sessionFilePath)
-            request.httpBody = fileData
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion(false, "DataLogger deallocated.") }
+                return
+            }
             
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        completion(false, "Upload error: \(error.localizedDescription)")
-                        return
-                    }
-                    
-                    if let httpResponse = response as? HTTPURLResponse {
-                        if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
-                            print("DATA_LOG: Successfully uploaded \(sessionFilePath.lastPathComponent)")
-                            completion(true, nil)
-                        } else {
-                            completion(false, "Server error: HTTP \(httpResponse.statusCode)")
+            guard self.isCloudExportEnabled,
+                  let endpoint = self.cloudEndpointURL,
+                  let apiKey = self.cloudAPIKey else {
+                DispatchQueue.main.async { completion(false, "Cloud export not properly configured") }
+                return
+            }
+            
+            guard self.isNetworkAvailable else {
+                // Queue for later upload
+                self.cloudUploadQueue.append(sessionFilePath)
+                DispatchQueue.main.async { completion(false, "Network unavailable - queued for upload") }
+                return
+            }
+            
+            // Create upload request
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            
+            do {
+                let fileData = try Data(contentsOf: sessionFilePath)
+                request.httpBody = fileData
+                
+                self.urlSession.dataTask(with: request) { data, response, error in
+                    DispatchQueue.main.async {
+                        if let error = error {
+                            completion(false, "Upload error: \(error.localizedDescription)")
+                            return
                         }
-                    } else {
-                        completion(false, "Invalid server response")
+                        
+                        if let httpResponse = response as? HTTPURLResponse {
+                            if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
+                                print("DATA_LOG: Successfully uploaded \(sessionFilePath.lastPathComponent)")
+                                completion(true, nil)
+                            } else {
+                                completion(false, "Server error: HTTP \(httpResponse.statusCode)")
+                            }
+                        } else {
+                            completion(false, "Invalid server response")
+                        }
                     }
-                }
-            }.resume()
-            
-        } catch {
-            completion(false, "File read error: \(error.localizedDescription)")
+                }.resume()
+                
+            } catch {
+                DispatchQueue.main.async { completion(false, "File read error: \(error.localizedDescription)") }
+            }
         }
     }
     
     /// Upload current session data directly to the configured cloud endpoint.
     /// This method sends the in-memory event data without creating a temporary file.
     func uploadCurrentSessionToCloud(completion: @escaping (Bool, String?) -> Void) {
-        guard isCloudExportEnabled,
-              let endpoint = cloudEndpointURL,
-              let apiKey = cloudAPIKey else {
-            let message = "Cloud export not properly configured. Call configureCloudExport() from your app's startup sequence."
-            print("DATA_LOG: \(message)")
-            completion(false, message)
-            return
-        }
-
-        guard currentSessionId != nil else {
-            completion(false, "No active session to upload")
-            return
-        }
-
-        // exportAsJSON() creates the JSON structure that includes the session_id and all events.
-        guard let jsonString = exportAsJSON(), let jsonData = jsonString.data(using: .utf8) else {
-            completion(false, "Failed to serialize session data to JSON.")
-            return
-        }
-
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
+        dataProcessingQueue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion(false, "DataLogger deallocated.") }
+                return
+            }
+            
+            guard self.isCloudExportEnabled,
+                  let endpoint = self.cloudEndpointURL,
+                  let apiKey = self.cloudAPIKey else {
+                let message = "Cloud export not properly configured. Call configureCloudExport() from your app's startup sequence."
+                print("DATA_LOG: \(message)")
+                DispatchQueue.main.async { completion(false, message) }
+                return
+            }
+            
+            guard self.currentSessionId != nil else {
+                DispatchQueue.main.async { completion(false, "No active session to upload") }
+                return
+            }
+            
+            // exportAsJSON() is now private and must be called from this queue.
+            guard let jsonString = self.exportAsJSON(), let jsonData = jsonString.data(using: .utf8) else {
+                DispatchQueue.main.async { completion(false, "Failed to serialize session data to JSON.") }
+                return
+            }
+            
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = jsonData
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    completion(false, "Upload network error: \(error.localizedDescription)")
-                    return
-                }
-
-                if let httpResponse = response as? HTTPURLResponse {
-                    if (200...299).contains(httpResponse.statusCode) {
-                        completion(true, nil)
-                    } else {
-                        var responseBody = "No response body"
-                        if let data = data, let bodyString = String(data: data, encoding: .utf8) {
-                            responseBody = bodyString
-                        }
-                        completion(false, "Server error: HTTP \(httpResponse.statusCode). Response: \(responseBody)")
+            self.urlSession.dataTask(with: request) { data, response, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        completion(false, "Upload network error: \(error.localizedDescription)")
+                        return
                     }
-                } else {
-                    completion(false, "Invalid server response received.")
+                    
+                    if let httpResponse = response as? HTTPURLResponse {
+                        if (200...299).contains(httpResponse.statusCode) {
+                            completion(true, nil)
+                        } else {
+                            var responseBody = "No response body"
+                            if let data = data, let bodyString = String(data: data, encoding: .utf8) {
+                                responseBody = bodyString
+                            }
+                            completion(false, "Server error: HTTP \(httpResponse.statusCode). Response: \(responseBody)")
+                        }
+                    } else {
+                        completion(false, "Invalid server response received.")
+                    }
                 }
-            }
-        }.resume()
+            }.resume()
+        }
     }
     
     /// Process queued cloud uploads when network becomes available
@@ -1407,6 +1602,7 @@ class DataLogger {
     
     /// Save current session events to a JSON file
     private func saveSessionToFile() {
+        // This must be called from within the dataProcessingQueue
         guard let sessionId = currentSessionId else { return }
         
         do {
@@ -1446,7 +1642,9 @@ class DataLogger {
             "dom_values": domsAsString
         ]
         
-        events.append(event)
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
         addToStreamingBuffer(event)
         
         print("DATA_LOG: Adaptive Difficulty Step - Arousal: \(String(format: "%.2f", arousalLevel)), PerfScore: \(String(format: "%.2f", performanceScore))")

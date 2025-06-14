@@ -45,6 +45,10 @@ class PreciseAudioPulser {
     // Thread safety - use a concurrent queue instead of a lock for better performance
     private let audioQueue = DispatchQueue(label: "com.kalibrate.AudioQueue", qos: .userInteractive, attributes: .concurrent)
     
+    // Audio session interruption handling
+    private var audioSessionInterruptionObserver: NSObjectProtocol?
+    private var wasPlayingBeforeInterruption: Bool = false
+    
     // MARK: - Initialization
     init(useExternalSync: Bool = true) {
         self.syncMode = useExternalSync
@@ -209,6 +213,10 @@ class PreciseAudioPulser {
             
             try engine.start()
             isRunning = true
+            
+            // Set up audio session interruption handling for resilience
+            setupAudioSessionObservers()
+            
             print("PreciseAudioPulser: Started successfully in \(syncMode ? "external sync" : "internal timing") mode")
             return true
         } catch {
@@ -222,6 +230,9 @@ class PreciseAudioPulser {
         
         engine.stop()
         isRunning = false
+        
+        // Remove audio session observers
+        removeAudioSessionObservers()
         
         // Clean up audio session
         do {
@@ -335,4 +346,94 @@ class PreciseAudioPulser {
     func updatePulseFrequency(_ newRate: Double) {
         setPulseRate(newRate)
     }
-} 
+    
+    // MARK: - Audio Session Interruption Handling
+    
+    /// Set up audio session interruption observers for resilient audio
+    private func setupAudioSessionObservers() {
+        // Remove existing observer if any
+        if let observer = audioSessionInterruptionObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        
+        audioSessionInterruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleAudioSessionInterruption(notification)
+        }
+    }
+    
+    /// Handle audio session interruption events
+    private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+        
+        switch type {
+        case .began:
+            print("PreciseAudioPulser: Audio session interrupted")
+            wasPlayingBeforeInterruption = isRunning
+            if isRunning {
+                // Audio engine will be stopped automatically by the system
+                isRunning = false
+            }
+            
+        case .ended:
+            print("PreciseAudioPulser: Audio session interruption ended")
+            if wasPlayingBeforeInterruption {
+                // Attempt to restart audio after interruption
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.recoverFromInterruption()
+                }
+            }
+            
+        @unknown default:
+            print("PreciseAudioPulser: Unknown audio session interruption type")
+        }
+    }
+    
+    /// Attempt to recover audio after interruption
+    private func recoverFromInterruption() {
+        guard !isRunning, let engine = audioEngine else { return }
+        
+        print("PreciseAudioPulser: Attempting audio recovery...")
+        
+        do {
+            // Reactivate audio session
+            try AVAudioSession.sharedInstance().setActive(true)
+            
+            // Restart engine
+            try engine.start()
+            isRunning = true
+            
+            // Reset timing state
+            baseTime = CACurrentMediaTime()
+            pulseEnvelopeValue = 0.0
+            pulseQueue.removeAll()
+            
+            print("PreciseAudioPulser: Audio recovery successful")
+        } catch {
+            print("PreciseAudioPulser: Audio recovery failed: \(error.localizedDescription)")
+            // Try again in a moment
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.recoverFromInterruption()
+            }
+        }
+    }
+    
+    /// Clean up audio session observers
+    private func removeAudioSessionObservers() {
+        if let observer = audioSessionInterruptionObserver {
+            NotificationCenter.default.removeObserver(observer)
+            audioSessionInterruptionObserver = nil
+        }
+    }
+    
+    deinit {
+        removeAudioSessionObservers()
+    }
+}

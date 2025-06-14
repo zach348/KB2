@@ -26,6 +26,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         DataLogger.shared.configureCloudExport(endpointURL: veloURL, apiKey: apiKey)
         DataLogger.shared.startNetworkMonitoring() // To handle offline queuing
         
+        // Pre-warm network stack to prevent first-upload audio interference
+        DataLogger.shared.prewarmNetworkStack { success in
+            print("APP: Network stack pre-warming \(success ? "completed" : "failed")")
+        }
+        
         return true
     }
 
