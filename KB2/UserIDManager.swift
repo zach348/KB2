@@ -8,7 +8,7 @@ class UserIDManager {
     // A unique service name to identify our app's entry in the Keychain.
     private static let serviceName = "com.kalibrate.userid"
     // The App Group identifier must match the one configured in Xcode Signing & Capabilities.
-    private static let accessGroup = "group.com.trainingstate.KB2"
+    private static let accessGroup = "group.com.trainingstate.kb2"
     
     /// Retrieves the persistent user ID from the Keychain.
     /// If no ID exists, it generates a new one, saves it, and returns it.
