@@ -1491,18 +1491,32 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                  let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
                  let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange
 
-                 let minInhale: TimeInterval = 3.5 // TODO: Refactor these magic numbers
-                 let maxInhale: TimeInterval = 5.0
-                 let minExhale: TimeInterval = 5.0
-                 let maxExhale: TimeInterval = 6.5
+                 let minInhale = gameConfiguration.dynamicBreathingMinInhaleDuration
+                 let maxInhale = gameConfiguration.dynamicBreathingMaxInhaleDuration
+                 let minExhale = gameConfiguration.dynamicBreathingMinExhaleDuration
+                 let maxExhale = gameConfiguration.dynamicBreathingMaxExhaleDuration
 
                  let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
                  let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
 
+                 // Calculate proportional hold durations
+                 // Hold after inhale: 30% at low arousal -> 5% at high arousal
+                 let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportion_LowArousal + 
+                     (gameConfiguration.holdAfterInhaleProportion_HighArousal - gameConfiguration.holdAfterInhaleProportion_LowArousal) * normalizedBreathingArousal
+                 let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
+                 
+                 // Hold after exhale: 50% at low arousal -> 20% at high arousal
+                 let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportion_LowArousal + 
+                     (gameConfiguration.holdAfterExhaleProportion_HighArousal - gameConfiguration.holdAfterExhaleProportion_LowArousal) * normalizedBreathingArousal
+                 let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)
+
                  currentBreathingInhaleDuration = targetInhaleDuration
                  currentBreathingExhaleDuration = targetExhaleDuration
-                 // Holds remain constant for now
+                 currentBreathingHoldAfterInhaleDuration = targetHoldAfterInhaleDuration
+                 currentBreathingHoldAfterExhaleDuration = targetHoldAfterExhaleDuration
+                 
                  print("DIAGNOSTIC: Updated visual durations - Inhale: \(String(format: "%.2f", currentBreathingInhaleDuration)), Exhale: \(String(format: "%.2f", currentBreathingExhaleDuration))")
+                 print("DIAGNOSTIC: Updated hold durations - After Inhale: \(String(format: "%.2f", currentBreathingHoldAfterInhaleDuration)), After Exhale: \(String(format: "%.2f", currentBreathingHoldAfterExhaleDuration))")
              }
              needsVisualDurationUpdate = false // Reset the flag
         }
@@ -1720,22 +1734,37 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
         let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange // Range 0.0 to 1.0
 
-        // Define target duration ranges (Example: Inhale 3.5s-5.0s, Exhale 6.5s-5.0s)
-        let minInhale: TimeInterval = 3.5
-        let maxInhale: TimeInterval = 5.0
-        let minExhale: TimeInterval = 5.0
-        let maxExhale: TimeInterval = 6.5
+        // Define target duration ranges using GameConfiguration
+        let minInhale = gameConfiguration.dynamicBreathingMinInhaleDuration
+        let maxInhale = gameConfiguration.dynamicBreathingMaxInhaleDuration
+        let minExhale = gameConfiguration.dynamicBreathingMinExhaleDuration
+        let maxExhale = gameConfiguration.dynamicBreathingMaxExhaleDuration
 
         // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
         let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
         let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
 
+        // Calculate proportional hold durations
+        // Hold after inhale: 30% at low arousal -> 5% at high arousal
+        let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportion_LowArousal + 
+            (gameConfiguration.holdAfterInhaleProportion_HighArousal - gameConfiguration.holdAfterInhaleProportion_LowArousal) * normalizedBreathingArousal
+        let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
+        
+        // Hold after exhale: 50% at low arousal -> 20% at high arousal
+        let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportion_LowArousal + 
+            (gameConfiguration.holdAfterExhaleProportion_HighArousal - gameConfiguration.holdAfterExhaleProportion_LowArousal) * normalizedBreathingArousal
+        let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)
+
         // --- INTENTIONALLY PLACING DURATION CHECK HERE ---
         // Check if change exceeds tolerance
         let tolerance: TimeInterval = 0.1
-        if abs(targetInhaleDuration - currentBreathingInhaleDuration) > tolerance || abs(targetExhaleDuration - currentBreathingExhaleDuration) > tolerance {
+        if abs(targetInhaleDuration - currentBreathingInhaleDuration) > tolerance || 
+           abs(targetExhaleDuration - currentBreathingExhaleDuration) > tolerance ||
+           abs(targetHoldAfterInhaleDuration - currentBreathingHoldAfterInhaleDuration) > tolerance ||
+           abs(targetHoldAfterExhaleDuration - currentBreathingHoldAfterExhaleDuration) > tolerance {
             print("DIAGNOSTIC: Breathing duration change detected. Flagging for update...")
             print("DIAGNOSTIC: Target pattern - Inhale: \(String(format: "%.1f", targetInhaleDuration))s, Exhale: \(String(format: "%.1f", targetExhaleDuration))s")
+            print("DIAGNOSTIC: Target holds - After Inhale: \(String(format: "%.1f", targetHoldAfterInhaleDuration))s, After Exhale: \(String(format: "%.1f", targetHoldAfterExhaleDuration))s")
             
             // Log breathing pattern change to DataLogger
             DataLogger.shared.logBreathingPatternChange(
@@ -1744,9 +1773,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 oldExhaleDuration: currentBreathingExhaleDuration,
                 newExhaleDuration: targetExhaleDuration,
                 oldHoldAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration,
-                newHoldAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration, // Hold durations not changing in this implementation
+                newHoldAfterInhaleDuration: targetHoldAfterInhaleDuration,
                 oldHoldAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration,
-                newHoldAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration, // Hold durations not changing in this implementation
+                newHoldAfterExhaleDuration: targetHoldAfterExhaleDuration,
                 arousalLevel: currentArousalLevel,
                 normalizedBreathingArousal: normalizedBreathingArousal
             )
