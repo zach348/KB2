@@ -7,6 +7,8 @@ class UserIDManager {
     
     // A unique service name to identify our app's entry in the Keychain.
     private static let serviceName = "com.kalibrate.userid"
+    // The App Group identifier must match the one configured in Xcode Signing & Capabilities.
+    private static let accessGroup = "group.com.trainingstate.kb2"
     
     /// Retrieves the persistent user ID from the Keychain.
     /// If no ID exists, it generates a new one, saves it, and returns it.
@@ -41,6 +43,7 @@ class UserIDManager {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecValueData as String: data,
+            kSecAttrAccessGroup as String: accessGroup, // <-- ADDED
             // Set accessibility to allow access even when the device is locked.
             // This is important for background tasks.
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
@@ -64,6 +67,7 @@ class UserIDManager {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
+            kSecAttrAccessGroup as String: accessGroup, // <-- ADDED
             kSecReturnData as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
