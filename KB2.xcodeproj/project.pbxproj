@@ -11,6 +11,7 @@
 		7C10CC6F2DC2F91700FC9C3A /* GameplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C10CC6E2DC2F91700FC9C3A /* GameplayKit.framework */; };
 		7C10CC712DC2F91F00FC9C3A /* CoreHaptics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C10CC702DC2F91F00FC9C3A /* CoreHaptics.framework */; };
 		7C10CC732DC2F92600FC9C3A /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7C10CC722DC2F92600FC9C3A /* AVFoundation.framework */; };
+		7C10CC742DC2F92600FC9C3B /* ADMKPIWeightTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C10CC752DC2F92600FC9C3B /* ADMKPIWeightTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,6 +26,7 @@
 
 /* Begin PBXFileReference section */
 		7C10CC5A2DC2F43E00FC9C3A /* KB2Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KB2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7C10CC752DC2F92600FC9C3B /* ADMKPIWeightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KB2Tests/ADMKPIWeightTests.swift; sourceTree = "<group>"; };
 		7C10CC6C2DC2F91000FC9C3A /* SpriteKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SpriteKit.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk/System/iOSSupport/System/Library/Frameworks/SpriteKit.framework; sourceTree = DEVELOPER_DIR; };
 		7C10CC6E2DC2F91700FC9C3A /* GameplayKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameplayKit.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk/System/iOSSupport/System/Library/Frameworks/GameplayKit.framework; sourceTree = DEVELOPER_DIR; };
 		7C10CC702DC2F91F00FC9C3A /* CoreHaptics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreHaptics.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk/System/Library/Frameworks/CoreHaptics.framework; sourceTree = DEVELOPER_DIR; };

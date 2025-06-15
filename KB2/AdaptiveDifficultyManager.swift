@@ -281,7 +281,7 @@ class AdaptiveDifficultyManager {
         return normalized
     }
     
-    private func calculateOverallPerformanceScore(normalizedKPIs: [KPIType: CGFloat]) -> CGFloat { // Changed ADM_KPIType
+    func calculateOverallPerformanceScore(normalizedKPIs: [KPIType: CGFloat]) -> CGFloat { // Changed ADM_KPIType
         // Get interpolated weights based on current arousal (Phase 1.5)
         let weights = getInterpolatedKPIWeights(arousal: currentArousalLevel)
         
@@ -416,7 +416,7 @@ class AdaptiveDifficultyManager {
     }
     
     /// Get interpolated KPI weights based on arousal level
-    private func getInterpolatedKPIWeights(arousal: CGFloat) -> KPIWeights {
+    func getInterpolatedKPIWeights(arousal: CGFloat) -> KPIWeights {
         guard config.useKPIWeightInterpolation else {
             // Fallback to original behavior
             return arousal >= config.arousalThresholdForKPIAndHierarchySwitch ?
