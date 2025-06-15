@@ -114,8 +114,8 @@ This document outlines incremental improvements to address two critical issues i
 - [x] **Update `calculateOverallPerformanceScore()` to use interpolated weights**
 
 ### Validation Checkpoint 1.5
-- [ ] **Test smooth transitions around 0.6-0.8 arousal range**
-- [ ] **Verify no performance discontinuities**
+- [x] **Test smooth transitions around 0.6-0.8 arousal range**
+- [x] **Verify no performance discontinuities**
 - [ ] **A/B test with interpolation on/off**
 
 ---

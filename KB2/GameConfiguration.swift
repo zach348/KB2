@@ -127,7 +127,7 @@ struct GameConfiguration {
     
     // Breathing haptic tempo parameters
     let breathingHapticMinDelay: TimeInterval = 0.013  // ~77Hz - Fastest tempo at max radius (was 0.04)
-    let breathingHapticMaxDelay: TimeInterval = 0.15   // ~6.7Hz - Slowest tempo at min radius
+    let breathingHapticMaxDelay: TimeInterval = 0.075   // ~6.7Hz - Slowest tempo at min radius
     let breathingHapticTempoExponent: Double = 1.05     // Controls the curve mapping (higher = more dramatic change)
 
     // --- Identification Task ---
