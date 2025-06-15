@@ -31,7 +31,6 @@ class VHAManager {
     // Haptic properties
     private var hapticEngine: CHHapticEngine?
     private var hapticPlayer: CHHapticPatternPlayer?
-    private var breathingHapticPlayer: CHHapticPatternPlayer?
     private var hapticsReady: Bool = false
     public var hapticOffset: TimeInterval = 0.020
     
@@ -44,11 +43,6 @@ class VHAManager {
     private var currentAudioPulseRate: Double = 4.0
     public var audioOffset: TimeInterval = 0.040
     
-    // Breathing settings
-    private var currentBreathingInhaleDuration: TimeInterval = 4.0
-    private var currentBreathingHoldAfterInhaleDuration: TimeInterval = 1.5
-    private var currentBreathingExhaleDuration: TimeInterval = 6.0
-    private var currentBreathingHoldAfterExhaleDuration: TimeInterval = 1.0
     
     // External state flag
     private var isFlashSequenceRunning: Bool = false
@@ -108,16 +102,6 @@ class VHAManager {
         updateAudioParameters()
     }
     
-    func updateBreathingParameters(inhaleDuration: TimeInterval,
-                                  holdAfterInhaleDuration: TimeInterval,
-                                  exhaleDuration: TimeInterval,
-                                  holdAfterExhaleDuration: TimeInterval) {
-        // Store new durations
-        self.currentBreathingInhaleDuration = inhaleDuration
-        self.currentBreathingHoldAfterInhaleDuration = holdAfterInhaleDuration
-        self.currentBreathingExhaleDuration = exhaleDuration
-        self.currentBreathingHoldAfterExhaleDuration = holdAfterExhaleDuration
-    }
     
     func updateFlashSequenceStatus(isRunning: Bool, cooldownEndTime: TimeInterval) {
         self.isFlashSequenceRunning = isRunning
@@ -192,17 +176,6 @@ class VHAManager {
             let transientPattern = try CHHapticPattern(events: [transientEvent], parameters: [])
             hapticPlayer = try hapticEngine?.makePlayer(with: transientPattern)
             
-            // Generate initial breathing pattern & player
-            if let initialPattern = generateBreathingHapticPattern(
-                inhaleDuration: currentBreathingInhaleDuration,
-                holdAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration,
-                exhaleDuration: currentBreathingExhaleDuration,
-                holdAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration) {
-                
-                breathingHapticPlayer = try hapticEngine?.makePlayer(with: initialPattern)
-            } else {
-                print("ERROR: Failed to create initial breathing haptic pattern.")
-            }
             
             hapticsReady = true
             
@@ -238,56 +211,6 @@ class VHAManager {
         hapticsReady = false
     }
     
-    func startBreathingHaptics() {
-        guard hapticsReady, let player = breathingHapticPlayer else { return }
-        
-        do {
-            try player.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            print("ERROR: Failed to start breathing haptics: \(error.localizedDescription)")
-        }
-    }
-    
-    func stopBreathingHaptics() {
-        guard hapticsReady, let player = breathingHapticPlayer else { return }
-        
-        do {
-            try player.stop(atTime: CHHapticTimeImmediate)
-        } catch {
-            print("ERROR: Failed to stop breathing haptics: \(error.localizedDescription)")
-        }
-    }
-    
-    func updateBreathingHaptics() {
-        guard hapticsReady, let engine = hapticEngine else { return }
-
-        print("DIAGNOSTIC: Updating breathing haptic pattern...")
-        
-        // Stop the current player
-        try? breathingHapticPlayer?.stop(atTime: CHHapticTimeImmediate)
-        breathingHapticPlayer = nil // Release old player
-
-        // Generate new pattern with current durations
-        guard let newPattern = generateBreathingHapticPattern(
-            inhaleDuration: currentBreathingInhaleDuration,
-            holdAfterInhaleDuration: currentBreathingHoldAfterInhaleDuration,
-            exhaleDuration: currentBreathingExhaleDuration,
-            holdAfterExhaleDuration: currentBreathingHoldAfterExhaleDuration) else {
-                
-            print("ERROR: Failed to generate new breathing haptic pattern during update.")
-            return
-        }
-
-        // Create and start a new player
-        do {
-            breathingHapticPlayer = try engine.makePlayer(with: newPattern)
-            // Try starting immediately - might cause slight jump if called mid-cycle
-            try? breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
-            print("DIAGNOSTIC: Successfully updated and started new breathing haptic player.")
-        } catch {
-            print("ERROR: Failed to create or start new breathing haptic player: \(error.localizedDescription)")
-        }
-    }
     
     // MARK: - Audio Engine
     
@@ -336,124 +259,6 @@ class VHAManager {
     
     // MARK: - Helper Methods
     
-    // Parameterized function to generate haptic breathing pattern
-    private func generateBreathingHapticPattern(
-        inhaleDuration: TimeInterval, 
-        holdAfterInhaleDuration: TimeInterval, 
-        exhaleDuration: TimeInterval, 
-        holdAfterExhaleDuration: TimeInterval) -> CHHapticPattern? {
-            
-        guard let engine = hapticEngine else { return nil }
-        
-        var allBreathingEvents: [CHHapticEvent] = []
-        var phaseStartTime: TimeInterval = 0.0
-        var inhaleEventTimes: [TimeInterval] = []
-
-        // Default haptic parameters - should be made configurable
-        let hapticIntensity: Float = 0.8 
-        let sharpnessMin: Float = 0.35
-        let sharpnessMax: Float = 0.8
-        let accelFactor: Double = 0.13
-
-        // Inhale Phase
-        var relativeTime: TimeInterval = 0
-        var currentDelayFactor: Double = 1.0
-        let baseInhaleDelay = inhaleDuration / 23.0
-        let sharpnessRangeInhale = sharpnessMax - sharpnessMin
-        
-        while relativeTime < inhaleDuration - 0.01 {
-            let absoluteTime = phaseStartTime + relativeTime
-            inhaleEventTimes.append(absoluteTime)
-            
-            let fraction = relativeTime / inhaleDuration
-            let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
-            
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-            
-            allBreathingEvents.append(CHHapticEvent(
-                eventType: .hapticTransient,
-                parameters: [intensityParam, sharpnessParam],
-                relativeTime: absoluteTime
-            ))
-            
-            let delay = baseInhaleDelay / currentDelayFactor
-            relativeTime += delay
-            currentDelayFactor += accelFactor
-        }
-        
-        let minimumDelay = inhaleEventTimes.count > 1 ? 
-            (inhaleEventTimes.last! - inhaleEventTimes[inhaleEventTimes.count-2]) : 0.05
-        
-        phaseStartTime += inhaleDuration
-
-        // Hold After Inhale Phase
-        relativeTime = 0
-        
-        while relativeTime < holdAfterInhaleDuration - 0.01 {
-            let absoluteTime = phaseStartTime + relativeTime
-            
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
-            
-            allBreathingEvents.append(CHHapticEvent(
-                eventType: .hapticTransient,
-                parameters: [intensityParam, sharpnessParam],
-                relativeTime: absoluteTime
-            ))
-            
-            relativeTime += minimumDelay
-        }
-        
-        phaseStartTime += holdAfterInhaleDuration
-
-        // Exhale Phase
-        relativeTime = 0
-        let baseExhaleDelay = exhaleDuration / 23.0
-        let numSteps = inhaleEventTimes.count
-        let maxFactor = 1.0 + accelFactor * Double(numSteps)
-        currentDelayFactor = maxFactor
-        let sharpnessRangeExhale = sharpnessMax - sharpnessMin
-        
-        while relativeTime < exhaleDuration - 0.01 {
-            let absoluteTime = phaseStartTime + relativeTime
-            
-            let fraction = relativeTime / exhaleDuration
-            let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
-            
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-            
-            allBreathingEvents.append(CHHapticEvent(
-                eventType: .hapticTransient,
-                parameters: [intensityParam, sharpnessParam],
-                relativeTime: absoluteTime
-            ))
-            
-            let delay = baseExhaleDelay / max(0.1, currentDelayFactor)
-            relativeTime += delay
-            currentDelayFactor -= accelFactor
-            
-            if currentDelayFactor < 1.0 {
-                currentDelayFactor = 1.0
-            }
-        }
-        
-        // No HoldAfterExhale Events (could add them if needed)
-
-        // Sort events by time and create pattern
-        allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
-        
-        guard !allBreathingEvents.isEmpty else { return nil }
-        
-        do {
-            let breathingPattern = try CHHapticPattern(events: allBreathingEvents, parameters: [])
-            return breathingPattern
-        } catch { 
-            print("Error creating breathing haptic pattern: \(error.localizedDescription)")
-            return nil 
-        }
-    }
     
     func isEngineRunning() -> Bool {
         return hapticsReady && audioReady && (precisionTimer?.isRunning ?? false)

@@ -104,17 +104,11 @@ struct GameConfiguration {
     let dynamicBreathingMinExhaleDuration: TimeInterval = 4.25
     let dynamicBreathingMaxExhaleDuration: TimeInterval = 8.0
     
-    // Dynamic breathing duration ranges (for arousal-based adjustment) - RETAINED FOR NOW, POTENTIALLY FOR HOLDS
-    let breathingInhaleDuration_Min: TimeInterval = 3.5 // Matches dynamicBreathingMinInhaleDuration
-    let breathingInhaleDuration_Max: TimeInterval = 4.25 // Matches dynamicBreathingMaxInhaleDuration
-    let breathingExhaleDuration_Min: TimeInterval = 4.25 // Matches dynamicBreathingMinExhaleDuration
-    let breathingExhaleDuration_Max: TimeInterval = 8.0 // Matches dynamicBreathingMaxExhaleDuration
-    
     // Proportions for dynamic hold durations (as percentage of inhale/exhale duration)
-    let holdAfterInhaleProportion_LowArousal: CGFloat = 0.30  // 30% of inhale duration at minimum arousal
-    let holdAfterInhaleProportion_HighArousal: CGFloat = 0.05 // 5% of inhale duration at tracking threshold
-    let holdAfterExhaleProportion_LowArousal: CGFloat = 0.50  // 50% of exhale duration at minimum arousal
-    let holdAfterExhaleProportion_HighArousal: CGFloat = 0.20 // 20% of exhale duration at tracking threshold
+    let holdAfterInhaleProportionLowArousal: CGFloat = 0.30  // 30% of inhale duration at minimum arousal
+    let holdAfterInhaleProportionHighArousal: CGFloat = 0.05 // 5% of inhale duration at tracking threshold
+    let holdAfterExhaleProportionLowArousal: CGFloat = 0.50  // 50% of exhale duration at minimum arousal
+    let holdAfterExhaleProportionHighArousal: CGFloat = 0.20 // 20% of exhale duration at tracking threshold
     
     // NEW: Proportion of exhale that occurs *before* the first hold (now mid-exhale)
     let preHoldExhaleProportion: TimeInterval = 0.0075 // 5% of exhale, then hold, then remaining 95%
@@ -130,7 +124,11 @@ struct GameConfiguration {
     let breathingHapticIntensity: Float = 0.8
     let breathingHapticSharpnessMin: Float = 0.35
     let breathingHapticSharpnessMax: Float = 0.8
-    let breathingHapticAccelFactor: Double = 0.13
+    
+    // Breathing haptic tempo parameters
+    let breathingHapticMinDelay: TimeInterval = 0.013  // ~77Hz - Fastest tempo at max radius (was 0.04)
+    let breathingHapticMaxDelay: TimeInterval = 0.15   // ~6.7Hz - Slowest tempo at min radius
+    let breathingHapticTempoExponent: Double = 1.05     // Controls the curve mapping (higher = more dramatic change)
 
     // --- Identification Task ---
     let identificationStartDelay: TimeInterval = 0.5

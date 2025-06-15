@@ -68,13 +68,6 @@ class ArousalManager {
     var audioSquareness: Float = 0.5
     var audioPulseRate: Double = 4.0
     
-    // Dynamic breathing parameters
-    var breathingInhaleDuration: TimeInterval = 4.0
-    var breathingExhaleDuration: TimeInterval = 6.0
-    var breathingHoldAfterInhaleDuration: TimeInterval = 1.5
-    var breathingHoldAfterExhaleDuration: TimeInterval = 1.0
-    var needsHapticPatternUpdate: Bool = false
-    var needsVisualDurationUpdate: Bool = false
     
     // MARK: - Initialization
     
@@ -230,68 +223,8 @@ class ArousalManager {
             t: normalizedTrackingArousal
         )
         
-        // Update dynamic breathing parameters
-        updateDynamicBreathingParameters()
     }
     
-    private func updateDynamicBreathingParameters() {
-        // Normalize arousal within the breathing range [0.0, thresholdLow]
-        let breathingArousalRange = gameConfiguration.trackingArousalThresholdLow
-        guard breathingArousalRange > 0 else { return } // Avoid division by zero
-        
-        let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
-        let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange // Range 0.0 to 1.0
-        
-        // Get target duration ranges from configuration
-        let minInhale = gameConfiguration.dynamicBreathingMinInhaleDuration
-        let maxInhale = gameConfiguration.dynamicBreathingMaxInhaleDuration
-        let minExhale = gameConfiguration.dynamicBreathingMinExhaleDuration
-        let maxExhale = gameConfiguration.dynamicBreathingMaxExhaleDuration
-        
-        // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
-        let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
-        let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
-        
-        // Calculate proportional hold durations
-        // Hold after inhale: 30% at low arousal -> 5% at high arousal
-        let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportion_LowArousal + 
-            (gameConfiguration.holdAfterInhaleProportion_HighArousal - gameConfiguration.holdAfterInhaleProportion_LowArousal) * normalizedBreathingArousal
-        let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
-        
-        // Hold after exhale: 50% at low arousal -> 20% at high arousal
-        let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportion_LowArousal + 
-            (gameConfiguration.holdAfterExhaleProportion_HighArousal - gameConfiguration.holdAfterExhaleProportion_LowArousal) * normalizedBreathingArousal
-        let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)
-        
-        // Check if change exceeds tolerance
-        let tolerance: TimeInterval = 0.1
-        if abs(targetInhaleDuration - breathingInhaleDuration) > tolerance || 
-           abs(targetExhaleDuration - breathingExhaleDuration) > tolerance ||
-           abs(targetHoldAfterInhaleDuration - breathingHoldAfterInhaleDuration) > tolerance ||
-           abs(targetHoldAfterExhaleDuration - breathingHoldAfterExhaleDuration) > tolerance {
-            print("DIAGNOSTIC: Breathing pattern change detected. Flagging for update...")
-            print("DIAGNOSTIC: Target pattern - Inhale: \(String(format: "%.1f", targetInhaleDuration))s, Exhale: \(String(format: "%.1f", targetExhaleDuration))s")
-            print("DIAGNOSTIC: Target holds - After Inhale: \(String(format: "%.1f", targetHoldAfterInhaleDuration))s, After Exhale: \(String(format: "%.1f", targetHoldAfterExhaleDuration))s")
-            
-            // Log breathing pattern change to DataLogger
-            DataLogger.shared.logBreathingPatternChange(
-                oldInhaleDuration: breathingInhaleDuration,
-                newInhaleDuration: targetInhaleDuration,
-                oldExhaleDuration: breathingExhaleDuration,
-                newExhaleDuration: targetExhaleDuration,
-                oldHoldAfterInhaleDuration: breathingHoldAfterInhaleDuration,
-                newHoldAfterInhaleDuration: targetHoldAfterInhaleDuration,
-                oldHoldAfterExhaleDuration: breathingHoldAfterExhaleDuration,
-                newHoldAfterExhaleDuration: targetHoldAfterExhaleDuration,
-                arousalLevel: currentArousalLevel,
-                normalizedBreathingArousal: normalizedBreathingArousal
-            )
-            
-            // Don't update durations directly, just set flags
-            needsVisualDurationUpdate = true // Flag for visual update at next cycle start
-            needsHapticPatternUpdate = true // Flag for haptic update at end of current cycle
-        }
-    }
     
     private func calculateArousalForProgress(progress: Double, initialLevel: CGFloat) -> CGFloat {
         // Use exponential decay: A(p) = A_end + (A_start - A_end) * e^(-k*p)

@@ -331,7 +331,7 @@ class GameSceneTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(initialInhaleDuration, 3.5)
         XCTAssertLessThanOrEqual(initialInhaleDuration, 5.0)
         
-        XCTAssertGreaterThanOrEqual(initialExhaleDuration, 5.0)
+        XCTAssertGreaterThanOrEqual(initialExhaleDuration, 4.25)
         XCTAssertLessThanOrEqual(initialExhaleDuration, 6.5)
         
         // Modify arousal level to near zero
@@ -357,7 +357,7 @@ class GameSceneTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(gameScene.currentBreathingInhaleDuration, 3.5)
         XCTAssertLessThanOrEqual(gameScene.currentBreathingInhaleDuration, 5.0)
         
-        XCTAssertGreaterThanOrEqual(gameScene.currentBreathingExhaleDuration, 5.0)
+        XCTAssertGreaterThanOrEqual(gameScene.currentBreathingExhaleDuration, 4.25)
         XCTAssertLessThanOrEqual(gameScene.currentBreathingExhaleDuration, 6.5)
     }
     
