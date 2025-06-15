@@ -116,6 +116,49 @@ class ADMHistoryTests: XCTestCase {
         XCTAssertLessThan(trend, 0.0, "Trend should be negative for decreasing scores.")
     }
 
+    func testCalculateLinearTrend_WithKnownDataSet() {
+        // y = 0.1x + 0.1
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.1)) // x=0
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.2)) // x=1
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.3)) // x=2
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.4)) // x=3
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.5)) // x=4
+
+        let (_, trend, _) = adm.getPerformanceMetrics()
+        
+        // The slope of this line is 0.1. The normalization in the function is a bit abstract,
+        // but for a simple linear progression, we expect a positive, non-zero trend.
+        // A more precise test would require refactoring the trend normalization to be more predictable.
+        // For now, we assert it's a meaningful positive value.
+        XCTAssertGreaterThan(trend, 0.05, "Trend for a perfect linear progression should be a significant positive value.")
+    }
+
+    func testCalculatePerformanceVariance_WithKnownDataSet() {
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.5))
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.5))
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.5))
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.5))
+        
+        var (_, _, variance) = adm.getPerformanceMetrics()
+        XCTAssertEqual(variance, 0.0, accuracy: 0.001, "Variance for a constant set should be 0.")
+
+        adm.performanceHistory.removeAll()
+        
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.1))
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.3))
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.5))
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.7))
+        adm.addPerformanceEntry(createDummyHistoryEntry(score: 0.9))
+
+        // Mean = 0.5
+        // Deviations: -0.4, -0.2, 0.0, 0.2, 0.4
+        // Squared Deviations: 0.16, 0.04, 0.0, 0.04, 0.16
+        // Sum of Squared Deviations: 0.4
+        // Variance = 0.4 / 5 = 0.08
+        (_, _, variance) = adm.getPerformanceMetrics()
+        XCTAssertEqual(variance, 0.08, accuracy: 0.001, "Variance calculation is incorrect.")
+    }
+
     // MARK: - DataLogger Integration Test
 
     func testDataLoggerIntegration() {

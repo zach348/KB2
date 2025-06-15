@@ -282,7 +282,7 @@ struct GameConfiguration {
     
     // --- Performance History Configuration (NEW) ---
     let performanceHistoryWindowSize: Int = 10
-    var usePerformanceHistory: Bool = false  // Start disabled for safety
+    var usePerformanceHistory: Bool = true  // Start disabled for safety
     
     // --- KPI Weight Interpolation Configuration (Phase 1.5) ---
     let kpiWeightTransitionStart: CGFloat = 0.6
