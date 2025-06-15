@@ -15,6 +15,16 @@ import CoreGraphics
 // import SpriteKit // For SKColor, though not directly used in this file yet
 // GameConfiguration now provides DOMTargetType and KPIType
 
+// MARK: - Performance History Structure
+struct PerformanceHistoryEntry {
+    let timestamp: TimeInterval
+    let overallScore: CGFloat
+    let normalizedKPIs: [KPIType: CGFloat]
+    let arousalLevel: CGFloat
+    let currentDOMValues: [DOMTargetType: CGFloat]
+    let sessionContext: String? // e.g., "warmup", "challenge_phase"
+}
+
 class AdaptiveDifficultyManager {
     private let config: GameConfiguration // Resolved: GameConfiguration is now findable
     private var currentArousalLevel: CGFloat
@@ -33,6 +43,10 @@ class AdaptiveDifficultyManager {
     // Current valid ranges (min/max) for each DOM target at current arousal level
     private var currentValidRanges: [DOMTargetType: (min: CGFloat, max: CGFloat)] = [:]
 
+    // MARK: - Performance History (NEW)
+    private var performanceHistory: [PerformanceHistoryEntry] = []
+    private let maxHistorySize: Int  // Will be set from config
+
     // KPI History (for potential rolling averages - simple array for now)
     // private var recentTaskSuccesses: [Bool] = [] // Example
     // ... other KPI history properties ...
@@ -41,6 +55,7 @@ class AdaptiveDifficultyManager {
     init(configuration: GameConfiguration, initialArousal: CGFloat) {
         self.config = configuration
         self.currentArousalLevel = initialArousal
+        self.maxHistorySize = configuration.performanceHistoryWindowSize
 
         // Initialize stored properties with placeholder values first
         self.currentDiscriminabilityFactor = 0.0
@@ -174,7 +189,24 @@ class AdaptiveDifficultyManager {
         // 2. Calculate overallPerformanceScore
         let performanceScore = calculateOverallPerformanceScore(normalizedKPIs: normalizedKPIs)
         
-        // 3. Modulate DOM targets
+        // 3. Store performance history (if enabled)
+        if config.usePerformanceHistory {
+            let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
+                $0[$1] = getCurrentValue(for: $1)
+            }
+            
+            let entry = PerformanceHistoryEntry(
+                timestamp: CACurrentMediaTime(),
+                overallScore: performanceScore,
+                normalizedKPIs: normalizedKPIs,
+                arousalLevel: currentArousalLevel,
+                currentDOMValues: domValues,
+                sessionContext: nil // Placeholder for now
+            )
+            addPerformanceEntry(entry)
+        }
+        
+        // 4. Modulate DOM targets
         modulateDOMTargets(overallPerformanceScore: performanceScore)
         
         // Log the outcome
@@ -315,6 +347,16 @@ class AdaptiveDifficultyManager {
         // After updating the normalized positions, immediately convert them to absolute values
         // This ensures changes take effect without waiting for arousal changes
         updateAbsoluteValuesFromNormalizedPositions()
+    }
+
+    // MARK: - Performance History Helper Methods (NEW)
+    
+    /// Adds a performance entry to the history, maintaining the rolling window
+    private func addPerformanceEntry(_ entry: PerformanceHistoryEntry) {
+        performanceHistory.append(entry)
+        if performanceHistory.count > maxHistorySize {
+            performanceHistory.removeFirst()
+        }
     }
 
     // MARK: - Helper Functions for DOM Target Management

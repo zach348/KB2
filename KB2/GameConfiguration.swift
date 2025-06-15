@@ -8,7 +8,7 @@ import CoreGraphics // For CGFloat
 import SpriteKit // For SKColor
 
 // Enum for Difficulty Optimization Matrix (DOM) targets
-enum DOMTargetType: Hashable { // Made Hashable
+enum DOMTargetType: Hashable, CaseIterable { // Made Hashable
     case discriminatoryLoad
     case meanBallSpeed
     case ballSpeedSD
@@ -281,4 +281,8 @@ struct GameConfiguration {
     ]
     let adaptationSignalSensitivity: CGFloat = 1.5  // Increased from 1.0 to amplify performance responses
     let adaptationSignalDeadZone: CGFloat = 0.02     // Reduced from 0.05 to react to smaller performance changes
+    
+    // --- Performance History Configuration (NEW) ---
+    let performanceHistoryWindowSize: Int = 10
+    let usePerformanceHistory: Bool = false  // Start disabled for safety
 }
