@@ -26,6 +26,7 @@ struct PerformanceHistoryEntry {
 }
 
 class AdaptiveDifficultyManager {
+    var dataLogger: DataLogger = DataLogger.shared
     private let config: GameConfiguration // Resolved: GameConfiguration is now findable
     private var currentArousalLevel: CGFloat
 
@@ -44,7 +45,7 @@ class AdaptiveDifficultyManager {
     private var currentValidRanges: [DOMTargetType: (min: CGFloat, max: CGFloat)] = [:]
 
     // MARK: - Performance History (NEW)
-    private var performanceHistory: [PerformanceHistoryEntry] = []
+    var performanceHistory: [PerformanceHistoryEntry] = []
     private let maxHistorySize: Int  // Will be set from config
 
     // KPI History (for potential rolling averages - simple array for now)
@@ -207,7 +208,7 @@ class AdaptiveDifficultyManager {
             
             // Log performance metrics after adding to history
             let (average, trend, variance) = getPerformanceMetrics()
-            DataLogger.shared.logCustomEvent(
+            dataLogger.logCustomEvent(
                 eventType: "adm_performance_history",
                 data: [
                     "history_size": performanceHistory.count,
@@ -227,7 +228,7 @@ class AdaptiveDifficultyManager {
         let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
             $0[$1] = getCurrentValue(for: $1)
         }
-        DataLogger.shared.logAdaptiveDifficultyStep(
+        dataLogger.logAdaptiveDifficultyStep(
             arousalLevel: currentArousalLevel,
             performanceScore: performanceScore,
             normalizedKPIs: normalizedKPIs,
@@ -370,7 +371,7 @@ class AdaptiveDifficultyManager {
     // MARK: - Performance History Helper Methods (NEW)
     
     /// Adds a performance entry to the history, maintaining the rolling window
-    private func addPerformanceEntry(_ entry: PerformanceHistoryEntry) {
+    func addPerformanceEntry(_ entry: PerformanceHistoryEntry) {
         performanceHistory.append(entry)
         if performanceHistory.count > maxHistorySize {
             performanceHistory.removeFirst()
@@ -380,7 +381,7 @@ class AdaptiveDifficultyManager {
     // MARK: - History Analytics Functions (NEW)
     
     /// Calculates performance metrics from the history
-    private func getPerformanceMetrics() -> (average: CGFloat, trend: CGFloat, variance: CGFloat) {
+    func getPerformanceMetrics() -> (average: CGFloat, trend: CGFloat, variance: CGFloat) {
         guard !performanceHistory.isEmpty else {
             return (average: 0.5, trend: 0.0, variance: 0.0)
         }

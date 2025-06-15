@@ -25,7 +25,7 @@ This document outlines incremental improvements to address two critical issues i
 - [x] **Store performance entries in history**
 - [x] **Maintain rolling window** (remove oldest when exceeding maxHistorySize)
 - [x] **Keep existing single-sample logic initially** (no breaking changes)
-- [ ] **Add DataLogger events for history tracking**
+- [x] **Add DataLogger events for history tracking**
 
 ### Step 1.3: Add History Analytics Functions
 - [x] **Implement `getPerformanceMetrics()`**

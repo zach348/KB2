@@ -8,7 +8,12 @@ class DataLogger {
     
     // MARK: - Properties
     
-    static let shared = DataLogger()
+    static var shared: DataLogger = DataLogger()
+    
+    /// Resets the singleton instance. For testing purposes only.
+    static func resetSharedInstance() {
+        shared = DataLogger()
+    }
     
     private let dataProcessingQueue = DispatchQueue(label: "com.kb2.dataLogger.processing", qos: .utility)
     private var events: [[String: Any]] = []
@@ -43,7 +48,7 @@ class DataLogger {
     
     // MARK: - Initialization
     
-    private init() {
+    init() {
         // Create dedicated URLSession to avoid main-thread initialization during gameplay
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30.0

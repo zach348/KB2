@@ -1,97 +1,70 @@
+import Foundation
 import XCTest
+@testable import KB2
+
+// MARK: - Mock DataLogger
+
 import SpriteKit
-import GameplayKit
-import CoreHaptics
-import AVFoundation
 
-// MARK: - Mock Classes
-
+// MARK: - Mock SKView
 class MockSKView: SKView {
-    var lastScene: SKScene?
-    override func presentScene(_ scene: SKScene?) {
-        lastScene = scene
-        super.presentScene(scene)
+    // Override methods if needed to track calls or provide mock behavior
+}
+
+// MARK: - Test Constants
+struct TestConstants {
+    static let screenSize = CGSize(width: 375, height: 812) // iPhone X size
+    static var testView: MockSKView {
+        return MockSKView(frame: CGRect(origin: .zero, size: screenSize))
     }
 }
 
-class MockSKScene: SKScene {
-    var updateCalled = false
-    var lastUpdateTime: TimeInterval = 0
+class MockDataLogger: DataLogger {
+    // Capture calls
+    var loggedEvents: [(eventType: String, data: [String: Any]?)] = []
+    var loggedAdaptiveDifficultySteps: [(arousal: CGFloat, performance: CGFloat)] = []
     
-    override func update(_ currentTime: TimeInterval) {
-        updateCalled = true
-        lastUpdateTime = currentTime
-        super.update(currentTime)
+    // Expectation for async testing
+    var logEventExpectation: XCTestExpectation?
+
+    override func logCustomEvent(eventType: String, data: [String : Any]? = nil, description: String) {
+        loggedEvents.append((eventType, data))
+        logEventExpectation?.fulfill()
+    }
+    
+    override func logAdaptiveDifficultyStep(arousalLevel: CGFloat, performanceScore: CGFloat, normalizedKPIs: [KPIType : CGFloat], domValues: [DOMTargetType : CGFloat]) {
+        loggedAdaptiveDifficultySteps.append((arousal: arousalLevel, performance: performanceScore))
+    }
+    
+    func clearLogs() {
+        loggedEvents.removeAll()
+        loggedAdaptiveDifficultySteps.removeAll()
     }
 }
 
-// Note: We can't actually override CHHapticEngine methods as they're not marked as overridable
-class MockHapticEngine {
-    var isStarted = false
-    var isStopped = false
-    
-    func start() throws {
-        isStarted = true
-    }
-    
-    func stop() {
-        isStopped = true
-    }
+// MARK: - Test Configuration Helper
+
+func createTestConfiguration() -> GameConfiguration {
+    // Return a standard GameConfiguration instance for tests
+    return GameConfiguration()
 }
 
-// Note: We can't actually override AVAudioEngine methods as they're not marked as overridable
-class MockAudioEngine {
-    var isStarted = false
-    var isStopped = false
-    
-    func start() throws {
-        isStarted = true
-    }
-    
-    func stop() {
-        isStopped = true
-    }
+// MARK: - Touch Simulation
+
+func simulateTouch(at point: CGPoint) -> UITouch {
+    let touch = MockUITouch(location: point)
+    return touch
 }
-
-// MARK: - Test Utilities
-
-extension XCTestCase {
-    func waitForCondition(timeout: TimeInterval = 1.0, condition: () -> Bool) {
-        let startTime = Date()
-        while !condition() {
-            if Date().timeIntervalSince(startTime) > timeout {
-                XCTFail("Condition not met within timeout")
-                return
-            }
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        }
-    }
-    
-    func simulateTouch(at point: CGPoint) -> UITouch {
-        let mockTouch = MockUITouch(point: point)
-        return mockTouch
-    }
-}
-
-// MARK: - Mock Touch
 
 class MockUITouch: UITouch {
-    private var mockLocation: CGPoint
+    private var locationInView: CGPoint
     
-    init(point: CGPoint) {
-        self.mockLocation = point
+    init(location: CGPoint) {
+        self.locationInView = location
         super.init()
     }
     
     override func location(in view: UIView?) -> CGPoint {
-        return mockLocation
+        return locationInView
     }
 }
-
-// MARK: - Test Constants
-
-enum TestConstants {
-    static let screenSize = CGSize(width: 1024, height: 768)
-    static let testFrame = CGRect(origin: .zero, size: screenSize)
-    static let testView = MockSKView(frame: testFrame)
-} 

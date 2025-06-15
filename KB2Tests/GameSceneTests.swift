@@ -68,7 +68,7 @@ class GameSceneTests: XCTestCase {
         // Simulate two-finger tap in top half
         let touch1 = simulateTouch(at: CGPoint(x: 100, y: 600))
         let touch2 = simulateTouch(at: CGPoint(x: 200, y: 600))
-        let touches = Set([touch1, touch2])
+        let touches = Set<UITouch>([touch1, touch2])
         
         gameScene.touchesBegan(touches, with: nil)
         
@@ -83,7 +83,7 @@ class GameSceneTests: XCTestCase {
         // Simulate two-finger tap in bottom half
         let touch1 = simulateTouch(at: CGPoint(x: 100, y: 200))
         let touch2 = simulateTouch(at: CGPoint(x: 200, y: 200))
-        let touches = Set([touch1, touch2])
+        let touches = Set<UITouch>([touch1, touch2])
         
         gameScene.touchesBegan(touches, with: nil)
         
