@@ -28,7 +28,7 @@ This document outlines incremental improvements to address two critical issues i
 - [ ] **Add DataLogger events for history tracking**
 
 ### Step 1.3: Add History Analytics Functions
-- [ ] **Implement `getPerformanceMetrics()`**
+- [x] **Implement `getPerformanceMetrics()`**
   ```swift
   private func getPerformanceMetrics() -> (average: CGFloat, trend: CGFloat, variance: CGFloat) {
       // Calculate rolling average of performance scores
@@ -37,7 +37,7 @@ This document outlines incremental improvements to address two critical issues i
   }
   ```
 
-- [ ] **Add helper functions**
+- [x] **Add helper functions**
   ```swift
   private func calculateLinearTrend() -> CGFloat
   private func calculatePerformanceVariance() -> CGFloat
@@ -55,7 +55,7 @@ This document outlines incremental improvements to address two critical issues i
 ## Phase 1.5: KPI Weight Interpolation
 
 ### Step 1.5.1: Add Interpolation Utilities
-- [ ] **Create interpolation helper functions**
+- [x] **Create interpolation helper functions**
   ```swift
   private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {
       return a + (b - a) * t
@@ -68,7 +68,7 @@ This document outlines incremental improvements to address two critical issues i
   ```
 
 ### Step 1.5.2: Add Transition Configuration
-- [ ] **Add to GameConfiguration**
+- [x] **Add to GameConfiguration**
   ```swift
   // KPI Weight Transition Configuration
   let kpiWeightTransitionStart: CGFloat = 0.6
@@ -77,7 +77,7 @@ This document outlines incremental improvements to address two critical issues i
   ```
 
 ### Step 1.5.3: Implement KPI Weight Interpolation
-- [ ] **Create `getInterpolatedKPIWeights()` function**
+- [x] **Create `getInterpolatedKPIWeights()` function**
   ```swift
   private func getInterpolatedKPIWeights(arousal: CGFloat) -> KPIWeights {
       guard config.useKPIWeightInterpolation else {
@@ -111,7 +111,7 @@ This document outlines incremental improvements to address two critical issues i
   }
   ```
 
-- [ ] **Update `calculateOverallPerformanceScore()` to use interpolated weights**
+- [x] **Update `calculateOverallPerformanceScore()` to use interpolated weights**
 
 ### Validation Checkpoint 1.5
 - [ ] **Test smooth transitions around 0.6-0.8 arousal range**

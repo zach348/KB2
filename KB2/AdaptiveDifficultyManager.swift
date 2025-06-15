@@ -204,15 +204,35 @@ class AdaptiveDifficultyManager {
                 sessionContext: nil // Placeholder for now
             )
             addPerformanceEntry(entry)
+            
+            // Log performance metrics after adding to history
+            let (average, trend, variance) = getPerformanceMetrics()
+            DataLogger.shared.logCustomEvent(
+                eventType: "adm_performance_history",
+                data: [
+                    "history_size": performanceHistory.count,
+                    "performance_average": average,
+                    "performance_trend": trend,
+                    "performance_variance": variance,
+                    "recent_score": performanceScore
+                ],
+                description: "ADM performance history metrics"
+            )
         }
         
         // 4. Modulate DOM targets
         modulateDOMTargets(overallPerformanceScore: performanceScore)
         
-        // Log the outcome
-        // DataLogger.shared.logAdaptiveDifficultyStep(...) // Resolved: DataLogger needs this method
-        // For now, we'll add a placeholder in DataLogger or comment this out until DataLogger is updated.
-        // Let's assume DataLogger will be updated later.
+        // Log the adaptive difficulty step
+        let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
+            $0[$1] = getCurrentValue(for: $1)
+        }
+        DataLogger.shared.logAdaptiveDifficultyStep(
+            arousalLevel: currentArousalLevel,
+            performanceScore: performanceScore,
+            normalizedKPIs: normalizedKPIs,
+            domValues: domValues
+        )
     }
 
     // MARK: - Core Logic (Placeholders - to be implemented next)
@@ -261,10 +281,8 @@ class AdaptiveDifficultyManager {
     }
     
     private func calculateOverallPerformanceScore(normalizedKPIs: [KPIType: CGFloat]) -> CGFloat { // Changed ADM_KPIType
-        // Placeholder - detailed implementation next
-        let weights = currentArousalLevel >= config.arousalThresholdForKPIAndHierarchySwitch ?
-                      config.kpiWeights_HighArousal :
-                      config.kpiWeights_LowMidArousal
+        // Get interpolated weights based on current arousal (Phase 1.5)
+        let weights = getInterpolatedKPIWeights(arousal: currentArousalLevel)
         
         var score: CGFloat = 0.0
         // Using global KPIType for dictionary keys
@@ -357,6 +375,145 @@ class AdaptiveDifficultyManager {
         if performanceHistory.count > maxHistorySize {
             performanceHistory.removeFirst()
         }
+    }
+    
+    // MARK: - History Analytics Functions (NEW)
+    
+    /// Calculates performance metrics from the history
+    private func getPerformanceMetrics() -> (average: CGFloat, trend: CGFloat, variance: CGFloat) {
+        guard !performanceHistory.isEmpty else {
+            return (average: 0.5, trend: 0.0, variance: 0.0)
+        }
+        
+        // Calculate average
+        let scores = performanceHistory.map { $0.overallScore }
+        let average = scores.reduce(0.0, +) / CGFloat(scores.count)
+        
+        // Calculate trend using linear regression
+        let trend = calculateLinearTrend()
+        
+        // Calculate variance
+        let variance = calculatePerformanceVariance()
+        
+        return (average: average, trend: trend, variance: variance)
+    }
+    
+    // MARK: - Interpolation Utilities (NEW - Phase 1.5)
+    
+    /// Linear interpolation between two values
+    private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {
+        return a + (b - a) * t
+    }
+    
+    /// Smooth step interpolation with cubic smoothing
+    /// Creates an S-curve for more natural transitions
+    private func smoothstep(_ edge0: CGFloat, _ edge1: CGFloat, _ x: CGFloat) -> CGFloat {
+        // Scale, bias and saturate x to 0..1 range
+        let t = max(0, min(1, (x - edge0) / (edge1 - edge0)))
+        // Evaluate polynomial
+        return t * t * (3 - 2 * t)
+    }
+    
+    /// Get interpolated KPI weights based on arousal level
+    private func getInterpolatedKPIWeights(arousal: CGFloat) -> KPIWeights {
+        guard config.useKPIWeightInterpolation else {
+            // Fallback to original behavior
+            return arousal >= config.arousalThresholdForKPIAndHierarchySwitch ?
+                   config.kpiWeights_HighArousal : config.kpiWeights_LowMidArousal
+        }
+        
+        let start = config.kpiWeightTransitionStart
+        let end = config.kpiWeightTransitionEnd
+        
+        if arousal <= start {
+            return config.kpiWeights_LowMidArousal
+        } else if arousal >= end {
+            return config.kpiWeights_HighArousal
+        } else {
+            // Calculate smooth interpolation factor
+            let t = smoothstep(start, end, arousal)
+            
+            // Interpolate each weight component
+            return KPIWeights(
+                taskSuccess: lerp(config.kpiWeights_LowMidArousal.taskSuccess,
+                                config.kpiWeights_HighArousal.taskSuccess, t),
+                tfTtfRatio: lerp(config.kpiWeights_LowMidArousal.tfTtfRatio,
+                               config.kpiWeights_HighArousal.tfTtfRatio, t),
+                reactionTime: lerp(config.kpiWeights_LowMidArousal.reactionTime,
+                                 config.kpiWeights_HighArousal.reactionTime, t),
+                responseDuration: lerp(config.kpiWeights_LowMidArousal.responseDuration,
+                                     config.kpiWeights_HighArousal.responseDuration, t),
+                tapAccuracy: lerp(config.kpiWeights_LowMidArousal.tapAccuracy,
+                                config.kpiWeights_HighArousal.tapAccuracy, t)
+            )
+        }
+    }
+    
+    /// Calculates linear trend from performance history using least squares regression
+    private func calculateLinearTrend() -> CGFloat {
+        guard performanceHistory.count >= 2 else {
+            return 0.0
+        }
+        
+        // Use normalized time indices (0, 1, 2, ...) instead of absolute timestamps
+        let n = CGFloat(performanceHistory.count)
+        var sumX: CGFloat = 0.0
+        var sumY: CGFloat = 0.0
+        var sumXY: CGFloat = 0.0
+        var sumX2: CGFloat = 0.0
+        
+        for (index, entry) in performanceHistory.enumerated() {
+            let x = CGFloat(index)
+            let y = entry.overallScore
+            
+            sumX += x
+            sumY += y
+            sumXY += x * y
+            sumX2 += x * x
+        }
+        
+        // Calculate slope using least squares formula
+        let denominator = n * sumX2 - sumX * sumX
+        
+        // Avoid division by zero
+        guard abs(denominator) > 0.0001 else {
+            return 0.0
+        }
+        
+        let slope = (n * sumXY - sumX * sumY) / denominator
+        
+        // Normalize slope to be meaningful in the context of performance (typically -1 to 1)
+        // Since we're using indices, a slope of 1 means performance increases by 1 per sample
+        // We'll scale this to be more reasonable
+        let normalizedSlope = slope / max(1.0, n / 10.0) // Scale down for larger histories
+        
+        return max(-1.0, min(1.0, normalizedSlope))
+    }
+    
+    /// Calculates the variance of performance scores
+    private func calculatePerformanceVariance() -> CGFloat {
+        guard performanceHistory.count >= 2 else {
+            return 0.0
+        }
+        
+        let scores = performanceHistory.map { $0.overallScore }
+        let mean = scores.reduce(0.0, +) / CGFloat(scores.count)
+        
+        let squaredDifferences = scores.map { pow($0 - mean, 2) }
+        let variance = squaredDifferences.reduce(0.0, +) / CGFloat(scores.count)
+        
+        return variance
+    }
+    
+    /// Gets a recent window of performance entries for focused analysis
+    private func getRecentPerformanceWindow(windowSize: Int? = nil) -> [PerformanceHistoryEntry] {
+        let size = windowSize ?? min(5, performanceHistory.count) // Default to last 5 or all if less
+        
+        guard performanceHistory.count > size else {
+            return performanceHistory
+        }
+        
+        return Array(performanceHistory.suffix(size))
     }
 
     // MARK: - Helper Functions for DOM Target Management
