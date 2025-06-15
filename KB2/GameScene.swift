@@ -1502,15 +1502,15 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                  let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
 
                  // Calculate proportional hold durations
-                 // Hold after inhale: 30% at low arousal -> 5% at high arousal
-                 let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportion_LowArousal + 
-                     (gameConfiguration.holdAfterInhaleProportion_HighArousal - gameConfiguration.holdAfterInhaleProportion_LowArousal) * normalizedBreathingArousal
-                 let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
-                 
-                 // Hold after exhale: 50% at low arousal -> 20% at high arousal
-                 let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportion_LowArousal + 
-                     (gameConfiguration.holdAfterExhaleProportion_HighArousal - gameConfiguration.holdAfterExhaleProportion_LowArousal) * normalizedBreathingArousal
-                 let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)
+                // Hold after inhale: 30% at low arousal -> 5% at high arousal
+                let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportionLowArousal +
+                    (gameConfiguration.holdAfterInhaleProportionHighArousal - gameConfiguration.holdAfterInhaleProportionLowArousal) * normalizedBreathingArousal
+                let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
+                
+                // Hold after exhale: 50% at low arousal -> 20% at high arousal
+                let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportionLowArousal +
+                    (gameConfiguration.holdAfterExhaleProportionHighArousal - gameConfiguration.holdAfterExhaleProportionLowArousal) * normalizedBreathingArousal
+                let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)
 
                  currentBreathingInhaleDuration = targetInhaleDuration
                  currentBreathingExhaleDuration = targetExhaleDuration
@@ -1672,75 +1672,89 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func generateBreathingHapticPattern(inhaleDuration: TimeInterval, holdAfterInhaleDuration: TimeInterval, exhaleDuration: TimeInterval, holdAfterExhaleDuration: TimeInterval) -> CHHapticPattern? {
          guard hapticEngine != nil else { return nil }
          var allBreathingEvents: [CHHapticEvent] = []
-         var phaseStartTime: TimeInterval = 0.0
 
          let hapticIntensity = gameConfiguration.breathingHapticIntensity
          let sharpnessMin = gameConfiguration.breathingHapticSharpnessMin
          let sharpnessMax = gameConfiguration.breathingHapticSharpnessMax
-         let accelFactor = gameConfiguration.breathingHapticAccelFactor
-
-         // --- Phase 1: Inhale ---
-         var relativeTime: TimeInterval = 0
-         var currentDelayFactor: Double = 1.0
-         let baseInhaleDelay = inhaleDuration / 23.0
-         let sharpnessRangeInhale = sharpnessMax - sharpnessMin
-         while relativeTime < inhaleDuration - 0.01 {
-             let absoluteTime = phaseStartTime + relativeTime
-             let fraction = relativeTime / inhaleDuration
-             let sharpness = sharpnessMax - (sharpnessRangeInhale * Float(fraction))
-             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-             let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-             allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-             let delay = baseInhaleDelay / currentDelayFactor
-             relativeTime += delay
-             currentDelayFactor += accelFactor
-         }
-         phaseStartTime += inhaleDuration
-
-         // --- Phase 2: Partial Exhale ---
-         let partialExhaleDuration = exhaleDuration * gameConfiguration.preHoldExhaleProportion
-         relativeTime = 0
-         let numPartialExhaleTaps = 2 // A couple of distinct taps
-         if partialExhaleDuration > 0.1 {
-             for i in 0..<numPartialExhaleTaps {
-                 let absoluteTime = phaseStartTime + (Double(i) * (partialExhaleDuration / Double(numPartialExhaleTaps)))
-                 let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity * 0.8) // Slightly less intense
-                 let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
-                 allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
+         
+         // Radius parameters
+         let minRadius = gameConfiguration.breathingCircleMinRadius
+         let maxRadius = gameConfiguration.breathingCircleMaxRadius
+         let radiusRange = maxRadius - minRadius
+         
+         // Helper function to calculate radius at any point in the breathing cycle
+         func radiusAtTime(_ time: TimeInterval) -> CGFloat {
+             let partialExhaleDuration = exhaleDuration * gameConfiguration.preHoldExhaleProportion
+             let remainderExhaleDuration = exhaleDuration * (1.0 - gameConfiguration.preHoldExhaleProportion)
+             
+             if time < inhaleDuration {
+                 // Phase 1: Inhale (min -> max)
+                 let fraction = time / inhaleDuration
+                 return minRadius + radiusRange * CGFloat(fraction)
+             } else if time < inhaleDuration + partialExhaleDuration {
+                 // Phase 2: Partial Exhale (max -> slightly less)
+                 let elapsedInPhase = time - inhaleDuration
+                 let fraction = elapsedInPhase / partialExhaleDuration
+                 let partialRadiusDecrease = radiusRange * CGFloat(gameConfiguration.preHoldExhaleProportion)
+                 return maxRadius - partialRadiusDecrease * CGFloat(fraction)
+             } else if time < inhaleDuration + partialExhaleDuration + holdAfterInhaleDuration {
+                 // Phase 3: Mid-Exhale Hold (constant at partial exhale end radius)
+                 let partialRadiusDecrease = radiusRange * CGFloat(gameConfiguration.preHoldExhaleProportion)
+                 return maxRadius - partialRadiusDecrease
+             } else if time < inhaleDuration + partialExhaleDuration + holdAfterInhaleDuration + remainderExhaleDuration {
+                 // Phase 4: Remainder Exhale (partial -> min)
+                 let elapsedInPhase = time - (inhaleDuration + partialExhaleDuration + holdAfterInhaleDuration)
+                 let fraction = elapsedInPhase / remainderExhaleDuration
+                 let startRadius = maxRadius - radiusRange * CGFloat(gameConfiguration.preHoldExhaleProportion)
+                 let remainingRadiusDecrease = startRadius - minRadius
+                 return startRadius - remainingRadiusDecrease * CGFloat(fraction)
+             } else {
+                 // Phase 5: Hold After Exhale (constant at min)
+                 return minRadius
              }
          }
-         phaseStartTime += partialExhaleDuration
-
-         // --- Phase 3: Mid-Exhale Hold (formerly holdAfterInhale) ---
-         relativeTime = 0
-         let minimumDelay = 0.1 // Spaced out taps for hold
-         while relativeTime < holdAfterInhaleDuration - 0.01 {
-             let absoluteTime = phaseStartTime + relativeTime
-             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-             let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpnessMin)
-             allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-             relativeTime += minimumDelay
-         }
-         phaseStartTime += holdAfterInhaleDuration
-
-         // --- Phase 4: Remainder of Exhale ---
-         let remainderExhaleDuration = exhaleDuration * (1.0 - gameConfiguration.preHoldExhaleProportion)
-         relativeTime = 0
-         let baseExhaleDelay = remainderExhaleDuration / 20.0
-         let sharpnessRangeExhale = sharpnessMax - sharpnessMin
-         while relativeTime < remainderExhaleDuration - 0.01 {
-              let absoluteTime = phaseStartTime + relativeTime
-              let fraction = relativeTime / remainderExhaleDuration
-              let sharpness = sharpnessMin + (sharpnessRangeExhale * Float(fraction))
-              let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
-              let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-              allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: absoluteTime))
-              relativeTime += baseExhaleDelay
-         }
-         phaseStartTime += remainderExhaleDuration
          
+         // Helper function to calculate delay based on radius (inverse relationship)
+         func delayForRadius(_ radius: CGFloat) -> TimeInterval {
+             // Map radius to delay: larger radius = shorter delay (faster tempo)
+             let normalizedRadius = (radius - minRadius) / radiusRange
+             // Use exponential mapping for more natural feel
+             let minDelay = gameConfiguration.breathingHapticMinDelay  // Fastest tempo at max radius
+             let maxDelay = gameConfiguration.breathingHapticMaxDelay   // Slowest tempo at min radius
+             let exponent = gameConfiguration.breathingHapticTempoExponent
+             let delay = maxDelay - (maxDelay - minDelay) * TimeInterval(pow(normalizedRadius, exponent))
+             return delay
+         }
+         
+         // Generate haptic events based on radius throughout the cycle
+         var currentTime: TimeInterval = 0.0
+         let totalCycleDuration = inhaleDuration + exhaleDuration + holdAfterInhaleDuration + holdAfterExhaleDuration
+         
+         while currentTime < totalCycleDuration {
+             // Skip haptics during the post-exhale hold (Phase 5)
+             if currentTime >= inhaleDuration + exhaleDuration + holdAfterInhaleDuration {
+                 break // No haptics in the final hold phase
+             }
+             
+             let radius = radiusAtTime(currentTime)
+             let normalizedRadius = (radius - minRadius) / radiusRange
+             
+             // Calculate sharpness based on radius (inverse of inhale pattern)
+             // Larger radius = lower sharpness (softer), smaller radius = higher sharpness
+             let sharpness = sharpnessMax - (sharpnessMax - sharpnessMin) * Float(normalizedRadius)
+             
+             // Create haptic event
+             let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: hapticIntensity)
+             let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+             allBreathingEvents.append(CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: currentTime))
+             
+             // Calculate next event time based on current radius
+             let delay = delayForRadius(radius)
+             currentTime += delay
+         }
+
          // --- Phase 5: Hold After Exhale (No haptics) ---
-         // No events are added for this phase.
+         // No events are added for this phase - it remains silent as requested.
 
          allBreathingEvents.sort { $0.relativeTime < $1.relativeTime }
          guard !allBreathingEvents.isEmpty else { return nil }
@@ -1772,13 +1786,13 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
         // Calculate proportional hold durations
         // Hold after inhale: 30% at low arousal -> 5% at high arousal
-        let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportion_LowArousal + 
-            (gameConfiguration.holdAfterInhaleProportion_HighArousal - gameConfiguration.holdAfterInhaleProportion_LowArousal) * normalizedBreathingArousal
+        let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportionLowArousal +
+            (gameConfiguration.holdAfterInhaleProportionHighArousal - gameConfiguration.holdAfterInhaleProportionLowArousal) * normalizedBreathingArousal
         let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
         
         // Hold after exhale: 50% at low arousal -> 20% at high arousal
-        let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportion_LowArousal + 
-            (gameConfiguration.holdAfterExhaleProportion_HighArousal - gameConfiguration.holdAfterExhaleProportion_LowArousal) * normalizedBreathingArousal
+        let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportionLowArousal +
+            (gameConfiguration.holdAfterExhaleProportionHighArousal - gameConfiguration.holdAfterExhaleProportionLowArousal) * normalizedBreathingArousal
         let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)
 
         // --- INTENTIONALLY PLACING DURATION CHECK HERE ---
