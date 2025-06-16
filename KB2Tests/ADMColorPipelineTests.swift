@@ -183,46 +183,108 @@ class ADMColorPipelineTests: XCTestCase {
     }
     
     func testPerformanceInDeadZoneDoesNotChangeDF() {
-        // Given
-        let initialDF = adm.currentDiscriminabilityFactor
-        let initialTargetCount = adm.currentTargetCount
-        let initialResponseTime = adm.currentResponseTime
-        let initialMeanSpeed = adm.currentMeanBallSpeed
+        // GIVEN: A stable performance history averaging to the dead zone center (0.5)
+        let scoreInDeadZone: CGFloat = 0.5
+        for _ in 0..<gameConfig.minimumHistoryForTrend {
+            let entry = PerformanceHistoryEntry(
+                timestamp: CACurrentMediaTime(),
+                overallScore: scoreInDeadZone,
+                normalizedKPIs: [:],
+                arousalLevel: 0.5,
+                currentDOMValues: [:],
+                sessionContext: nil
+            )
+            adm.addPerformanceEntry(entry)
+        }
         
-        print("\n=== Test: Performance in Dead Zone ===")
-        print("Initial DF: \(initialDF)")
+        // Capture initial state AFTER seeding history
+        let initialPositions = adm.normalizedPositions
+        print("\n=== Dead Zone Test Debug ===")
+        print("Initial normalized positions:")
+        for (domType, position) in initialPositions {
+            print("  \(domType): \(position)")
+        }
+        print("Dead zone range: \(0.5 - gameConfig.adaptationSignalDeadZone) to \(0.5 + gameConfig.adaptationSignalDeadZone)")
         
-        // When - Record mediocre performance that should land in dead zone (0.45-0.55)
-        // Targeting a score of exactly 0.5
-        // taskSuccess = true gives 0.40, tfTtfRatio = 0.5 gives 0.10, total = 0.50
-        // Set other metrics to worst values (contributing 0.0)
+        // WHEN: Calculate what performance score these values will produce
+        // First, let's manually calculate the expected score to verify it's in dead zone
+        let weights = adm.getInterpolatedKPIWeights(arousal: 0.5)
+        
+        // Task success: true = 1.0
+        let taskSuccessContribution = 1.0 * weights.taskSuccess
+        
+        // TF/TTF ratio: 0.5
+        let tfTtfContribution = 0.5 * weights.tfTtfRatio
+        
+        // Reaction time normalization (lower is better)
+        let rtNorm = 1.0 - max(0.0, min(1.0, (2.0 - gameConfig.reactionTime_BestExpected) / 
+                     (gameConfig.reactionTime_WorstExpected - gameConfig.reactionTime_BestExpected)))
+        let rtContribution = rtNorm * weights.reactionTime
+        
+        // Response duration normalization (lower is better, scaled by target count)
+        let rdPerTarget = 10.0 / 3.0  // ~3.33s per target
+        let rdBest = gameConfig.responseDuration_PerTarget_BestExpected
+        let rdWorst = gameConfig.responseDuration_PerTarget_WorstExpected
+        let rdNorm = 1.0 - max(0.0, min(1.0, (rdPerTarget - rdBest) / (rdWorst - rdBest)))
+        let rdContribution = rdNorm * weights.responseDuration
+        
+        // Tap accuracy normalization (lower is better)
+        let accNorm = 1.0 - max(0.0, min(1.0, (500.0 - gameConfig.tapAccuracy_BestExpected_Points) /
+                      (gameConfig.tapAccuracy_WorstExpected_Points - gameConfig.tapAccuracy_BestExpected_Points)))
+        let accContribution = accNorm * weights.tapAccuracy
+        
+        let expectedRawScore = taskSuccessContribution + tfTtfContribution + rtContribution + 
+                              rdContribution + accContribution
+        
+        print("\nExpected performance calculation:")
+        print("  Task Success: 1.0 * \(weights.taskSuccess) = \(taskSuccessContribution)")
+        print("  TF/TTF: 0.5 * \(weights.tfTtfRatio) = \(tfTtfContribution)")
+        print("  Reaction Time: \(rtNorm) * \(weights.reactionTime) = \(rtContribution)")
+        print("  Response Duration: \(rdNorm) * \(weights.responseDuration) = \(rdContribution)")
+        print("  Tap Accuracy: \(accNorm) * \(weights.tapAccuracy) = \(accContribution)")
+        print("  Expected Raw Score: \(expectedRawScore)")
+        
+        // Record a performance that should score exactly 0.5
+        // To achieve 0.5 with weights: Success=0.5, TF/TTF=0.2, RT=0.1, RD=0.1, Acc=0.1
+        // We need: taskSuccess=false (0.0), tfTtfRatio=1.0, and perfect scores for the rest
+        // 0.0*0.5 + 1.0*0.2 + 1.0*0.1 + 1.0*0.1 + 1.0*0.1 = 0.0 + 0.2 + 0.1 + 0.1 + 0.1 = 0.5
         adm.recordIdentificationPerformance(
-            taskSuccess: true,                     // 1.0 * 0.40 = 0.40
-            tfTtfRatio: 0.5,                      // 0.5 * 0.20 = 0.10
-            reactionTime: 2.0,                    // Worse than worst (1.75s) -> 0.0
-            responseDuration: 10.0,               // Much worse than worst -> 0.0
-            averageTapAccuracy: 500.0,            // Much worse than worst (225) -> 0.0
+            taskSuccess: false,            // 0.0 * 0.50 = 0.00
+            tfTtfRatio: 1.0,              // 1.0 * 0.20 = 0.20
+            reactionTime: 0.1,            // Better than best (0.2) -> 1.0 * 0.10 = 0.10
+            responseDuration: 0.3,        // 0.1s per target -> 1.0 * 0.10 = 0.10
+            averageTapAccuracy: 0.0,      // Perfect -> 1.0 * 0.10 = 0.10
             actualTargetsToFindInRound: 3
         )
-        print("Expected performance score: 0.50 (in 0.45-0.55 dead zone)")
+        // Total expected: 0.00 + 0.20 + 0.10 + 0.10 + 0.10 = 0.50
         
-        // Then
-        let newDF = adm.currentDiscriminabilityFactor
-        let newTargetCount = adm.currentTargetCount
-        let newResponseTime = adm.currentResponseTime
-        let newMeanSpeed = adm.currentMeanBallSpeed
+        // THEN: Nothing should change if score is truly in dead zone
+        let newPositions = adm.normalizedPositions
         
-        print("New DF: \(newDF) (change: \(newDF - initialDF))")
+        print("\nFinal normalized positions:")
+        var anyChanged = false
+        for domType in DOMTargetType.allCases {
+            let initial = initialPositions[domType]!
+            let final = newPositions[domType]!
+            let changed = abs(final - initial) > 0.001
+            if changed {
+                anyChanged = true
+                print("  \(domType): \(initial) -> \(final) (CHANGED by \(final - initial))")
+            } else {
+                print("  \(domType): \(initial) (unchanged)")
+            }
+        }
         
-        // Nothing should change when in dead zone
-        XCTAssertEqual(initialDF, newDF, 
-                      "DF should NOT change when performance is in dead zone")
-        XCTAssertEqual(initialTargetCount, newTargetCount,
-                      "Target count should NOT change when performance is in dead zone")
-        XCTAssertEqual(initialResponseTime, newResponseTime,
-                      "Response time should NOT change when performance is in dead zone")
-        XCTAssertEqual(initialMeanSpeed, newMeanSpeed,
-                      "Mean speed should NOT change when performance is in dead zone")
+        if anyChanged {
+            print("\nERROR: DOM positions changed when they shouldn't have!")
+            print("This suggests the performance score was NOT in the dead zone.")
+            print("Check the ADM logs for the actual adaptive score.")
+        }
+        
+        for domType in DOMTargetType.allCases {
+            XCTAssertEqual(initialPositions[domType]!, newPositions[domType]!, accuracy: 0.001,
+                          "DOM position for \(domType) should NOT change when adaptive score is in dead zone")
+        }
     }
     
     func testMultiplePerformanceEvaluationsCumulativeEffect() {

@@ -84,7 +84,7 @@ class ADMTrendTests: XCTestCase {
 
     func testAdaptiveScoreFallsBackWithInsufficientHistory() {
         // GIVEN: A performance history with fewer samples than required for trend calculation
-        addPerformanceHistory(scores: [0.5, 0.6]) // minimumHistoryForTrend is 3
+        addPerformanceHistory(scores: [0.6]) // minimumHistoryForTrend is 3
         let currentRawScore: CGFloat = 0.7
 
         // WHEN: The adaptive score is calculated
