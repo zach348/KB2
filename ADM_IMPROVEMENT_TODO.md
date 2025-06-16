@@ -123,49 +123,52 @@ This document outlines incremental improvements to address two critical issues i
 ## Phase 2: Trend-Based Adaptation
 
 ### Step 2.1: Implement Weighted Performance Calculation
-- [ ] **Create `calculateAdaptivePerformanceScore()` function**
+- [x] **Create `calculateAdaptivePerformanceScore()` function**
   ```swift
-  private func calculateAdaptivePerformanceScore(currentScore: CGFloat) -> CGFloat {
-      guard config.usePerformanceHistory && !performanceHistory.isEmpty else {
+  func calculateAdaptivePerformanceScore(currentScore: CGFloat) -> CGFloat {
+      guard config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend else {
           return currentScore
       }
       
-      let (average, trend, variance) = getPerformanceMetrics()
+      let (average, trend, _) = getPerformanceMetrics()
       
       // Weight recent performance more heavily
-      let recentWeight = config.currentPerformanceWeight  // e.g., 0.6
-      let historyWeight = config.historyInfluenceWeight   // e.g., 0.3
-      let trendWeight = config.trendInfluenceWeight       // e.g., 0.1
+      let recentWeight = config.currentPerformanceWeight
+      let historyWeight = config.historyInfluenceWeight
+      let trendWeight = config.trendInfluenceWeight
       
       // Consider trend in final score
       let trendAdjustment = trend * trendWeight
       
-      return (currentScore * recentWeight) + 
-             (average * historyWeight) + 
-             trendAdjustment
+      let weightedScore = (currentScore * recentWeight) +
+                          (average * historyWeight) +
+                          trendAdjustment
+      
+      return max(0.0, min(1.0, weightedScore)) // Clamp the final adaptive score
   }
   ```
 
 ### Step 2.2: Add Configuration Parameters
-- [ ] **Extend GameConfiguration**
+- [x] **Extend GameConfiguration**
   ```swift
   // Trend-Based Adaptation Configuration
-  let currentPerformanceWeight: CGFloat = 0.6
+  let currentPerformanceWeight: CGFloat = 0.7
+  let historyInfluenceWeight: CGFloat = 0.3
   let trendInfluenceWeight: CGFloat = 0.1
-  let enableTrendPrediction: Bool = true
+  let usePerformanceHistory: Bool = true
   let minimumHistoryForTrend: Int = 3
   ```
 
 ### Step 2.3: Update Performance Score Calculation
-- [ ] **Modify `modulateDOMTargets()` to use adaptive score**
-- [ ] **Add feature flag for gradual migration**
-- [ ] **Add DataLogger events for trend metrics**
+- [x] **Modify `modulateDOMTargets()` to use adaptive score**
+- [x] **Add feature flag for gradual migration**
+- [x] **Add DataLogger events for trend metrics**
 
 ### Validation Checkpoint 2
-- [ ] **Test trend detection accuracy**
-- [ ] **Verify smoother difficulty transitions**
-- [ ] **Monitor for overcompensation issues**
-- [ ] **Test with synthetic performance patterns**
+- [x] **Test trend detection accuracy**
+- [x] **Verify smoother difficulty transitions**
+- [x] **Monitor for overcompensation issues**
+- [x] **Test with synthetic performance patterns**
 
 ---
 

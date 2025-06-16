@@ -39,7 +39,7 @@ class AdaptiveDifficultyManager {
 
     // Normalized positions (0.0-1.0) for each DOM target
     // 0.0 = easiest setting, 1.0 = hardest setting
-    private var normalizedPositions: [DOMTargetType: CGFloat] = [:]
+    var normalizedPositions: [DOMTargetType: CGFloat] = [:]
 
     // Current valid ranges (min/max) for each DOM target at current arousal level
     private var currentValidRanges: [DOMTargetType: (min: CGFloat, max: CGFloat)] = [:]
@@ -319,10 +319,8 @@ class AdaptiveDifficultyManager {
     }
     
     private func modulateDOMTargets(overallPerformanceScore: CGFloat) {
-        // Phase 2: Calculate adaptive score using history and trend
         let adaptiveScore = calculateAdaptivePerformanceScore(currentScore: overallPerformanceScore)
         
-        // Log trend metrics if history was used
         if config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend {
             let (_, trend, _) = getPerformanceMetrics()
             dataLogger.logCustomEvent(
@@ -336,75 +334,88 @@ class AdaptiveDifficultyManager {
             )
         }
 
-        // 1. Calculate initial adaptation signal (-1.0 to +1.0) using the adaptive score
-        var remainingAdaptationSignalBudget = (adaptiveScore - 0.5) * 2.0
-
-        // Apply sensitivity and dead zone
-        if abs(remainingAdaptationSignalBudget) < config.adaptationSignalDeadZone {
-            remainingAdaptationSignalBudget = 0.0
+        var adaptationSignalBudget = (adaptiveScore - 0.5) * 2.0
+        if abs(adaptationSignalBudget) < config.adaptationSignalDeadZone {
+            adaptationSignalBudget = 0.0
         }
-        remainingAdaptationSignalBudget *= config.adaptationSignalSensitivity
+        adaptationSignalBudget *= config.adaptationSignalSensitivity
         
-        print("[ADM] Modulating DOMs. Initial Budget: \(String(format: "%.3f", remainingAdaptationSignalBudget)) from AdaptiveScore: \(String(format: "%.3f", adaptiveScore)) (Raw Perf: \(String(format: "%.3f", overallPerformanceScore)))")
+        print("[ADM] Modulating DOMs. Initial Budget: \(String(format: "%.3f", adaptationSignalBudget)) from AdaptiveScore: \(String(format: "%.3f", adaptiveScore))")
 
-        // 2. Select DOM Hierarchy based on currentArousalLevel
-        let hierarchy = currentArousalLevel >= config.arousalThresholdForKPIAndHierarchySwitch ?
-                        config.domHierarchy_HighArousal :
-                        config.domHierarchy_LowMidArousal
-
-        // Ensure valid ranges are up-to-date before modulation
         updateValidRangesForCurrentArousal()
 
-        // 3. Iterate through the hierarchy
-        for domTargetType in hierarchy {
-            if abs(remainingAdaptationSignalBudget) < 0.001 { // Budget effectively exhausted
-                print("[ADM] Budget exhausted or negligible (\(String(format: "%.4f", remainingAdaptationSignalBudget))). Stopping modulation.")
-                break
-            }
-
-            // A. Get current normalized position and valid range for this DOM
-            let currentNormalizedPosition = normalizedPositions[domTargetType] ?? 0.5
-            let arousalGated_Easiest = getArousalGatedEasiestSetting(for: domTargetType, currentArousal: currentArousalLevel)
-            let arousalGated_Hardest = getArousalGatedHardestSetting(for: domTargetType, currentArousal: currentArousalLevel)
-
-            // If range is zero (easiest == hardest), this DOM cannot adapt. Skip.
-            if abs(arousalGated_Hardest - arousalGated_Easiest) < 0.0001 { // Using a small epsilon
-                print("[ADM] DOM \(domTargetType) has no adaptation range [\(arousalGated_Easiest) - \(arousalGated_Hardest)]. Skipping.")
-                continue
-            }
-
-            // B. Determine Desired Normalized Position based on Budget
-            let desiredNormalizedPositionAttempt = currentNormalizedPosition + remainingAdaptationSignalBudget
-            
-            // C. Calculate Actual Achievable Normalized Position and "Spent" Budget
-            let achievedNormalizedPosition = max(0.0, min(1.0, desiredNormalizedPositionAttempt))
-            
-            let signalSpentByThisDOM = achievedNormalizedPosition - currentNormalizedPosition
-            
-            // D. Update remainingAdaptationSignalBudget
-            remainingAdaptationSignalBudget -= signalSpentByThisDOM
-
-            // E. Update the normalized position with smoothing
-            let normalizedSmoothing = config.domSmoothingFactors[domTargetType] ?? 0.1
-            let smoothedNormalizedPosition = currentNormalizedPosition + (achievedNormalizedPosition - currentNormalizedPosition) * normalizedSmoothing
-            
-            // Store the updated normalized position
-            normalizedPositions[domTargetType] = smoothedNormalizedPosition
-            
-            // F. Calculate and set the absolute value based on the new normalized position
-            let absoluteValue = normalizedToAbsoluteValue(normalizedValue: smoothedNormalizedPosition, for: domTargetType)
-            setCurrentValue(for: domTargetType, rawValue: absoluteValue)
-            
-            print("[ADM] Modulated \(domTargetType): Budget=\(String(format: "%.3f", remainingAdaptationSignalBudget + signalSpentByThisDOM)) -> Spent=\(String(format: "%.3f", signalSpentByThisDOM)) -> Rem=\(String(format: "%.3f", remainingAdaptationSignalBudget)). NormPos: \(String(format: "%.2f", currentNormalizedPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedNormalizedPosition)) -> AbsVal: \(String(format: "%.2f", absoluteValue))")
+        if adaptationSignalBudget < 0 {
+            // Easing logic with inverted priorities
+            adaptationSignalBudget = modulateDOMsWithWeightedBudget(totalBudget: adaptationSignalBudget, arousal: currentArousalLevel, invertPriorities: true)
+        } else {
+            // Hardening logic with standard priorities
+            adaptationSignalBudget = modulateDOMsWithWeightedBudget(totalBudget: adaptationSignalBudget, arousal: currentArousalLevel, invertPriorities: false)
         }
         
-        if abs(remainingAdaptationSignalBudget) > 0.001 {
-             print("[ADM] Modulation complete. Unspent budget: \(String(format: "%.4f", remainingAdaptationSignalBudget))")
+        if abs(adaptationSignalBudget) > 0.001 {
+             print("[ADM] Modulation complete. Unspent budget: \(String(format: "%.4f", adaptationSignalBudget))")
         }
         
-        // After updating the normalized positions, immediately convert them to absolute values
-        // This ensures changes take effect without waiting for arousal changes
         updateAbsoluteValuesFromNormalizedPositions()
+    }
+
+    func modulateDOMsWithWeightedBudget(totalBudget: CGFloat, arousal: CGFloat, invertPriorities: Bool) -> CGFloat {
+        var remainingBudget = totalBudget
+        
+        // Pass 1: Reset-to-Midpoint (only for easing)
+        if invertPriorities && totalBudget < 0 {
+            let overHardenedDOMs = normalizedPositions.filter { $0.value > 0.5 }.map { $0.key }
+            if !overHardenedDOMs.isEmpty {
+                let budgetForReset = distributeAdaptationBudget(
+                    totalBudget: remainingBudget,
+                    arousal: arousal,
+                    invertPriorities: true,
+                    subset: overHardenedDOMs
+                )
+                
+                var budgetSpentInPass1: CGFloat = 0
+                for (domType, budgetShare) in budgetForReset {
+                    let currentPosition = normalizedPositions[domType] ?? 0.5
+                    let targetPosition = max(0.5, currentPosition + budgetShare) // Don't go below 0.5 in this pass
+                    let actualChange = applyModulation(domType: domType, currentPosition: currentPosition, desiredPosition: targetPosition)
+                    budgetSpentInPass1 += actualChange
+                }
+                remainingBudget -= budgetSpentInPass1
+            }
+        }
+        
+        // Pass 2: Standard Modulation
+        let budgetForStandardPass = distributeAdaptationBudget(
+            totalBudget: remainingBudget,
+            arousal: arousal,
+            invertPriorities: invertPriorities,
+            subset: nil // All DOMs
+        )
+        
+        var budgetSpentInPass2: CGFloat = 0
+        for (domType, budgetShare) in budgetForStandardPass {
+            let currentPosition = normalizedPositions[domType] ?? 0.5
+            let targetPosition = currentPosition + budgetShare
+            let actualChange = applyModulation(domType: domType, currentPosition: currentPosition, desiredPosition: targetPosition)
+            budgetSpentInPass2 += actualChange
+        }
+        remainingBudget -= budgetSpentInPass2
+        
+        return remainingBudget
+    }
+
+    private func applyModulation(domType: DOMTargetType, currentPosition: CGFloat, desiredPosition: CGFloat) -> CGFloat {
+        let achievedPosition = max(0.0, min(1.0, desiredPosition))
+        let actualChange = achievedPosition - currentPosition
+        
+        let smoothing = config.domSmoothingFactors[domType] ?? 0.1
+        let smoothedPosition = currentPosition + actualChange * smoothing
+        
+        normalizedPositions[domType] = smoothedPosition
+        
+        print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", actualChange / (smoothing > 0 ? smoothing : 1) )) -> ActualChange=\(String(format: "%.3f", actualChange)). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedPosition))")
+        
+        return actualChange
     }
 
     // MARK: - Performance History Helper Methods (NEW)
@@ -438,7 +449,39 @@ class AdaptiveDifficultyManager {
         return (average: average, trend: trend, variance: variance)
     }
     
-    // MARK: - Interpolation Utilities (NEW - Phase 1.5)
+    // MARK: - DOM Modulation & Interpolation (Phase 2.5)
+
+    func calculateInterpolatedDOMPriority(domType: DOMTargetType, arousal: CGFloat, invert: Bool) -> CGFloat {
+        let lowPriority = config.domPriorities_LowMidArousal[domType] ?? 1.0
+        let highPriority = config.domPriorities_HighArousal[domType] ?? 1.0
+        
+        let t = smoothstep(config.kpiWeightTransitionStart, config.kpiWeightTransitionEnd, arousal)
+        let interpolatedPriority = lerp(lowPriority, highPriority, t)
+        
+        if invert {
+            // Simple inversion assuming a 1-5 scale. A more robust implementation
+            // might use a max value from config.
+            return (6.0 - interpolatedPriority)
+        }
+        
+        return interpolatedPriority
+    }
+
+    func distributeAdaptationBudget(totalBudget: CGFloat, arousal: CGFloat, invertPriorities: Bool, subset: [DOMTargetType]?) -> [DOMTargetType: CGFloat] {
+        let targetDOMs = subset ?? DOMTargetType.allCases
+        
+        let priorities = targetDOMs.map {
+            (dom: $0, priority: calculateInterpolatedDOMPriority(domType: $0, arousal: arousal, invert: invertPriorities))
+        }
+        
+        let totalPriority = priorities.reduce(0) { $0 + $1.priority }
+        
+        guard totalPriority > 0 else { return [:] }
+        
+        return Dictionary(uniqueKeysWithValues: priorities.map {
+            ($0.dom, ($0.priority / totalPriority) * totalBudget)
+        })
+    }
     
     /// Linear interpolation between two values
     private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {

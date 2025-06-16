@@ -173,8 +173,8 @@ struct GameConfiguration {
     let challengePhaseIntensity: ClosedRange<Double> = 0.3...0.5   // Changed to 30-50% as requested
     
     // Breathing State Timing
-    let breathingStateTargetRangeMin: Double = 0.4  // Breathing starts around 40% of session
-    let breathingStateTargetRangeMax: Double = 0.6  // Breathing starts around 60% of session
+    let breathingStateTargetRangeMin: Double = 0.6  // Breathing starts around 40% of session
+    let breathingStateTargetRangeMax: Double = 0.75  // Breathing starts around 60% of session
     
     // Default session profile
     let defaultSessionProfile: SessionProfile = .fluctuating
@@ -272,12 +272,12 @@ struct GameConfiguration {
     let initialStartupArousalForDefaults: CGFloat = 0.5
     let domSmoothingFactors: [DOMTargetType: CGFloat] = [
         .discriminatoryLoad: 0.3,  // Increased from 0.15 for more responsive color changes
-        .meanBallSpeed: 0.15,       // Increased from 0.10 for more noticeable speed changes
-        .ballSpeedSD: 0.1,         // Increased from 0.08 for more dynamic speed variation
+        .meanBallSpeed: 0.3,       // Increased from 0.10 for more noticeable speed changes
+        .ballSpeedSD: 0.15,         // Increased from 0.08 for more dynamic speed variation
         .responseTime: 0.2,        // Increased from 0.12 for more responsive time adjustments
         .targetCount: 0.3          // Increased from 0.20 for quicker target count changes
     ]
-    let adaptationSignalSensitivity: CGFloat = 1.7  // Increased from 1.0 to amplify performance responses
+    let adaptationSignalSensitivity: CGFloat = 1.9  // Increased from 1.0 to amplify performance responses
     let adaptationSignalDeadZone: CGFloat = 0.02     // Reduced from 0.05 to react to smaller performance changes
     
     // --- Performance History Configuration (NEW) ---
@@ -295,4 +295,21 @@ struct GameConfiguration {
     let trendInfluenceWeight: CGFloat = 0.15     // Nudge based on trajectory
     let enableTrendPrediction: Bool = true
     let minimumHistoryForTrend: Int = 2
+
+    // --- DOM Priority Weights (Phase 2.5) ---
+    let domPriorities_LowMidArousal: [DOMTargetType: CGFloat] = [
+        .targetCount: 5.0,
+        .responseTime: 4.0,
+        .discriminatoryLoad: 3.0,
+        .meanBallSpeed: 2.0,
+        .ballSpeedSD: 1.0
+    ]
+    
+    let domPriorities_HighArousal: [DOMTargetType: CGFloat] = [
+        .discriminatoryLoad: 5.0,
+        .meanBallSpeed: 4.0,
+        .ballSpeedSD: 3.0,
+        .responseTime: 2.0,
+        .targetCount: 1.0
+    ]
 }
