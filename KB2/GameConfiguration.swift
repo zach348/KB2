@@ -111,7 +111,7 @@ struct GameConfiguration {
     let holdAfterExhaleProportionHighArousal: CGFloat = 0.20 // 20% of exhale duration at tracking threshold
     
     // NEW: Proportion of exhale that occurs *before* the first hold (now mid-exhale)
-    let preHoldExhaleProportion: TimeInterval = 0.0075 // 5% of exhale, then hold, then remaining 95%
+    let preHoldExhaleProportion: TimeInterval = 0.015 // 5% of exhale, then hold, then remaining 95%
     
     // Breathing animation settings
     let breathingCircleMinRadius: CGFloat = 60.0
@@ -196,7 +196,7 @@ struct GameConfiguration {
     // Discriminability Factor (higher is easier - more different colors)
     let discriminabilityFactor_MinArousal_EasiestSetting: CGFloat = 1.0
     let discriminabilityFactor_MinArousal_HardestSetting: CGFloat = 0.65
-    let discriminabilityFactor_MaxArousal_EasiestSetting: CGFloat = 0.4
+    let discriminabilityFactor_MaxArousal_EasiestSetting: CGFloat = 0.25
     let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.0
     
     // Mean Ball Speed (lower is easier)
@@ -277,7 +277,7 @@ struct GameConfiguration {
         .responseTime: 0.2,        // Increased from 0.12 for more responsive time adjustments
         .targetCount: 0.3          // Increased from 0.20 for quicker target count changes
     ]
-    let adaptationSignalSensitivity: CGFloat = 1.5  // Increased from 1.0 to amplify performance responses
+    let adaptationSignalSensitivity: CGFloat = 1.7  // Increased from 1.0 to amplify performance responses
     let adaptationSignalDeadZone: CGFloat = 0.02     // Reduced from 0.05 to react to smaller performance changes
     
     // --- Performance History Configuration (NEW) ---
@@ -289,4 +289,10 @@ struct GameConfiguration {
     let kpiWeightTransitionEnd: CGFloat = 0.8
     var useKPIWeightInterpolation: Bool = true
 
+    // --- Trend-Based Adaptation Configuration (Phase 2) ---
+    let currentPerformanceWeight: CGFloat = 0.75 // Emphasize the most recent performance
+    let historyInfluenceWeight: CGFloat = 0.25   // Stabilize with a small historical influence
+    let trendInfluenceWeight: CGFloat = 0.15     // Nudge based on trajectory
+    let enableTrendPrediction: Bool = true
+    let minimumHistoryForTrend: Int = 2
 }

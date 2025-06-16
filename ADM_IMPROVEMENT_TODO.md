@@ -116,7 +116,7 @@ This document outlines incremental improvements to address two critical issues i
 ### Validation Checkpoint 1.5
 - [x] **Test smooth transitions around 0.6-0.8 arousal range**
 - [x] **Verify no performance discontinuities**
-- [ ] **A/B test with interpolation on/off**
+- [x] **A/B test with interpolation on/off**
 
 ---
 

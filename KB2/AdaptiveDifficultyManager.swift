@@ -295,10 +295,49 @@ class AdaptiveDifficultyManager {
         
         return max(0.0, min(1.0, score)) // Ensure score is clamped 0-1
     }
+
+    func calculateAdaptivePerformanceScore(currentScore: CGFloat) -> CGFloat {
+        guard config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend else {
+            return currentScore
+        }
+        
+        let (average, trend, _) = getPerformanceMetrics()
+        
+        // Weight recent performance more heavily
+        let recentWeight = config.currentPerformanceWeight
+        let historyWeight = config.historyInfluenceWeight
+        let trendWeight = config.trendInfluenceWeight
+        
+        // Consider trend in final score
+        let trendAdjustment = trend * trendWeight
+        
+        let weightedScore = (currentScore * recentWeight) +
+                            (average * historyWeight) +
+                            trendAdjustment
+        
+        return max(0.0, min(1.0, weightedScore)) // Clamp the final adaptive score
+    }
     
     private func modulateDOMTargets(overallPerformanceScore: CGFloat) {
-        // 1. Calculate initial adaptation signal (-1.0 to +1.0)
-        var remainingAdaptationSignalBudget = (overallPerformanceScore - 0.5) * 2.0
+        // Phase 2: Calculate adaptive score using history and trend
+        let adaptiveScore = calculateAdaptivePerformanceScore(currentScore: overallPerformanceScore)
+        
+        // Log trend metrics if history was used
+        if config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend {
+            let (_, trend, _) = getPerformanceMetrics()
+            dataLogger.logCustomEvent(
+                eventType: "adm_trend_metrics",
+                data: [
+                    "raw_performance_score": overallPerformanceScore,
+                    "adaptive_performance_score": adaptiveScore,
+                    "performance_trend": trend
+                ],
+                description: "ADM trend-based adaptation metrics"
+            )
+        }
+
+        // 1. Calculate initial adaptation signal (-1.0 to +1.0) using the adaptive score
+        var remainingAdaptationSignalBudget = (adaptiveScore - 0.5) * 2.0
 
         // Apply sensitivity and dead zone
         if abs(remainingAdaptationSignalBudget) < config.adaptationSignalDeadZone {
@@ -306,7 +345,7 @@ class AdaptiveDifficultyManager {
         }
         remainingAdaptationSignalBudget *= config.adaptationSignalSensitivity
         
-        print("[ADM] Modulating DOMs. Initial Budget: \(String(format: "%.3f", remainingAdaptationSignalBudget)) from PerfScore: \(String(format: "%.3f", overallPerformanceScore))")
+        print("[ADM] Modulating DOMs. Initial Budget: \(String(format: "%.3f", remainingAdaptationSignalBudget)) from AdaptiveScore: \(String(format: "%.3f", adaptiveScore)) (Raw Perf: \(String(format: "%.3f", overallPerformanceScore)))")
 
         // 2. Select DOM Hierarchy based on currentArousalLevel
         let hierarchy = currentArousalLevel >= config.arousalThresholdForKPIAndHierarchySwitch ?
