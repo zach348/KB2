@@ -111,7 +111,7 @@ struct GameConfiguration {
     let holdAfterExhaleProportionHighArousal: CGFloat = 0.20 // 20% of exhale duration at tracking threshold
     
     // NEW: Proportion of exhale that occurs *before* the first hold (now mid-exhale)
-    let preHoldExhaleProportion: TimeInterval = 0.015 // 5% of exhale, then hold, then remaining 95%
+    let preHoldExhaleProportion: TimeInterval = 0.02 // % of exhale, then hold, then remaining %
     
     // Breathing animation settings
     let breathingCircleMinRadius: CGFloat = 60.0
@@ -128,7 +128,7 @@ struct GameConfiguration {
     // Breathing haptic tempo parameters
     let breathingHapticMinDelay: TimeInterval = 0.013  // ~77Hz - Fastest tempo at max radius (was 0.04)
     let breathingHapticMaxDelay: TimeInterval = 0.075   // ~6.7Hz - Slowest tempo at min radius
-    let breathingHapticTempoExponent: Double = 1.05     // Controls the curve mapping (higher = more dramatic change)
+    let breathingHapticTempoExponent: Double = 1.1     // Controls the curve mapping (higher = more dramatic change)
 
     // --- Identification Task ---
     let identificationStartDelay: TimeInterval = 0.5
@@ -173,8 +173,8 @@ struct GameConfiguration {
     let challengePhaseIntensity: ClosedRange<Double> = 0.3...0.5   // Changed to 30-50% as requested
     
     // Breathing State Timing
-    let breathingStateTargetRangeMin: Double = 0.6  // Breathing starts around 40% of session
-    let breathingStateTargetRangeMax: Double = 0.75  // Breathing starts around 60% of session
+    let breathingStateTargetRangeMin: Double = 0.6  // Breathing starts around 60% of session
+    let breathingStateTargetRangeMax: Double = 0.75  // Breathing starts around 75% of session
     
     // Default session profile
     let defaultSessionProfile: SessionProfile = .fluctuating
@@ -202,8 +202,8 @@ struct GameConfiguration {
     // Mean Ball Speed (lower is easier)
     let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 25.0
     let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 125.0
-    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 750.0
-    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1150.0
+    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 700.0
+    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1100.0
     
     // Ball Speed Standard Deviation (lower is easier)
     let ballSpeedSD_MinArousal_EasiestSetting: CGFloat = 0.0
@@ -242,7 +242,7 @@ struct GameConfiguration {
     )
     
     // --- DOM Target Hierarchies ---
-    // High Arousal Hierarchy (>= 0.7)
+    // High Arousal Hierarchy
     let domHierarchy_HighArousal: [DOMTargetType] = [
         .discriminatoryLoad,
         .meanBallSpeed,
@@ -251,7 +251,7 @@ struct GameConfiguration {
         .targetCount
     ]
     
-    // Low/Mid Arousal Hierarchy (0.35 < arousal < 0.7)
+    // Low/Mid Arousal Hierarchy
     let domHierarchy_LowMidArousal: [DOMTargetType] = [
         .targetCount,
         .responseTime,
@@ -277,8 +277,8 @@ struct GameConfiguration {
         .responseTime: 0.2,        // Increased from 0.12 for more responsive time adjustments
         .targetCount: 0.3          // Increased from 0.20 for quicker target count changes
     ]
-    let adaptationSignalSensitivity: CGFloat = 1.9  // Increased from 1.0 to amplify performance responses
-    let adaptationSignalDeadZone: CGFloat = 0.02     // Reduced from 0.05 to react to smaller performance changes
+    let adaptationSignalSensitivity: CGFloat = 2.5  // Increased from 1.0 to amplify performance responses
+    let adaptationSignalDeadZone: CGFloat = 0.035     // Reduced from 0.05 to react to smaller performance changes
     
     // --- Performance History Configuration (NEW) ---
     let performanceHistoryWindowSize: Int = 10
@@ -290,11 +290,11 @@ struct GameConfiguration {
     var useKPIWeightInterpolation: Bool = true
 
     // --- Trend-Based Adaptation Configuration (Phase 2) ---
-    let currentPerformanceWeight: CGFloat = 0.75 // Emphasize the most recent performance
-    let historyInfluenceWeight: CGFloat = 0.25   // Stabilize with a small historical influence
-    let trendInfluenceWeight: CGFloat = 0.15     // Nudge based on trajectory
+    let currentPerformanceWeight: CGFloat = 0.65 // Emphasize the most recent performance
+    let historyInfluenceWeight: CGFloat = 0.35   // Stabilize with a small historical influence
+    let trendInfluenceWeight: CGFloat = 0.2     // Nudge based on trajectory
     let enableTrendPrediction: Bool = true
-    let minimumHistoryForTrend: Int = 2
+    let minimumHistoryForTrend: Int = 3
 
     // --- DOM Priority Weights (Phase 2.5) ---
     let domPriorities_LowMidArousal: [DOMTargetType: CGFloat] = [
