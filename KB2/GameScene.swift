@@ -1212,6 +1212,34 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     }
     
     //====================================================================================================
+    // MARK: - RESPONSE TIME MANAGEMENT
+    //====================================================================================================
+    // Dedicated method to update identification duration from ADM's response time
+    private func updateResponseTimeFromADM() {
+        // Skip updates if not in tracking or identifying
+        guard currentState == .tracking || currentState == .identifying else { return }
+        
+        // Get current response time from ADM
+        let responseTimeFromADM: TimeInterval
+        if let admResponseTime = self.adaptiveDifficultyManager?.currentResponseTime {
+            responseTimeFromADM = admResponseTime
+        } else {
+            // Calculate fallback value
+            let easierTime = gameConfiguration.responseTime_MinArousal_EasiestSetting
+            let harderTime = gameConfiguration.responseTime_MinArousal_HardestSetting
+            let midpoint = easierTime + (harderTime - easierTime) * 0.5
+            responseTimeFromADM = midpoint
+        }
+        
+        // Only update if the time has changed significantly
+        if abs(responseTimeFromADM - self.currentIdentificationDuration) > 0.1 {
+            let oldDuration = self.currentIdentificationDuration
+            self.currentIdentificationDuration = responseTimeFromADM
+            print("GameScene: Updated identification duration from ADM - Old: \(String(format: "%.2f", oldDuration))s, New: \(String(format: "%.2f", responseTimeFromADM))s")
+        }
+    }
+    
+    //====================================================================================================
     // MARK: - AROUSAL MANAGEMENT
     //====================================================================================================
     // --- Arousal Handling ---
@@ -1274,10 +1302,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Speed parameters are now managed by ADM via updateSpeedParametersFromADM()
             // which is called in the throttled motion control loop
             // Target count is also now managed by ADM via updateTargetCountFromADM()
-
-            let idDurationRange = gameConfiguration.maxIdentificationDurationAtLowArousal - gameConfiguration.minIdentificationDurationAtHighArousal
-            self.currentIdentificationDuration = gameConfiguration.maxIdentificationDurationAtLowArousal - (idDurationRange * normalizedTrackingArousal)
-            self.currentIdentificationDuration = max(0.1, self.currentIdentificationDuration)
+            // The identification duration is now managed by ADM via updateResponseTimeFromADM()
+            // which is called in the throttled motion control loop
             let shiftMinRange = gameConfiguration.shiftIntervalMin_HighArousal - gameConfiguration.shiftIntervalMin_LowArousal
             currentMinShiftInterval = gameConfiguration.shiftIntervalMin_LowArousal + (shiftMinRange * normalizedTrackingArousal)
             let shiftMaxRange = gameConfiguration.shiftIntervalMax_HighArousal - gameConfiguration.shiftIntervalMax_LowArousal
@@ -2367,6 +2393,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             
             // Update target count from ADM
             self.updateTargetCountFromADM()
+            
+            // Update identification duration from ADM's response time
+            self.updateResponseTimeFromADM()
             
             // If we're in tracking state, update ball appearances to reflect any DF changes
             if self.currentState == .tracking {
