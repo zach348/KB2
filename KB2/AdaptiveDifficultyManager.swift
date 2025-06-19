@@ -148,6 +148,16 @@ class AdaptiveDifficultyManager {
         
         // Update absolute values based on normalized positions and new ranges
         updateAbsoluteValuesFromNormalizedPositions()
+        
+        // Add diagnostic logging for discriminatory load
+        dataLogger.logCustomEvent(
+            eventType: "adm_discriminatory_load_tracking",
+            data: [
+                "discriminatory_load_position": normalizedPositions[.discriminatoryLoad] ?? 0.5,
+                "arousal_level": currentArousalLevel
+            ],
+            description: "Tracking discriminatory load position during arousal updates"
+        )
     }
     
     /// Legacy method - kept for backwards compatibility but not used in the new system
@@ -338,7 +348,15 @@ class AdaptiveDifficultyManager {
         if abs(adaptationSignalBudget) < config.adaptationSignalDeadZone {
             adaptationSignalBudget = 0.0
         }
-        adaptationSignalBudget *= config.adaptationSignalSensitivity
+        
+        // Apply sensitivity (potentially different for easing vs hardening)
+        if adaptationSignalBudget < 0 {
+            // Apply standard sensitivity for easing
+            adaptationSignalBudget *= config.adaptationSignalSensitivity
+        } else {
+            // Apply standard sensitivity for hardening
+            adaptationSignalBudget *= config.adaptationSignalSensitivity
+        }
         
         print("[ADM] Modulating DOMs. Initial Budget: \(String(format: "%.3f", adaptationSignalBudget)) from AdaptiveScore: \(String(format: "%.3f", adaptiveScore))")
 
@@ -364,8 +382,14 @@ class AdaptiveDifficultyManager {
         
         // Pass 1: Reset-to-Midpoint (only for easing)
         if invertPriorities && totalBudget < 0 {
-            let overHardenedDOMs = normalizedPositions.filter { $0.value > 0.5 }.map { $0.key }
+            // Include positions that are at or above midpoint
+            let overHardenedDOMs = normalizedPositions.filter { $0.value >= 0.5 }.map { $0.key }
             if !overHardenedDOMs.isEmpty {
+                // Log discriminatory load normalized position for debugging
+                if let discLoadPos = normalizedPositions[.discriminatoryLoad] {
+                    print("[ADM] DiscriminatoryLoad normalized position: \(discLoadPos), included in reset: \(overHardenedDOMs.contains(.discriminatoryLoad))")
+                }
+                
                 let budgetForReset = distributeAdaptationBudget(
                     totalBudget: remainingBudget,
                     arousal: arousal,
@@ -404,18 +428,34 @@ class AdaptiveDifficultyManager {
         return remainingBudget
     }
 
-    private func applyModulation(domType: DOMTargetType, currentPosition: CGFloat, desiredPosition: CGFloat) -> CGFloat {
+    func applyModulation(domType: DOMTargetType, currentPosition: CGFloat, desiredPosition: CGFloat) -> CGFloat {
         let achievedPosition = max(0.0, min(1.0, desiredPosition))
-        let actualChange = achievedPosition - currentPosition
+        let rawChange = achievedPosition - currentPosition
         
-        let smoothing = config.domSmoothingFactors[domType] ?? 0.1
-        let smoothedPosition = currentPosition + actualChange * smoothing
+        // Choose smoothing factor based on direction of change
+        let smoothing: CGFloat
+        if rawChange < 0 {
+            // We're easing (making game easier)
+            smoothing = config.domEasingSmoothingFactors[domType] ?? 0.1
+            if domType == .discriminatoryLoad {
+                print("[ADM] Using EASING factor for \(domType): \(smoothing)")
+            }
+        } else {
+            // We're hardening (making game harder)
+            smoothing = config.domHardeningSmoothingFactors[domType] ?? 0.1
+            if domType == .discriminatoryLoad {
+                print("[ADM] Using HARDENING factor for \(domType): \(smoothing)")
+            }
+        }
+        
+        let smoothedChange = rawChange * smoothing
+        let smoothedPosition = currentPosition + smoothedChange
         
         normalizedPositions[domType] = smoothedPosition
         
-        print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", actualChange / (smoothing > 0 ? smoothing : 1) )) -> ActualChange=\(String(format: "%.3f", actualChange)). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedPosition))")
+        print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", rawChange / (smoothing > 0 ? smoothing : 1) )) -> ActualChange=\(String(format: "%.3f", smoothedChange)). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedPosition))")
         
-        return actualChange
+        return smoothedChange
     }
 
     // MARK: - Performance History Helper Methods (NEW)
@@ -459,9 +499,29 @@ class AdaptiveDifficultyManager {
         let interpolatedPriority = lerp(lowPriority, highPriority, t)
         
         if invert {
-            // Simple inversion assuming a 1-5 scale. A more robust implementation
-            // might use a max value from config.
-            return (6.0 - interpolatedPriority)
+            // Dynamically calculate max priority for proper inversion
+            // This avoids issues with hard-coded scale assumptions
+            if domType == .discriminatoryLoad {
+                print("[ADM] DiscriminatoryLoad original priority: \(interpolatedPriority)")
+            }
+            
+            // Find the max priority across all DOM types
+            let allPriorities = DOMTargetType.allCases.map { 
+                let domLowP = config.domPriorities_LowMidArousal[$0] ?? 1.0
+                let domHighP = config.domPriorities_HighArousal[$0] ?? 1.0
+                let domT = smoothstep(config.kpiWeightTransitionStart, config.kpiWeightTransitionEnd, arousal)
+                return lerp(domLowP, domHighP, domT)
+            }
+            let maxPriority = allPriorities.max() ?? 6.0
+            
+            // Add a small buffer to ensure the max value gets some non-zero priority when inverted
+            let invertedPriority = (maxPriority + 1.0 - interpolatedPriority)
+            
+            if domType == .discriminatoryLoad {
+                print("[ADM] DiscriminatoryLoad inverted priority: \(invertedPriority) (max was \(maxPriority))")
+            }
+            
+            return invertedPriority
         }
         
         return interpolatedPriority

@@ -270,14 +270,31 @@ struct GameConfiguration {
     
     // --- Adaptive System Tuning Parameters ---
     let initialStartupArousalForDefaults: CGFloat = 0.5
-    let domSmoothingFactors: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 0.3,  // Increased from 0.15 for more responsive color changes
-        .meanBallSpeed: 0.2,       // Increased from 0.10 for more noticeable speed changes
-        .ballSpeedSD: 0.1,         // Increased from 0.08 for more dynamic speed variation
-        .responseTime: 0.05,        // Increased from 0.12 for more responsive time adjustments
-        .targetCount: 0.2          // Increased from 0.20 for quicker target count changes
+    
+    // Direction-specific smoothing factors
+    // For hardening (making the game harder)
+    let domHardeningSmoothingFactors: [DOMTargetType: CGFloat] = [
+        .discriminatoryLoad: 0.3,  // Original value
+        .meanBallSpeed: 0.2,       // Original value
+        .ballSpeedSD: 0.1,         // Original value
+        .responseTime: 0.1,       // Original value
+        .targetCount: 0.2          // Original value
     ]
-    let adaptationSignalSensitivity: CGFloat = 2.5  // Increased from 1.0 to amplify performance responses
+    
+    // For easing (making the game easier - higher values for faster response to poor performance)
+    let domEasingSmoothingFactors: [DOMTargetType: CGFloat] = [
+        .discriminatoryLoad: 0.5,  // 2x hardening factor
+        .meanBallSpeed: 0.4,       // 2x hardening factor
+        .ballSpeedSD: 0.3,         // 2x hardening factor
+        .responseTime: 0.2,        // 2x hardening factor
+        .targetCount: 0.4          // 2x hardening factor
+    ]
+    
+    // Keeping this for backward compatibility, now maps to hardening factors
+    var domSmoothingFactors: [DOMTargetType: CGFloat] {
+        return domHardeningSmoothingFactors
+    }
+    let adaptationSignalSensitivity: CGFloat = 2.25  // Increased from 1.0 to amplify performance responses
     let adaptationSignalDeadZone: CGFloat = 0.035     // Reduced from 0.05 to react to smaller performance changes
     
     // --- Performance History Configuration (NEW) ---
@@ -285,21 +302,21 @@ struct GameConfiguration {
     var usePerformanceHistory: Bool = true  // Start disabled for safety
     
     // --- KPI Weight Interpolation Configuration (Phase 1.5) ---
-    let kpiWeightTransitionStart: CGFloat = 0.6
-    let kpiWeightTransitionEnd: CGFloat = 0.8
+    let kpiWeightTransitionStart: CGFloat = 0.55
+    let kpiWeightTransitionEnd: CGFloat = 0.85
     var useKPIWeightInterpolation: Bool = true
 
     // --- Trend-Based Adaptation Configuration (Phase 2) ---
-    let currentPerformanceWeight: CGFloat = 0.65 // Emphasize the most recent performance
-    let historyInfluenceWeight: CGFloat = 0.35   // Stabilize with a small historical influence
-    let trendInfluenceWeight: CGFloat = 0.2     // Nudge based on trajectory
+    let currentPerformanceWeight: CGFloat = 0.75 // Emphasize the most recent performance
+    let historyInfluenceWeight: CGFloat = 0.25   // Stabilize with a small historical influence
+    let trendInfluenceWeight: CGFloat = 0.15     // Nudge based on trajectory
     let enableTrendPrediction: Bool = true
     let minimumHistoryForTrend: Int = 3
 
     // --- DOM Priority Weights (Phase 2.5) ---
     let domPriorities_LowMidArousal: [DOMTargetType: CGFloat] = [
         .targetCount: 5.0,
-        .responseTime: 4.0,
+        .responseTime: 3.0,
         .discriminatoryLoad: 3.0,
         .meanBallSpeed: 2.0,
         .ballSpeedSD: 1.0
