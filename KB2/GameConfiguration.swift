@@ -196,8 +196,8 @@ struct GameConfiguration {
     // Discriminability Factor (higher is easier - more different colors)
     let discriminabilityFactor_MinArousal_EasiestSetting: CGFloat = 1.0
     let discriminabilityFactor_MinArousal_HardestSetting: CGFloat = 0.65
-    let discriminabilityFactor_MaxArousal_EasiestSetting: CGFloat = 0.25
-    let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.0
+    let discriminabilityFactor_MaxArousal_EasiestSetting: CGFloat = 0.3
+    let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.075
     
     // Mean Ball Speed (lower is easier)
     let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 25.0
@@ -212,9 +212,9 @@ struct GameConfiguration {
     let ballSpeedSD_MaxArousal_HardestSetting: CGFloat = 200.0
     
     // Response Time for ID phase (higher is easier - more time to respond)
-    let responseTime_MinArousal_EasiestSetting: TimeInterval = 8.0
+    let responseTime_MinArousal_EasiestSetting: TimeInterval = 9.0
     let responseTime_MinArousal_HardestSetting: TimeInterval = 4.0
-    let responseTime_MaxArousal_EasiestSetting: TimeInterval = 1.5
+    let responseTime_MaxArousal_EasiestSetting: TimeInterval = 2.0
     let responseTime_MaxArousal_HardestSetting: TimeInterval = 0.75
     
     // --- Arousal Thresholds for DOM Scaling ---

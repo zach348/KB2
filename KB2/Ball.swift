@@ -93,7 +93,7 @@ class Ball: SKShapeNode {
         
         // Allocate 70% of each cycle to flash-on and 30% to flash-off
         let flashOnRatio: Double = 0.85
-        let flashOffRatio: Double = 1.0 - flashOnRatio
+        let flashOffRatio: Double = 0.15 - flashOnRatio
         
         // Calculate adjusted durations for on and off phases
         let onDuration = timePerFlash * flashOnRatio * configSpeedFactor
