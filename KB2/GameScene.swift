@@ -522,25 +522,59 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         guard currentTargetCount <= balls.count, !balls.isEmpty else {
             return
         }
-        let shuffledBalls = balls.shuffled(); var newlyAssignedTargets: [Ball] = []; var assignmentsMade = 0
         
-        // This loop determines which balls *should* be targets based on currentTargetCount
-        // and updates their isTarget state and appearance.
-        for (index, ball) in shuffledBalls.enumerated() {
-            let shouldBeTarget = index < currentTargetCount
-            if ball.isTarget != shouldBeTarget {
-                ball.isTarget = shouldBeTarget
-                ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
-                assignmentsMade += 1
-                if shouldBeTarget { newlyAssignedTargets.append(ball) }
+        // 1. Separate balls into current targets and non-targets
+        let currentTargets = balls.filter { $0.isTarget }
+        let currentNonTargets = balls.filter { !$0.isTarget }
+        
+        // 2. Determine how many targets can be shifted
+        let maxShiftableBalls = min(currentTargets.count, currentNonTargets.count)
+        
+        // 3. Determine how many current targets need to remain as targets
+        let targetsToKeep = currentTargetCount - min(currentNonTargets.count, currentTargetCount)
+        
+        // 4. Collect all balls that will be targets after the shift
+        var newlyAssignedTargets: [Ball] = []
+        var allTargets: [Ball] = []
+        
+        // 5. Select targets to keep (if necessary)
+        var remainingTargets: [Ball] = []
+        if targetsToKeep > 0 {
+            let shuffledCurrentTargets = currentTargets.shuffled()
+            remainingTargets = Array(shuffledCurrentTargets.prefix(targetsToKeep))
+            
+            // Keep these as targets but still add them to flash list
+            for ball in remainingTargets {
+                allTargets.append(ball)
+                // We'll still flash these even though they remain targets
+                newlyAssignedTargets.append(ball) 
             }
         }
-
-        // Snapshot the currentTargetCount that will be used for the next ID round, based on THIS assignment pass.
-        // This is done regardless of whether we flash, as this count reflects the current state of targets.
-        self.targetCountForNextIDRound = self.currentTargetCount
-
-        // Always flash if there are newly assigned targets (targets that were just turned ON)
+        
+        // 6. Turn remaining current targets into non-targets
+        for ball in currentTargets {
+            if !remainingTargets.contains(ball) {
+                ball.isTarget = false
+                ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
+            }
+        }
+        
+        // 7. Select new targets from non-targets pool
+        let shuffledNonTargets = currentNonTargets.shuffled()
+        let newTargetsNeeded = currentTargetCount - targetsToKeep
+        
+        for i in 0..<min(newTargetsNeeded, shuffledNonTargets.count) {
+            let ball = shuffledNonTargets[i]
+            ball.isTarget = true
+            ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
+            newlyAssignedTargets.append(ball)
+            allTargets.append(ball)
+        }
+        
+        // 8. Update the snapshot for the next ID round
+        self.targetCountForNextIDRound = allTargets.count
+        
+        // 9. Flash ALL targets if we have any newly assigned targets (including kept targets)
         if !newlyAssignedTargets.isEmpty {
             self.isFlashSequenceRunning = true
 

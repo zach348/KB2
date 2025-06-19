@@ -212,10 +212,10 @@ struct GameConfiguration {
     let ballSpeedSD_MaxArousal_HardestSetting: CGFloat = 200.0
     
     // Response Time for ID phase (higher is easier - more time to respond)
-    let responseTime_MinArousal_EasiestSetting: TimeInterval = 9.0
-    let responseTime_MinArousal_HardestSetting: TimeInterval = 4.0
+    let responseTime_MinArousal_EasiestSetting: TimeInterval = 10.0
+    let responseTime_MinArousal_HardestSetting: TimeInterval = 5.0
     let responseTime_MaxArousal_EasiestSetting: TimeInterval = 2.0
-    let responseTime_MaxArousal_HardestSetting: TimeInterval = 0.75
+    let responseTime_MaxArousal_HardestSetting: TimeInterval = 1.0
     
     // --- Arousal Thresholds for DOM Scaling ---
     let arousalOperationalMinForDOMScaling: CGFloat = 0.35
@@ -272,10 +272,10 @@ struct GameConfiguration {
     let initialStartupArousalForDefaults: CGFloat = 0.5
     let domSmoothingFactors: [DOMTargetType: CGFloat] = [
         .discriminatoryLoad: 0.3,  // Increased from 0.15 for more responsive color changes
-        .meanBallSpeed: 0.3,       // Increased from 0.10 for more noticeable speed changes
-        .ballSpeedSD: 0.15,         // Increased from 0.08 for more dynamic speed variation
-        .responseTime: 0.2,        // Increased from 0.12 for more responsive time adjustments
-        .targetCount: 0.3          // Increased from 0.20 for quicker target count changes
+        .meanBallSpeed: 0.2,       // Increased from 0.10 for more noticeable speed changes
+        .ballSpeedSD: 0.1,         // Increased from 0.08 for more dynamic speed variation
+        .responseTime: 0.05,        // Increased from 0.12 for more responsive time adjustments
+        .targetCount: 0.2          // Increased from 0.20 for quicker target count changes
     ]
     let adaptationSignalSensitivity: CGFloat = 2.5  // Increased from 1.0 to amplify performance responses
     let adaptationSignalDeadZone: CGFloat = 0.035     // Reduced from 0.05 to react to smaller performance changes

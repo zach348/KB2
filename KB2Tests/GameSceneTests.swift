@@ -560,4 +560,175 @@ class GameSceneTests: XCTestCase {
         let targetCount = gameScene.balls.filter { $0.isTarget }.count
         XCTAssertEqual(targetCount, 0)
     }
+    
+    // MARK: - Target Shift Behavior Tests
+    
+    func testTargetShiftWithNoPreviousTargets() {
+        gameScene.didMove(to: mockView)
+        
+        // Make sure all balls start as non-targets
+        for ball in gameScene.balls {
+            ball.isTarget = false
+        }
+        
+        // Set target count to a reasonable value
+        gameScene.currentTargetCount = 3
+        
+        // Perform the target shift
+        gameScene.assignNewTargets()
+        
+        // Verify target count matches expected
+        let targetCount = gameScene.balls.filter { $0.isTarget }.count
+        XCTAssertEqual(targetCount, 3)
+    }
+    
+    func testTargetShiftWithCompleteReplacement() {
+        gameScene.didMove(to: mockView)
+        
+        // Ensure we have enough balls for a meaningful test
+        XCTAssertGreaterThanOrEqual(gameScene.balls.count, 6, "Need at least 6 balls for this test")
+        
+        // Manually mark 3 specific balls as targets
+        let initialTargets = Array(gameScene.balls.prefix(3))
+        for ball in initialTargets {
+            ball.isTarget = true
+        }
+        for ball in gameScene.balls.dropFirst(3) {
+            ball.isTarget = false
+        }
+        
+        // Verify our initial setup
+        XCTAssertEqual(gameScene.balls.filter { $0.isTarget }.count, 3, "Should have 3 initial targets")
+        
+        // Set target count to 3 (same as current count)
+        gameScene.currentTargetCount = 3
+        
+        // Perform the target shift
+        gameScene.assignNewTargets()
+        
+        // Get the new targets
+        let newTargets = gameScene.balls.filter { $0.isTarget }
+        
+        // Verify we still have 3 targets
+        XCTAssertEqual(newTargets.count, 3, "Should still have 3 targets after shift")
+        
+        // Check if any of the initial targets are still targets
+        let overlappingTargets = initialTargets.filter { newTargets.contains($0) }
+        
+        // The key test: verify no initial targets remained as targets
+        XCTAssertEqual(overlappingTargets.count, 0, "No initial targets should remain as targets after shift")
+    }
+    
+    func testTargetShiftWithPartialReplacement() {
+        gameScene.didMove(to: mockView)
+        
+        // Ensure we have enough balls for this test
+        XCTAssertGreaterThanOrEqual(gameScene.balls.count, 10, "Need at least 10 balls for this test")
+        
+        // Setup: Mark 7 balls as targets, leaving 3 or more as non-targets
+        let initialTargets = Array(gameScene.balls.prefix(7))
+        for ball in initialTargets {
+            ball.isTarget = true
+        }
+        for ball in gameScene.balls.dropFirst(7) {
+            ball.isTarget = false
+        }
+        
+        // Verify initial setup
+        XCTAssertEqual(gameScene.balls.filter { $0.isTarget }.count, 7, "Should have 7 initial targets")
+        let initialNonTargetCount = gameScene.balls.count - 7
+        XCTAssertGreaterThanOrEqual(initialNonTargetCount, 3, "Should have at least 3 non-targets")
+        
+        // Set the target count to 7 (same as current)
+        gameScene.currentTargetCount = 7
+        
+        // Perform the target shift
+        gameScene.assignNewTargets()
+        
+        // Get the new targets
+        let newTargets = gameScene.balls.filter { $0.isTarget }
+        
+        // Verify we still have 7 targets total
+        XCTAssertEqual(newTargets.count, 7, "Should still have 7 targets after shift")
+        
+        // Calculate how many targets could have been replaced
+        // (should be min(initialTargets.count, initialNonTargetCount) = min(7, 3) = 3)
+        let expectedReplacedCount = min(7, initialNonTargetCount)
+        
+        // Count how many of the initial targets are no longer targets
+        let replacedTargets = initialTargets.filter { !$0.isTarget }
+        XCTAssertEqual(replacedTargets.count, expectedReplacedCount, 
+                       "Should have replaced \(expectedReplacedCount) of the initial targets")
+        
+        // Count how many of the initial targets remained as targets
+        let keptTargets = initialTargets.filter { $0.isTarget }
+        XCTAssertEqual(keptTargets.count, 7 - expectedReplacedCount, 
+                       "Should have kept \(7 - expectedReplacedCount) of the initial targets")
+    }
+    
+    func testTargetShiftFlashingAllTargets() {
+        gameScene.didMove(to: mockView)
+        
+        // Ensure we have enough balls
+        XCTAssertGreaterThanOrEqual(gameScene.balls.count, 10, "Need at least 10 balls for this test")
+        
+        // Setup: Same as testTargetShiftWithPartialReplacement
+        // Mark 7 balls as targets, leaving 3 or more as non-targets
+        let initialTargets = Array(gameScene.balls.prefix(7))
+        for ball in initialTargets {
+            ball.isTarget = true
+            // Mock that the ball has already been shown as a target
+            ball.updateAppearance(targetColor: gameScene.activeTargetColor, 
+                                 distractorColor: gameScene.activeDistractorColor)
+        }
+        for ball in gameScene.balls.dropFirst(7) {
+            ball.isTarget = false
+            ball.updateAppearance(targetColor: gameScene.activeTargetColor, 
+                                 distractorColor: gameScene.activeDistractorColor)
+        }
+        
+        // We need to capture the balls that will be flashed during assignNewTargets
+        // Since we can't directly access the newlyAssignedTargets array in GameScene
+        // We'll use a method to simulate the ball flash by checking which balls get the flash action
+        
+        // Create a test-only property to check if a ball was flashed
+        class TestBall: Ball {
+            var wasFlashed = false
+            
+            override func flashAsNewTarget(targetColor: SKColor, flashColor: SKColor, 
+                                         duration: TimeInterval = Ball.defaultFlashDuration, 
+                                         flashes: Int = 6) {
+                super.flashAsNewTarget(targetColor: targetColor, flashColor: flashColor, 
+                                      duration: duration, flashes: flashes)
+                wasFlashed = true
+            }
+        }
+        
+        // We can't easily replace the existing balls with TestBall instances
+        // so we'll modify our test approach
+        
+        // Set the target count to 7 (same as current)
+        gameScene.currentTargetCount = 7
+        
+        // Perform the target shift - this will flash the newly assigned targets
+        gameScene.assignNewTargets()
+        
+        // Verify flash sequence is running
+        XCTAssertTrue(gameScene.isFlashSequenceRunning, "Flash sequence should be running after target shift")
+        
+        // Verify we still have 7 targets total
+        let newTargets = gameScene.balls.filter { $0.isTarget }
+        XCTAssertEqual(newTargets.count, 7, "Should still have 7 targets after shift")
+        
+        // Since all balls that are targets after the shift should be flashed
+        // (including those that were kept as targets), we need to verify
+        // that each target has a flash action
+        
+        for ball in gameScene.balls {
+            if ball.isTarget {
+                XCTAssertNotNil(ball.action(forKey: "flash"), 
+                              "Each target ball should have a flash action")
+            }
+        }
+    }
 }
