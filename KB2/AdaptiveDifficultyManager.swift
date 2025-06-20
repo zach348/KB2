@@ -48,6 +48,10 @@ class AdaptiveDifficultyManager {
     var performanceHistory: [PerformanceHistoryEntry] = []
     private let maxHistorySize: Int  // Will be set from config
 
+    // MARK: - Logging Throttling
+    private var lastLogTime: TimeInterval = 0
+    private let logThrottleInterval: TimeInterval = 1.0 // Log once per second
+
     // KPI History (for potential rolling averages - simple array for now)
     // private var recentTaskSuccesses: [Bool] = [] // Example
     // ... other KPI history properties ...
@@ -149,15 +153,19 @@ class AdaptiveDifficultyManager {
         // Update absolute values based on normalized positions and new ranges
         updateAbsoluteValuesFromNormalizedPositions()
         
-        // Add diagnostic logging for discriminatory load
-        dataLogger.logCustomEvent(
-            eventType: "adm_discriminatory_load_tracking",
-            data: [
-                "discriminatory_load_position": normalizedPositions[.discriminatoryLoad] ?? 0.5,
-                "arousal_level": currentArousalLevel
-            ],
-            description: "Tracking discriminatory load position during arousal updates"
-        )
+        // Add diagnostic logging for discriminatory load (with throttling)
+        let currentTime = Date().timeIntervalSince1970
+        if currentTime - lastLogTime >= logThrottleInterval {
+            dataLogger.logCustomEvent(
+                eventType: "adm_discriminatory_load_tracking",
+                data: [
+                    "discriminatory_load_position": normalizedPositions[.discriminatoryLoad] ?? 0.5,
+                    "arousal_level": currentArousalLevel
+                ],
+                description: "Tracking discriminatory load position during arousal updates"
+            )
+            lastLogTime = currentTime
+        }
     }
     
     /// Legacy method - kept for backwards compatibility but not used in the new system
@@ -216,34 +224,42 @@ class AdaptiveDifficultyManager {
             )
             addPerformanceEntry(entry)
             
-            // Log performance metrics after adding to history
-            let (average, trend, variance) = getPerformanceMetrics()
-            dataLogger.logCustomEvent(
-                eventType: "adm_performance_history",
-                data: [
-                    "history_size": performanceHistory.count,
-                    "performance_average": average,
-                    "performance_trend": trend,
-                    "performance_variance": variance,
-                    "recent_score": performanceScore
-                ],
-                description: "ADM performance history metrics"
-            )
+            // Log performance metrics after adding to history (with throttling)
+            let currentTime = Date().timeIntervalSince1970
+            if currentTime - lastLogTime >= logThrottleInterval {
+                let (average, trend, variance) = getPerformanceMetrics()
+                dataLogger.logCustomEvent(
+                    eventType: "adm_performance_history",
+                    data: [
+                        "history_size": performanceHistory.count,
+                        "performance_average": average,
+                        "performance_trend": trend,
+                        "performance_variance": variance,
+                        "recent_score": performanceScore
+                    ],
+                    description: "ADM performance history metrics"
+                )
+                lastLogTime = currentTime
+            }
         }
         
         // 4. Modulate DOM targets
         modulateDOMTargets(overallPerformanceScore: performanceScore)
         
-        // Log the adaptive difficulty step
-        let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
-            $0[$1] = getCurrentValue(for: $1)
+        // Log the adaptive difficulty step (with throttling)
+        let currentTime = Date().timeIntervalSince1970
+        if currentTime - lastLogTime >= logThrottleInterval {
+            let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
+                $0[$1] = getCurrentValue(for: $1)
+            }
+            dataLogger.logAdaptiveDifficultyStep(
+                arousalLevel: currentArousalLevel,
+                performanceScore: performanceScore,
+                normalizedKPIs: normalizedKPIs,
+                domValues: domValues
+            )
+            lastLogTime = currentTime
         }
-        dataLogger.logAdaptiveDifficultyStep(
-            arousalLevel: currentArousalLevel,
-            performanceScore: performanceScore,
-            normalizedKPIs: normalizedKPIs,
-            domValues: domValues
-        )
     }
 
     // MARK: - Core Logic (Placeholders - to be implemented next)
@@ -332,16 +348,20 @@ class AdaptiveDifficultyManager {
         let adaptiveScore = calculateAdaptivePerformanceScore(currentScore: overallPerformanceScore)
         
         if config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend {
-            let (_, trend, _) = getPerformanceMetrics()
-            dataLogger.logCustomEvent(
-                eventType: "adm_trend_metrics",
-                data: [
-                    "raw_performance_score": overallPerformanceScore,
-                    "adaptive_performance_score": adaptiveScore,
-                    "performance_trend": trend
-                ],
-                description: "ADM trend-based adaptation metrics"
-            )
+            let currentTime = Date().timeIntervalSince1970
+            if currentTime - lastLogTime >= logThrottleInterval {
+                let (_, trend, _) = getPerformanceMetrics()
+                dataLogger.logCustomEvent(
+                    eventType: "adm_trend_metrics",
+                    data: [
+                        "raw_performance_score": overallPerformanceScore,
+                        "adaptive_performance_score": adaptiveScore,
+                        "performance_trend": trend
+                    ],
+                    description: "ADM trend-based adaptation metrics"
+                )
+                lastLogTime = currentTime
+            }
         }
 
         var adaptationSignalBudget = (adaptiveScore - 0.5) * 2.0
