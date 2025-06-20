@@ -175,7 +175,7 @@ This document outlines incremental improvements to address two critical issues i
 ## Phase 2.5: DOM Priority Weight Interpolation
 
 ### Step 2.5.1: Create DOM Priority System
-- [ ] **Define DOM priority weights for each arousal state**
+- [x] **Define DOM priority weights for each arousal state**
   ```swift
   // Add to GameConfiguration
   let domPriorities_LowMidArousal: [DOMTargetType: CGFloat] = [
@@ -196,7 +196,7 @@ This document outlines incremental improvements to address two critical issues i
   ```
 
 ### Step 2.5.2: Implement Priority Interpolation
-- [ ] **Create `calculateInterpolatedDOMPriority()` function**
+- [x] **Create `calculateInterpolatedDOMPriority()` function**
   ```swift
   private func calculateInterpolatedDOMPriority(domType: DOMTargetType, arousal: CGFloat) -> CGFloat {
       let lowPriority = config.domPriorities_LowMidArousal[domType] ?? 1.0
@@ -207,7 +207,7 @@ This document outlines incremental improvements to address two critical issues i
   ```
 
 ### Step 2.5.3: Update DOM Modulation with Weighted Budget
-- [ ] **Replace hierarchical approach with weighted distribution**
+- [x] **Replace hierarchical approach with weighted distribution**
   ```swift
   private func distributeAdaptationBudget(totalBudget: CGFloat, arousal: CGFloat) -> [DOMTargetType: CGFloat] {
       let priorities = DOMTargetType.allCases.map { 
@@ -223,9 +223,9 @@ This document outlines incremental improvements to address two critical issues i
   ```
 
 ### Validation Checkpoint 2.5
-- [ ] **Test DOM adjustment balance across arousal range**
-- [ ] **Verify smooth priority transitions**
-- [ ] **Compare against original hierarchical approach**
+- [x] **Test DOM adjustment balance across arousal range**
+- [x] **Verify smooth priority transitions**
+- [x] **Compare against original hierarchical approach**
 
 ---
 
