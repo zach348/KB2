@@ -329,4 +329,11 @@ struct GameConfiguration {
         .responseTime: 2.0,
         .targetCount: 1.0
     ]
+    
+    // --- Hysteresis Configuration (Phase 3) ---
+    let adaptationIncreaseThreshold: CGFloat = 0.55    // Must exceed to increase difficulty
+    let adaptationDecreaseThreshold: CGFloat = 0.45    // Must fall below to decrease
+    let enableHysteresis: Bool = true
+    let minStableRoundsBeforeDirectionChange: Int = 2
+    let hysteresisDeadZone: CGFloat = 0.02            // Additional dead zone when in neutral
 }

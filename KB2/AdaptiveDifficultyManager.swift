@@ -51,6 +51,24 @@ class AdaptiveDifficultyManager {
     // MARK: - Logging Throttling
     private var lastLogTime: TimeInterval = 0
     private let logThrottleInterval: TimeInterval = 1.0 // Log once per second
+    
+    // MARK: - Hysteresis State Tracking (Phase 3)
+    enum AdaptationDirection {
+        case increasing, decreasing, stable
+    }
+    
+    internal var lastAdaptationDirection: AdaptationDirection = .stable
+    internal var directionStableCount: Int = 0
+    internal var lastSignificantChangeTime: TimeInterval = 0
+    
+    // MARK: - Hysteresis Helper Structures
+    struct AdaptationThresholds {
+        let performanceTarget: CGFloat = 0.5
+        let increaseThreshold: CGFloat
+        let decreaseThreshold: CGFloat
+        let baseDeadZone: CGFloat
+        let hysteresisEnabled: Bool
+    }
 
     // KPI History (for potential rolling averages - simple array for now)
     // private var recentTaskSuccesses: [Bool] = [] // Example
@@ -364,9 +382,44 @@ class AdaptiveDifficultyManager {
             }
         }
 
-        var adaptationSignalBudget = (adaptiveScore - 0.5) * 2.0
-        if abs(adaptationSignalBudget) < config.adaptationSignalDeadZone {
-            adaptationSignalBudget = 0.0
+        // Apply hysteresis logic if enabled
+        let (adaptationSignal, newDirection) = calculateAdaptationSignalWithHysteresis(performanceScore: adaptiveScore)
+        
+        var adaptationSignalBudget = adaptationSignal
+        
+        // Update direction tracking
+        if newDirection != lastAdaptationDirection {
+            if newDirection == .stable {
+                directionStableCount = 0
+            } else if lastAdaptationDirection == .stable {
+                // Starting to adapt after being stable
+                directionStableCount = 1
+                lastSignificantChangeTime = CACurrentMediaTime()
+            } else if (lastAdaptationDirection == .increasing && newDirection == .decreasing) ||
+                      (lastAdaptationDirection == .decreasing && newDirection == .increasing) {
+                // Direction reversal
+                directionStableCount = 1
+                lastSignificantChangeTime = CACurrentMediaTime()
+                
+                // Log direction change
+                let currentTime = Date().timeIntervalSince1970
+                if currentTime - lastLogTime >= logThrottleInterval {
+                    dataLogger.logCustomEvent(
+                        eventType: "adm_hysteresis_direction_change",
+                        data: [
+                            "previous_direction": String(describing: lastAdaptationDirection),
+                            "new_direction": String(describing: newDirection),
+                            "performance_score": adaptiveScore,
+                            "adaptation_signal": adaptationSignal
+                        ],
+                        description: "ADM hysteresis direction change detected"
+                    )
+                    lastLogTime = currentTime
+                }
+            }
+            lastAdaptationDirection = newDirection
+        } else if newDirection != .stable {
+            directionStableCount += 1
         }
         
         // Apply sensitivity (potentially different for easing vs hardening)
@@ -395,6 +448,72 @@ class AdaptiveDifficultyManager {
         }
         
         updateAbsoluteValuesFromNormalizedPositions()
+    }
+    
+    // MARK: - Hysteresis Implementation (Phase 3)
+    
+    /// Calculates adaptation signal with hysteresis to prevent oscillation
+    func calculateAdaptationSignalWithHysteresis(performanceScore: CGFloat) -> (signal: CGFloat, direction: AdaptationDirection) {
+        guard config.enableHysteresis else {
+            // Original logic without hysteresis
+            let signal = (performanceScore - 0.5) * 2.0
+            
+            if abs(signal) < config.adaptationSignalDeadZone {
+                return (0.0, .stable)
+            }
+            
+            return (signal, signal < 0 ? .decreasing : .increasing)
+        }
+        
+        let thresholds = AdaptationThresholds(
+            increaseThreshold: config.adaptationIncreaseThreshold,
+            decreaseThreshold: config.adaptationDecreaseThreshold,
+            baseDeadZone: config.hysteresisDeadZone,
+            hysteresisEnabled: true
+        )
+        
+        // Check if we should increase difficulty (performance is too good)
+        if performanceScore > thresholds.increaseThreshold {
+            // Check if we're reversing direction too quickly
+            if lastAdaptationDirection == .decreasing && 
+               directionStableCount < config.minStableRoundsBeforeDirectionChange {
+                print("[ADM Hysteresis] Preventing immediate reversal from decreasing to increasing. Stable rounds: \(directionStableCount)")
+                return (0.0, .stable)
+            }
+            
+            let signal = (performanceScore - thresholds.performanceTarget) * 2.0
+            return (signal, .increasing)
+            
+        } else if performanceScore < thresholds.decreaseThreshold {
+            // Check if we're reversing direction too quickly
+            if lastAdaptationDirection == .increasing && 
+               directionStableCount < config.minStableRoundsBeforeDirectionChange {
+                print("[ADM Hysteresis] Preventing immediate reversal from increasing to decreasing. Stable rounds: \(directionStableCount)")
+                return (0.0, .stable)
+            }
+            
+            let signal = (performanceScore - thresholds.performanceTarget) * 2.0
+            return (signal, .decreasing)
+            
+        } else {
+            // Performance is in the neutral zone
+            let distanceFromTarget = abs(performanceScore - thresholds.performanceTarget)
+            
+            // Apply additional dead zone in neutral region
+            if distanceFromTarget < thresholds.baseDeadZone {
+                return (0.0, .stable)
+            }
+            
+            // Small adaptation within neutral zone (dampened)
+            let signal = (performanceScore - thresholds.performanceTarget) * 1.0 // Reduced multiplier
+            
+            // Maintain current direction if signal is very small
+            if abs(signal) < config.adaptationSignalDeadZone {
+                return (0.0, .stable)
+            }
+            
+            return (signal, signal < 0 ? .decreasing : .increasing)
+        }
     }
 
     func modulateDOMsWithWeightedBudget(totalBudget: CGFloat, arousal: CGFloat, invertPriorities: Bool) -> CGFloat {
