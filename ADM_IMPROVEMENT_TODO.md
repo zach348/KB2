@@ -364,6 +364,46 @@ This document outlines incremental improvements to address two critical issues i
 
 ---
 
+## Phase 4.5: Cross-Session Persistence
+
+### Step 4.5.1: Enhance Data Models & Persistence Layer
+- [ ] **Make `PerformanceHistoryEntry` and related enums `Codable`**
+- [ ] **Create `PersistedADMState` struct for session data**
+  ```swift
+  struct PersistedADMState: Codable {
+      let performanceHistory: [PerformanceHistoryEntry]
+      let lastAdaptationDirection: AdaptationDirection
+      let directionStableCount: Int
+      let normalizedPositions: [DOMTargetType: CGFloat]
+  }
+  ```
+- [ ] **Implement `ADMPersistenceManager` for session data**
+  - `saveState(state: PersistedADMState, for userId: String)`
+  - `loadState(for userId: String) -> PersistedADMState?`
+  - `clearState(for userId: String)`
+- [ ] **Ensure `UserIDManager` persists `userId` independently**
+
+### Step 4.5.2: Integrate with ADM
+- [ ] **Add `clearPastSessionData` flag to `GameConfiguration`**
+- [ ] **Update `AdaptiveDifficultyManager.init`**:
+  - Get `userId` from `UserIDManager`.
+  - If `clearPastSessionData` is true, call `ADMPersistenceManager.clearState(for: userId)`.
+  - Otherwise, load persisted state.
+- [ ] **Implement `saveState()` and `loadState()` in ADM, using the `userId`**
+- [ ] **Call `saveState()` on app background/termination via `AppDelegate`**
+
+### Step 4.5.3: Update Confidence Calculation
+- [ ] **Modify `calculateAdaptationConfidence` to use combined history (current + persisted)**
+- [ ] **Implement recency weighting for older session data**
+
+### Validation Checkpoint 4.5
+- [ ] **Unit tests for `ADMPersistenceManager` (save, load, clear per user)**
+- [ ] **Verify `UserIDManager` is unaffected by `clearPastSessionData`**
+- [ ] **Integration tests for loading/saving state in ADM**
+- [ ] **Test adaptation behavior with and without persisted data**
+
+---
+
 ## Phase 5: Polish and Advanced Features
 
 ### Step 5.1: Predictive Elements
