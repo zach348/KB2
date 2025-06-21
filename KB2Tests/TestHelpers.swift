@@ -68,3 +68,22 @@ class MockUITouch: UITouch {
         return locationInView
     }
 }
+
+// MARK: - ADM Test Helpers
+class TestHelpers {
+    static func createPerformanceHistory(scores: [CGFloat]) -> [PerformanceHistoryEntry] {
+        var history: [PerformanceHistoryEntry] = []
+        for (index, score) in scores.enumerated() {
+            let entry = PerformanceHistoryEntry(
+                timestamp: TimeInterval(index),
+                overallScore: score,
+                normalizedKPIs: [:], // Keep empty for simplicity in these tests
+                arousalLevel: 0.5,
+                currentDOMValues: [:],
+                sessionContext: "test_session"
+            )
+            history.append(entry)
+        }
+        return history
+    }
+}

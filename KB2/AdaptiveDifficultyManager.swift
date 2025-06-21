@@ -362,7 +362,7 @@ class AdaptiveDifficultyManager {
         return max(0.0, min(1.0, weightedScore)) // Clamp the final adaptive score
     }
     
-    private func modulateDOMTargets(overallPerformanceScore: CGFloat) {
+    func modulateDOMTargets(overallPerformanceScore: CGFloat) {
         let adaptiveScore = calculateAdaptivePerformanceScore(currentScore: overallPerformanceScore)
         
         if config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend {
@@ -382,10 +382,39 @@ class AdaptiveDifficultyManager {
             }
         }
 
+        // Get effective thresholds based on confidence (Phase 4)
+        let effectiveThresholds = getEffectiveAdaptationThresholds()
+
         // Apply hysteresis logic if enabled
-        let (adaptationSignal, newDirection) = calculateAdaptationSignalWithHysteresis(performanceScore: adaptiveScore)
+        let (adaptationSignal, newDirection) = calculateAdaptationSignalWithHysteresis(
+            performanceScore: adaptiveScore,
+            thresholds: effectiveThresholds
+        )
         
         var adaptationSignalBudget = adaptationSignal
+        
+        // Scale adaptation by confidence (Phase 4)
+        if config.enableConfidenceScaling {
+            let confidence = calculateAdaptationConfidence()
+            let confidenceMultiplier = config.minConfidenceMultiplier + (1.0 - config.minConfidenceMultiplier) * confidence
+            adaptationSignalBudget *= confidenceMultiplier
+            
+            // Log confidence metrics
+            let currentTime = Date().timeIntervalSince1970
+            if currentTime - lastLogTime >= logThrottleInterval {
+                dataLogger.logCustomEvent(
+                    eventType: "adm_confidence_metrics",
+                    data: [
+                        "confidence_score": confidence,
+                        "confidence_multiplier": confidenceMultiplier,
+                        "original_signal": adaptationSignal,
+                        "scaled_signal": adaptationSignalBudget
+                    ],
+                    description: "ADM confidence-based adaptation scaling"
+                )
+                lastLogTime = currentTime
+            }
+        }
         
         // Update direction tracking
         if newDirection != lastAdaptationDirection {
@@ -450,10 +479,10 @@ class AdaptiveDifficultyManager {
         updateAbsoluteValuesFromNormalizedPositions()
     }
     
-    // MARK: - Hysteresis Implementation (Phase 3)
+    // MARK: - Hysteresis & Confidence Implementation (Phase 3 & 4)
     
     /// Calculates adaptation signal with hysteresis to prevent oscillation
-    func calculateAdaptationSignalWithHysteresis(performanceScore: CGFloat) -> (signal: CGFloat, direction: AdaptationDirection) {
+    func calculateAdaptationSignalWithHysteresis(performanceScore: CGFloat, thresholds: AdaptationThresholds) -> (signal: CGFloat, direction: AdaptationDirection) {
         guard config.enableHysteresis else {
             // Original logic without hysteresis
             let signal = (performanceScore - 0.5) * 2.0
@@ -464,13 +493,6 @@ class AdaptiveDifficultyManager {
             
             return (signal, signal < 0 ? .decreasing : .increasing)
         }
-        
-        let thresholds = AdaptationThresholds(
-            increaseThreshold: config.adaptationIncreaseThreshold,
-            decreaseThreshold: config.adaptationDecreaseThreshold,
-            baseDeadZone: config.hysteresisDeadZone,
-            hysteresisEnabled: true
-        )
         
         // Check if we should increase difficulty (performance is too good)
         if performanceScore > thresholds.increaseThreshold {
@@ -514,6 +536,56 @@ class AdaptiveDifficultyManager {
             
             return (signal, signal < 0 ? .decreasing : .increasing)
         }
+    }
+
+    // MARK: - Confidence Calculation (Phase 4)
+
+    /// Calculates the confidence of the current adaptation decision
+    func calculateAdaptationConfidence() -> CGFloat {
+        guard !performanceHistory.isEmpty else { return 0.5 }
+        
+        let (_, _, variance) = getPerformanceMetrics()
+        
+        // 1. Variance Confidence (lower variance = higher confidence)
+        // Normalize variance to a 0-1 scale where 1 is high confidence
+        let varianceConfidence = max(0, 1.0 - min(variance / 0.5, 1.0))
+        
+        // 2. Direction Confidence (consistent direction = higher confidence)
+        // More stable rounds in one direction increases confidence
+        let directionConfidence = min(CGFloat(directionStableCount) / 5.0, 1.0)
+        
+        // 3. History Confidence (more data = more confidence)
+        let historyConfidence = min(CGFloat(performanceHistory.count) / CGFloat(config.performanceHistoryWindowSize), 1.0)
+        
+        // Combine the confidence scores (equal weighting for now)
+        let combinedConfidence = (varianceConfidence + directionConfidence + historyConfidence) / 3.0
+        
+        return max(0.0, min(1.0, combinedConfidence))
+    }
+
+    /// Gets effective adaptation thresholds, widened by low confidence
+    func getEffectiveAdaptationThresholds() -> AdaptationThresholds {
+        guard config.enableConfidenceScaling else {
+            return AdaptationThresholds(
+                increaseThreshold: config.adaptationIncreaseThreshold,
+                decreaseThreshold: config.adaptationDecreaseThreshold,
+                baseDeadZone: config.hysteresisDeadZone,
+                hysteresisEnabled: true
+            )
+        }
+        
+        let confidence = calculateAdaptationConfidence()
+        // Uncertainty is the inverse of confidence
+        let uncertaintyMultiplier = 1.0 - confidence // Ranges from 0 (high confidence) to 1 (low confidence)
+        
+        let wideningAmount = config.confidenceThresholdWideningFactor * uncertaintyMultiplier
+        
+        return AdaptationThresholds(
+            increaseThreshold: config.adaptationIncreaseThreshold + wideningAmount,
+            decreaseThreshold: config.adaptationDecreaseThreshold - wideningAmount,
+            baseDeadZone: config.hysteresisDeadZone + (config.hysteresisDeadZone * uncertaintyMultiplier),
+            hysteresisEnabled: true
+        )
     }
 
     func modulateDOMsWithWeightedBudget(totalBudget: CGFloat, arousal: CGFloat, invertPriorities: Bool) -> CGFloat {

@@ -336,4 +336,9 @@ struct GameConfiguration {
     let enableHysteresis: Bool = true
     let minStableRoundsBeforeDirectionChange: Int = 2
     let hysteresisDeadZone: CGFloat = 0.02            // Additional dead zone when in neutral
+
+    // --- Confidence-Based Adaptation (Phase 4) ---
+    let enableConfidenceScaling: Bool = true
+    let minConfidenceMultiplier: CGFloat = 0.2  // Minimum adaptation strength
+    let confidenceThresholdWideningFactor: CGFloat = 0.05 // How much thresholds expand when confidence is low
 }
