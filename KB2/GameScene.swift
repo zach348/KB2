@@ -2916,7 +2916,23 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     
     // Phase 4.5: Handle save notification
     @objc private func saveADMState() {
-        adaptiveDifficultyManager?.saveState()
+        print("[GameScene] === ADM STATE SAVE NOTIFICATION RECEIVED ===")
+        print("[GameScene] Scene state: \(currentState)")
+        print("[GameScene] Session mode: \(sessionMode)")
+        if sessionMode {
+            let elapsed = CACurrentMediaTime() - sessionStartTime
+            let progress = min(1.0, elapsed / sessionDuration)
+            print("[GameScene] Session progress: \(Int(progress * 100))%")
+        }
+        
+        if let adm = adaptiveDifficultyManager {
+            print("[GameScene] Triggering ADM state save...")
+            adm.saveState()
+            print("[GameScene] ADM state save triggered successfully")
+        } else {
+            print("[GameScene] ⚠️ WARNING: No AdaptiveDifficultyManager instance available")
+        }
+        print("[GameScene] === END ADM STATE SAVE ===")
     }
     // --- END ADDED ---
 

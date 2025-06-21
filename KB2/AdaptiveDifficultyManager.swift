@@ -109,18 +109,25 @@ class AdaptiveDifficultyManager {
         }
         
         // Phase 4.5: Load persisted state if available and not clearing
+        print("[ADM] === PERSISTENCE INITIALIZATION ===")
+        print("[ADM] User ID: \(self.userId)")
+        print("[ADM] Clear Past Session Data Flag: \(configuration.clearPastSessionData)")
+        
         if !configuration.clearPastSessionData {
+            print("[ADM] Attempting to load persisted state...")
             if let persistedState = ADMPersistenceManager.loadState(for: self.userId) {
-                print("[ADM] Loading persisted state for user: \(self.userId)")
+                print("[ADM] ✅ Found persisted state! Loading...")
                 loadState(from: persistedState)
             } else {
-                print("[ADM] No persisted state found for user: \(self.userId)")
+                print("[ADM] ⚠️ No persisted state found - starting fresh")
             }
         } else {
-            // Clear any existing state for this user
+            print("[ADM] Clearing mode enabled - removing any existing state")
             ADMPersistenceManager.clearState(for: self.userId)
-            print("[ADM] Cleared past session data for user: \(self.userId)")
+            print("[ADM] ✅ Cleared past session data")
         }
+        
+        print("[ADM] === END PERSISTENCE INITIALIZATION ===")
         
         // Initialize current valid ranges based on initial arousal
         updateValidRangesForCurrentArousal()
@@ -981,6 +988,18 @@ class AdaptiveDifficultyManager {
     
     /// Saves the current ADM state
     func saveState() {
+        print("[ADM] === SAVE STATE INITIATED ===")
+        print("[ADM] User ID: \(self.userId)")
+        print("[ADM] Current state snapshot:")
+        print("  ├─ Performance history entries: \(performanceHistory.count)")
+        print("  ├─ Last adaptation direction: \(lastAdaptationDirection)")
+        print("  ├─ Direction stable count: \(directionStableCount)")
+        print("  └─ Normalized DOM positions:")
+        for (domType, position) in normalizedPositions.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            let absoluteValue = getCurrentValue(for: domType)
+            print("     ├─ \(domType): \(String(format: "%.3f", position)) (absolute: \(String(format: "%.1f", absoluteValue)))")
+        }
+        
         let state = PersistedADMState(
             performanceHistory: performanceHistory,
             lastAdaptationDirection: lastAdaptationDirection,
@@ -989,39 +1008,90 @@ class AdaptiveDifficultyManager {
         )
         
         ADMPersistenceManager.saveState(state, for: self.userId)
-        print("[ADM] State saved for user: \(self.userId)")
+        print("[ADM] === SAVE STATE COMPLETED ===")
     }
     
     /// Loads persisted state into the current ADM instance
     private func loadState(from state: PersistedADMState) {
+        print("[ADM] === LOADING PERSISTED STATE ===")
+        
         // Load performance history (apply recency weighting)
         performanceHistory = state.performanceHistory
+        print("[ADM] Performance history:")
+        print("  ├─ Loaded entries: \(state.performanceHistory.count)")
         
         // Trim history to max size if needed
+        let originalCount = performanceHistory.count
         if performanceHistory.count > maxHistorySize {
             performanceHistory = Array(performanceHistory.suffix(maxHistorySize))
+            print("  ├─ Trimmed to max size: \(maxHistorySize) (removed \(originalCount - maxHistorySize) oldest entries)")
         }
         
-        // Apply recency weighting to older entries
+        // Check age of data
         if !performanceHistory.isEmpty {
             let currentTime = CACurrentMediaTime()
             let oldestTime = performanceHistory.first?.timestamp ?? currentTime
-            let timeSpan = currentTime - oldestTime
+            let newestTime = performanceHistory.last?.timestamp ?? currentTime
+            let oldestAge = (currentTime - oldestTime) / 3600.0 // Convert to hours
+            let newestAge = (currentTime - newestTime) / 3600.0
             
-            // If data is older than 24 hours, apply decay
-            if timeSpan > 86400 { // 24 hours in seconds
-                // We can't modify the scores directly, but we'll consider this in confidence calculation
-                // The decay factor will be used in calculateAdaptationConfidence
+            print("  ├─ Oldest entry age: \(String(format: "%.1f", oldestAge)) hours")
+            print("  └─ Newest entry age: \(String(format: "%.1f", newestAge)) hours")
+            
+            // If data is older than 24 hours, note it
+            if oldestAge > 24 {
+                print("  ⚠️ Some data is >24 hours old - confidence calculations will apply recency weighting")
             }
         }
         
         // Load adaptation state
         lastAdaptationDirection = state.lastAdaptationDirection
         directionStableCount = state.directionStableCount
+        print("[ADM] Adaptation state:")
+        print("  ├─ Last direction: \(lastAdaptationDirection)")
+        print("  └─ Direction stable count: \(directionStableCount)")
         
         // Load normalized positions
         normalizedPositions = state.normalizedPositions
+        print("[ADM] Loaded DOM positions (0.0=easiest, 1.0=hardest):")
         
-        print("[ADM] Loaded state with \(performanceHistory.count) history entries")
+        // Define human-readable labels for each DOM type
+        let domLabels: [DOMTargetType: String] = [
+            .discriminatoryLoad: "Discriminatory Load (visual similarity)",
+            .meanBallSpeed: "Mean Ball Speed",
+            .ballSpeedSD: "Ball Speed Variability (SD)",
+            .responseTime: "Response Time Window",
+            .targetCount: "Number of Targets"
+        ]
+        
+        let sortedPositions = normalizedPositions.sorted(by: { $0.key.rawValue < $1.key.rawValue })
+        for (index, (domType, position)) in sortedPositions.enumerated() {
+            let isLast = index == sortedPositions.count - 1
+            let prefix = isLast ? "  └─" : "  ├─"
+            let label = domLabels[domType] ?? domType.rawValue
+            
+            // Add difficulty interpretation
+            let difficulty: String
+            if position < 0.3 {
+                difficulty = "Easy"
+            } else if position < 0.7 {
+                difficulty = "Medium"
+            } else {
+                difficulty = "Hard"
+            }
+            
+            print("\(prefix) \(label):")
+            print("     └─ Position: \(String(format: "%.3f", position)) (\(difficulty))")
+        }
+        
+        // Calculate initial confidence based on loaded data
+        let confidence = calculateAdaptationConfidence()
+        print("[ADM] Initial confidence based on loaded data:")
+        print("  ├─ Total: \(String(format: "%.2f", confidence.total))")
+        print("  ├─ Variance: \(String(format: "%.2f", confidence.variance))")
+        print("  ├─ Direction: \(String(format: "%.2f", confidence.direction))")
+        print("  └─ History: \(String(format: "%.2f", confidence.history))")
+        
+        print("[ADM] === LOAD COMPLETED ===")
     }
 }

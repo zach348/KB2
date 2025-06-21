@@ -3,6 +3,7 @@
 // Role: Manages persistence of ADM state across sessions
 
 import Foundation
+import QuartzCore
 
 class ADMPersistenceManager {
     
@@ -20,6 +21,13 @@ class ADMPersistenceManager {
     ///   - userId: The user ID to associate with this state
     static func saveState(_ state: PersistedADMState, for userId: String) {
         do {
+            print("[ADMPersistenceManager] SAVE INITIATED")
+            print("  ├─ User ID: \(userId)")
+            print("  ├─ Performance history entries: \(state.performanceHistory.count)")
+            print("  ├─ Last adaptation direction: \(state.lastAdaptationDirection)")
+            print("  ├─ Direction stable count: \(state.directionStableCount)")
+            print("  └─ Normalized positions: \(state.normalizedPositions.count) DOMs")
+            
             // Create ADM state directory if it doesn't exist
             let admStateDirectory = documentsDirectory.appendingPathComponent(admStateDirectoryName)
             try FileManager.default.createDirectory(at: admStateDirectory, 
@@ -30,16 +38,20 @@ class ADMPersistenceManager {
             let fileName = "adm_state_\(userId).json"
             let fileURL = admStateDirectory.appendingPathComponent(fileName)
             
+            print("  └─ File path: \(fileURL.path)")
+            
             // Encode and save
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(state)
             try data.write(to: fileURL)
             
-            print("[ADMPersistenceManager] Successfully saved state for user: \(userId)")
+            print("[ADMPersistenceManager] ✅ SAVE SUCCESSFUL")
+            print("  └─ Saved \(data.count) bytes to disk")
             
         } catch {
-            print("[ADMPersistenceManager] Error saving state: \(error)")
+            print("[ADMPersistenceManager] ❌ SAVE FAILED")
+            print("  └─ Error: \(error)")
         }
     }
     
@@ -48,27 +60,61 @@ class ADMPersistenceManager {
     /// - Returns: The persisted ADM state if found, nil otherwise
     static func loadState(for userId: String) -> PersistedADMState? {
         do {
+            print("[ADMPersistenceManager] LOAD INITIATED")
+            print("  └─ User ID: \(userId)")
+            
             // Construct file path
             let admStateDirectory = documentsDirectory.appendingPathComponent(admStateDirectoryName)
             let fileName = "adm_state_\(userId).json"
             let fileURL = admStateDirectory.appendingPathComponent(fileName)
             
+            print("  └─ Looking for file at: \(fileURL.path)")
+            
             // Check if file exists
             guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                print("[ADMPersistenceManager] No saved state found for user: \(userId)")
+                print("[ADMPersistenceManager] ⚠️ NO SAVED STATE FOUND")
+                print("  └─ File does not exist for user: \(userId)")
                 return nil
             }
             
             // Load and decode
             let data = try Data(contentsOf: fileURL)
+            print("  └─ Found file with \(data.count) bytes")
+            
             let decoder = JSONDecoder()
             let state = try decoder.decode(PersistedADMState.self, from: data)
             
-            print("[ADMPersistenceManager] Successfully loaded state for user: \(userId)")
+            print("[ADMPersistenceManager] ✅ LOAD SUCCESSFUL")
+            print("  ├─ Performance history entries: \(state.performanceHistory.count)")
+            print("  ├─ Last adaptation direction: \(state.lastAdaptationDirection)")
+            print("  ├─ Direction stable count: \(state.directionStableCount)")
+            print("  ├─ Normalized positions: \(state.normalizedPositions.count) DOMs")
+            
+            // Print individual DOM positions
+            if !state.normalizedPositions.isEmpty {
+                print("  ├─ DOM Normalized Positions:")
+                let sortedPositions = state.normalizedPositions.sorted { $0.key.rawValue < $1.key.rawValue }
+                for (index, (domType, position)) in sortedPositions.enumerated() {
+                    let isLast = index == sortedPositions.count - 1 && state.performanceHistory.isEmpty
+                    let prefix = isLast ? "  └─" : "  ├─"
+                    print("\(prefix)   \(domType.rawValue): \(String(format: "%.3f", position))")
+                }
+            }
+            
+            if !state.performanceHistory.isEmpty {
+                let oldestEntry = state.performanceHistory.first!
+                let newestEntry = state.performanceHistory.last!
+                let oldestAge = (CACurrentMediaTime() - oldestEntry.timestamp) / 3600.0
+                let newestAge = (CACurrentMediaTime() - newestEntry.timestamp) / 3600.0
+                print("  ├─ Oldest entry: \(String(format: "%.1f", oldestAge)) hours ago")
+                print("  └─ Newest entry: \(String(format: "%.1f", newestAge)) hours ago")
+            }
+            
             return state
             
         } catch {
-            print("[ADMPersistenceManager] Error loading state: \(error)")
+            print("[ADMPersistenceManager] ❌ LOAD FAILED")
+            print("  └─ Error: \(error)")
             return nil
         }
     }
@@ -77,19 +123,29 @@ class ADMPersistenceManager {
     /// - Parameter userId: The user ID whose state to clear
     static func clearState(for userId: String) {
         do {
+            print("[ADMPersistenceManager] CLEAR INITIATED")
+            print("  └─ User ID: \(userId)")
+            
             // Construct file path
             let admStateDirectory = documentsDirectory.appendingPathComponent(admStateDirectoryName)
             let fileName = "adm_state_\(userId).json"
             let fileURL = admStateDirectory.appendingPathComponent(fileName)
             
+            print("  └─ File path: \(fileURL.path)")
+            
             // Remove file if it exists
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 try FileManager.default.removeItem(at: fileURL)
-                print("[ADMPersistenceManager] Successfully cleared state for user: \(userId)")
+                print("[ADMPersistenceManager] ✅ CLEAR SUCCESSFUL")
+                print("  └─ Removed saved state for user: \(userId)")
+            } else {
+                print("[ADMPersistenceManager] ⚠️ CLEAR SKIPPED")
+                print("  └─ No saved state exists for user: \(userId)")
             }
             
         } catch {
-            print("[ADMPersistenceManager] Error clearing state: \(error)")
+            print("[ADMPersistenceManager] ❌ CLEAR FAILED")
+            print("  └─ Error: \(error)")
         }
     }
     
