@@ -15,7 +15,7 @@ class ADMResponseTimeTests: XCTestCase {
         super.setUp()
         config = GameConfiguration()
         // Start with mid-range arousal
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
     }
 
     override func tearDown() {
@@ -162,7 +162,7 @@ class ADMResponseTimeTests: XCTestCase {
         
         for arousal in arousalLevels {
             // Setup
-            adm = AdaptiveDifficultyManager(configuration: config, initialArousal: arousal)
+            adm = AdaptiveDifficultyManager(configuration: config, initialArousal: arousal, sessionDuration: 600)
             adm.normalizedPositions[.responseTime] = 0.5 // Start at midpoint
             adm.updateForCurrentArousal()
             let initialNormalizedPosition = adm.normalizedPositions[.responseTime]!
@@ -194,7 +194,7 @@ class ADMResponseTimeTests: XCTestCase {
     /// Tests a complete performance evaluation cycle with positive performance
     func testFullPerformanceCycleWithPositivePerformance() {
         // Start with a clean ADM
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         adm.normalizedPositions[.responseTime] = 0.5
         adm.updateForCurrentArousal()
         
@@ -228,8 +228,9 @@ class ADMResponseTimeTests: XCTestCase {
     /// Tests the effects of historical performance data on responseTime adaptation
     func testResponseTimeAdaptationWithPerformanceHistory() {
         // Setup ADM with history enabled
-        config.usePerformanceHistory = true
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        var testConfig = GameConfiguration()
+        testConfig.usePerformanceHistory = true
+        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         adm.normalizedPositions[.responseTime] = 0.5
         adm.updateForCurrentArousal()
         
@@ -352,7 +353,7 @@ class ADMResponseTimeTests: XCTestCase {
         
         for positionChange in positionChanges {
             // Reset ADM for each test
-            adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+            adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
             adm.normalizedPositions[.responseTime] = 0.5
             adm.updateForCurrentArousal()
             
@@ -385,7 +386,7 @@ class ADMResponseTimeTests: XCTestCase {
     /// normalized and absolute responseTime values with fine-grained changes
     func testFineGrainedResponseTimeRelationship() {
         // Reset the ADM to a known state
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         
         // Record values across the full normalized range with small increments
         let increment: CGFloat = 0.05

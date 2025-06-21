@@ -175,6 +175,7 @@ struct GameConfiguration {
     // Breathing State Timing
     let breathingStateTargetRangeMin: Double = 0.6  // Breathing starts around 60% of session
     let breathingStateTargetRangeMax: Double = 0.75  // Breathing starts around 75% of session
+    let interactiveSessionProportion: CGFloat = 0.65 // Proportion of the session that is interactive
     
     // Default session profile
     let defaultSessionProfile: SessionProfile = .fluctuating
@@ -344,4 +345,16 @@ struct GameConfiguration {
     
     // --- Cross-Session Persistence (Phase 4.5) ---
     var clearPastSessionData: Bool = false  // Set to true to clear previous session data on startup
+
+    // --- Session-Aware Adaptation (Phase 5) ---
+    var enableSessionPhases: Bool = true
+    let warmupPhaseProportion: CGFloat = 0.25  // Use first 15% of rounds for warm-up
+    let fatigueStartProportion: CGFloat = 0.60 // Start checking for fatigue after 60% of rounds
+    let warmupInitialDifficultyMultiplier: CGFloat = 0.85
+    let warmupPerformanceTarget: CGFloat = 0.60
+    let warmupAdaptationRateMultiplier: CGFloat = 2.0
+    let enableFatigueDetection: Bool = true
+    let fatigueTrendThreshold: CGFloat = -0.15
+    let fatigueVarianceThreshold: CGFloat = 0.3
+    let fatigueAdaptationRateMultiplier: CGFloat = 0.75
 }

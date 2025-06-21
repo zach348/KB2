@@ -9,7 +9,7 @@ class ADMKPIWeightTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
     }
 
     override func tearDown() {
@@ -94,7 +94,7 @@ class ADMKPIWeightTests: XCTestCase {
     func testKPIWeightsWithInterpolationDisabled() {
         var testConfig = GameConfiguration()
         testConfig.useKPIWeightInterpolation = false
-        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         
         let arousal = (config.kpiWeightTransitionStart + config.kpiWeightTransitionEnd) / 2.0
         adm.updateArousalLevel(arousal)

@@ -70,6 +70,17 @@ class AdaptiveDifficultyManager {
     internal var lastAdaptationDirection: AdaptationDirection = .stable
     internal var directionStableCount: Int = 0
     internal var lastSignificantChangeTime: TimeInterval = 0
+
+    // MARK: - Session Phase Management (Phase 5)
+    private enum SessionPhase {
+        case warmup
+        case standard
+        case fatigue
+    }
+    private var currentPhase: SessionPhase
+    private var roundsInCurrentPhase: Int = 0
+    private let warmupPhaseLength: Int
+    private let fatigueStartRound: Int
     
     // MARK: - Hysteresis Helper Structures
     struct AdaptationThresholds {
@@ -85,11 +96,40 @@ class AdaptiveDifficultyManager {
     // ... other KPI history properties ...
     // private let kpiHistoryWindowSize: Int = 3 // Example: average over last 3 rounds
 
-    init(configuration: GameConfiguration, initialArousal: CGFloat) {
+    init(
+        configuration: GameConfiguration,
+        initialArousal: CGFloat,
+        sessionDuration: TimeInterval
+    ) {
         self.config = configuration
         self.currentArousalLevel = initialArousal
         self.maxHistorySize = configuration.performanceHistoryWindowSize
         self.userId = UserIDManager.getUserId()
+
+        // Calculate dynamic phase lengths
+        let expectedRounds = SessionAnalytics.estimateExpectedRounds(
+            forSessionDuration: sessionDuration,
+            config: configuration,
+            initialArousal: initialArousal
+        )
+        self.warmupPhaseLength = Int(CGFloat(expectedRounds) * configuration.warmupPhaseProportion)
+        self.fatigueStartRound = Int(CGFloat(expectedRounds) * (configuration.warmupPhaseProportion + 0.45)) // Warmup + 45% of session
+
+        if configuration.enableSessionPhases {
+            self.currentPhase = .warmup
+            print("[ADM Warm-up] === WARMUP INITIALIZATION ===")
+            print("[ADM Warm-up] Warmup ENABLED")
+            print("[ADM Warm-up] Session duration: \(String(format: "%.1f", sessionDuration)) seconds")
+            print("[ADM Warm-up] Expected total rounds: \(expectedRounds)")
+            print("[ADM Warm-up] Warmup phase length: \(self.warmupPhaseLength) rounds")
+            print("[ADM Warm-up] Warmup proportion: \(String(format: "%.1f%%", configuration.warmupPhaseProportion * 100))")
+            print("[ADM Warm-up] Initial difficulty multiplier: \(configuration.warmupInitialDifficultyMultiplier)")
+            print("[ADM Warm-up] Performance target: \(configuration.warmupPerformanceTarget)")
+            print("[ADM Warm-up] Adaptation rate multiplier: \(configuration.warmupAdaptationRateMultiplier)")
+        } else {
+            self.currentPhase = .standard
+            print("[ADM Warm-up] Warmup DISABLED - starting in standard phase")
+        }
 
         // Initialize stored properties with placeholder values first
         self.currentDiscriminabilityFactor = 0.0
@@ -107,6 +147,8 @@ class AdaptiveDifficultyManager {
                 normalizedPositions[domType] = 0.5 // Others start at midpoint
             }
         }
+
+        var didLoadState = false
         
         // Phase 4.5: Load persisted state if available and not clearing
         print("[ADM] === PERSISTENCE INITIALIZATION ===")
@@ -118,6 +160,7 @@ class AdaptiveDifficultyManager {
             if let persistedState = ADMPersistenceManager.loadState(for: self.userId) {
                 print("[ADM] ✅ Found persisted state! Loading...")
                 loadState(from: persistedState)
+                didLoadState = true
             } else {
                 print("[ADM] ⚠️ No persisted state found - starting fresh")
             }
@@ -128,6 +171,31 @@ class AdaptiveDifficultyManager {
         }
         
         print("[ADM] === END PERSISTENCE INITIALIZATION ===")
+
+        // Phase 5: Apply warmup difficulty reduction if applicable
+        if self.currentPhase == .warmup {
+            print("[ADM Warm-up] === APPLYING WARMUP DIFFICULTY SCALING ===")
+            if didLoadState {
+                print("[ADM Warm-up] Starting from persisted state")
+                // Reduce difficulty from the persisted level for the warm-up
+                for (dom, position) in self.normalizedPositions {
+                    let originalPosition = position
+                    self.normalizedPositions[dom] = position * config.warmupInitialDifficultyMultiplier
+                    print("[ADM Warm-up] \(dom): \(String(format: "%.3f", originalPosition)) → \(String(format: "%.3f", self.normalizedPositions[dom] ?? 0))")
+                }
+                DataLogger.shared.logCustomEvent(eventType: "ADM_Warmup_Started_From_Persistence", data: [:])
+            } else {
+                print("[ADM Warm-up] Starting fresh (no persisted state)")
+                // If starting fresh, still apply the multiplier to the default 0.5
+                 for (dom, position) in self.normalizedPositions {
+                    let originalPosition = position
+                    self.normalizedPositions[dom] = position * config.warmupInitialDifficultyMultiplier
+                    print("[ADM Warm-up] \(dom): \(String(format: "%.3f", originalPosition)) → \(String(format: "%.3f", self.normalizedPositions[dom] ?? 0))")
+                }
+                DataLogger.shared.logCustomEvent(eventType: "ADM_Warmup_Started_Fresh_Session", data: [:])
+            }
+            print("[ADM Warm-up] === WARMUP SCALING COMPLETE ===")
+        }
         
         // Initialize current valid ranges based on initial arousal
         updateValidRangesForCurrentArousal()
@@ -395,6 +463,39 @@ class AdaptiveDifficultyManager {
     }
     
     func modulateDOMTargets(overallPerformanceScore: CGFloat) {
+        updateSessionPhase() // Update phase at the start of each round
+
+        var performanceTarget = config.adaptationIncreaseThreshold - 0.05 // Default target
+        var adaptationRateMultiplier: CGFloat = 1.0
+
+        switch currentPhase {
+        case .warmup:
+            performanceTarget = config.warmupPerformanceTarget
+            adaptationRateMultiplier = config.warmupAdaptationRateMultiplier
+            
+            // Calculate warmup progress
+            let warmupProgress = CGFloat(roundsInCurrentPhase) / CGFloat(max(1, warmupPhaseLength))
+            let progressPercentage = min(100, warmupProgress * 100)
+            
+            print("[ADM Warm-up] === ROUND \(roundsInCurrentPhase) OF \(warmupPhaseLength) ===")
+            print("[ADM Warm-up] Progress: \(String(format: "%.1f%%", progressPercentage)) complete")
+            print("[ADM Warm-up] Performance score: \(String(format: "%.3f", overallPerformanceScore))")
+            print("[ADM Warm-up] Target performance: \(String(format: "%.3f", performanceTarget))")
+            print("[ADM Warm-up] Adaptation rate multiplier: \(adaptationRateMultiplier)")
+            
+            // Visual progress bar
+            let barLength = 20
+            let filledLength = Int(warmupProgress * CGFloat(barLength))
+            let emptyLength = barLength - filledLength
+            let progressBar = String(repeating: "█", count: filledLength) + String(repeating: "░", count: emptyLength)
+            print("[ADM Warm-up] Progress bar: [\(progressBar)]")
+            
+        case .fatigue:
+            adaptationRateMultiplier = config.fatigueAdaptationRateMultiplier
+        case .standard:
+            break // Use default values
+        }
+
         let adaptiveScore = calculateAdaptivePerformanceScore(currentScore: overallPerformanceScore)
         
         if config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend {
@@ -420,10 +521,11 @@ class AdaptiveDifficultyManager {
         // Apply hysteresis logic if enabled
         let (adaptationSignal, newDirection) = calculateAdaptationSignalWithHysteresis(
             performanceScore: adaptiveScore,
-            thresholds: effectiveThresholds
+            thresholds: effectiveThresholds,
+            performanceTarget: performanceTarget
         )
         
-        var adaptationSignalBudget = adaptationSignal
+        var adaptationSignalBudget = adaptationSignal * adaptationRateMultiplier
         
         // Scale adaptation by confidence (Phase 4)
         if config.enableConfidenceScaling {
@@ -492,6 +594,16 @@ class AdaptiveDifficultyManager {
             adaptationSignalBudget *= config.adaptationSignalSensitivity
         }
         
+        // Add warmup-specific adaptation debug output
+        if currentPhase == .warmup {
+            print("[ADM Warm-up] === DOM ADAPTATION ===")
+            print("[ADM Warm-up] Pre-rate multiplier signal: \(String(format: "%.3f", adaptationSignal))")
+            print("[ADM Warm-up] Post-rate multiplier budget: \(String(format: "%.3f", adaptationSignal * adaptationRateMultiplier))")
+            print("[ADM Warm-up] Post-confidence scaling: \(String(format: "%.3f", adaptationSignalBudget))")
+            print("[ADM Warm-up] Direction: \(newDirection)")
+            print("[ADM Warm-up] Adaptation is \(adaptationSignalBudget < 0 ? "EASING (making easier)" : adaptationSignalBudget > 0 ? "HARDENING (making harder)" : "STABLE (no change)")")
+        }
+        
         print("[ADM] Modulating DOMs. Initial Budget: \(String(format: "%.3f", adaptationSignalBudget)) from AdaptiveScore: \(String(format: "%.3f", adaptiveScore))")
 
         updateValidRangesForCurrentArousal()
@@ -513,11 +625,62 @@ class AdaptiveDifficultyManager {
     
     // MARK: - Hysteresis & Confidence Implementation (Phase 3 & 4)
     
+    // MARK: - Session Phase Logic (Phase 5)
+    private func updateSessionPhase() {
+        guard config.enableSessionPhases else { return }
+        
+        roundsInCurrentPhase += 1
+        
+        switch currentPhase {
+        case .warmup:
+            if roundsInCurrentPhase >= warmupPhaseLength {
+                print("[ADM Warm-up] === WARMUP PHASE COMPLETE ===")
+                print("[ADM Warm-up] Total rounds in warmup: \(warmupPhaseLength)")
+                
+                // Calculate warmup performance summary
+                if !performanceHistory.isEmpty {
+                    let warmupEntries = performanceHistory.suffix(warmupPhaseLength)
+                    let avgScore = warmupEntries.reduce(0.0) { $0 + $1.overallScore } / CGFloat(warmupEntries.count)
+                    print("[ADM Warm-up] Average performance during warmup: \(String(format: "%.3f", avgScore))")
+                }
+                
+                print("[ADM Warm-up] Final DOM positions at end of warmup:")
+                for (domType, position) in normalizedPositions.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                    let absoluteValue = getCurrentValue(for: domType)
+                    print("[ADM Warm-up]   - \(domType): \(String(format: "%.3f", position)) (absolute: \(String(format: "%.1f", absoluteValue)))")
+                }
+                
+                print("[ADM Warm-up] === TRANSITIONING TO STANDARD PHASE ===")
+                currentPhase = .standard
+                roundsInCurrentPhase = 0
+                DataLogger.shared.logCustomEvent(eventType: "ADM_Phase_Transition_To_Standard", data: [:])
+            }
+        case .standard:
+            if config.enableFatigueDetection && roundsInCurrentPhase >= fatigueStartRound {
+                if detectFatiguePattern() {
+                    currentPhase = .fatigue
+                    roundsInCurrentPhase = 0
+                    DataLogger.shared.logCustomEvent(eventType: "ADM_Phase_Transition_To_Fatigue", data: [:])
+                }
+            }
+        case .fatigue:
+            // Once in fatigue, remain for the rest of the session.
+            break
+        }
+    }
+
+    private func detectFatiguePattern() -> Bool {
+        let (_, trend, variance) = getPerformanceMetrics()
+        return trend < config.fatigueTrendThreshold && variance > config.fatigueVarianceThreshold
+    }
+
+    // MARK: - Hysteresis & Confidence Implementation (Phase 3 & 4)
+    
     /// Calculates adaptation signal with hysteresis to prevent oscillation
-    func calculateAdaptationSignalWithHysteresis(performanceScore: CGFloat, thresholds: AdaptationThresholds) -> (signal: CGFloat, direction: AdaptationDirection) {
+    func calculateAdaptationSignalWithHysteresis(performanceScore: CGFloat, thresholds: AdaptationThresholds, performanceTarget: CGFloat) -> (signal: CGFloat, direction: AdaptationDirection) {
         guard config.enableHysteresis else {
             // Original logic without hysteresis
-            let signal = (performanceScore - 0.5) * 2.0
+            let signal = (performanceScore - performanceTarget) * 2.0
             
             if abs(signal) < config.adaptationSignalDeadZone {
                 return (0.0, .stable)
@@ -535,7 +698,7 @@ class AdaptiveDifficultyManager {
                 return (0.0, .stable)
             }
             
-            let signal = (performanceScore - thresholds.performanceTarget) * 2.0
+            let signal = (performanceScore - performanceTarget) * 2.0
             return (signal, .increasing)
             
         } else if performanceScore < thresholds.decreaseThreshold {
@@ -546,12 +709,12 @@ class AdaptiveDifficultyManager {
                 return (0.0, .stable)
             }
             
-            let signal = (performanceScore - thresholds.performanceTarget) * 2.0
+            let signal = (performanceScore - performanceTarget) * 2.0
             return (signal, .decreasing)
             
         } else {
             // Performance is in the neutral zone
-            let distanceFromTarget = abs(performanceScore - thresholds.performanceTarget)
+            let distanceFromTarget = abs(performanceScore - performanceTarget)
             
             // Apply additional dead zone in neutral region
             if distanceFromTarget < thresholds.baseDeadZone {
@@ -559,7 +722,7 @@ class AdaptiveDifficultyManager {
             }
             
             // Small adaptation within neutral zone (dampened)
-            let signal = (performanceScore - thresholds.performanceTarget) * 1.0 // Reduced multiplier
+            let signal = (performanceScore - performanceTarget) * 1.0 // Reduced multiplier
             
             // Maintain current direction if signal is very small
             if abs(signal) < config.adaptationSignalDeadZone {
@@ -765,6 +928,15 @@ class AdaptiveDifficultyManager {
         let confidenceString = String(format: "C:%.2f (V:%.2f, D:%.2f, H:%.2f)", confidence.total, confidence.variance, confidence.direction, confidence.history)
         print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", rawChange / (smoothing > 0 ? smoothing : 1) )) -> ActualChange=\(String(format: "%.3f", smoothedChange)). \(confidenceString). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedPosition))")
         
+        // Add warmup-specific DOM tracking
+        if currentPhase == .warmup {
+            let warmupProgress = CGFloat(roundsInCurrentPhase) / CGFloat(max(1, warmupPhaseLength))
+            print("[ADM Warm-up] DOM progression for \(domType):")
+            print("[ADM Warm-up]   - Position: \(String(format: "%.3f", currentPosition)) → \(String(format: "%.3f", smoothedPosition))")
+            print("[ADM Warm-up]   - Change: \(smoothedChange > 0 ? "↑" : smoothedChange < 0 ? "↓" : "→") \(String(format: "%.3f", abs(smoothedChange)))")
+            print("[ADM Warm-up]   - Warmup completion: \(String(format: "%.1f%%", warmupProgress * 100))")
+        }
+        
         return smoothedChange
     }
 
@@ -784,6 +956,10 @@ class AdaptiveDifficultyManager {
     func getPerformanceMetrics() -> (average: CGFloat, trend: CGFloat, variance: CGFloat) {
         guard !performanceHistory.isEmpty else {
             return (average: 0.5, trend: 0.0, variance: 0.0)
+        }
+        
+        if performanceHistory.count == 1 {
+            return (average: performanceHistory[0].overallScore, trend: 0.0, variance: 0.0)
         }
         
         // Get recency-weighted history

@@ -310,7 +310,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let admInitialArousal = self.sessionMode ? self.initialArousalLevel : self._currentArousalLevel
         self.adaptiveDifficultyManager = AdaptiveDifficultyManager(
             configuration: self.gameConfiguration,
-            initialArousal: admInitialArousal
+            initialArousal: admInitialArousal,
+            sessionDuration: self.sessionDuration
         )
         print("GameScene: AdaptiveDifficultyManager initialized with arousal: \(admInitialArousal)")
 

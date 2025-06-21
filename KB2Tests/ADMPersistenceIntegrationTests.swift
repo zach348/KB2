@@ -18,7 +18,7 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         super.setUp()
         config = GameConfiguration()
         config.clearPastSessionData = true // Start fresh
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         // Override the default user ID with our test user ID
         adm.userId = testUserId
     }
@@ -89,7 +89,7 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         // Create new ADM instance
         config.clearPastSessionData = false
         let originalUserId = UserIDManager.getUserId()
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         // Load state for our test user ID manually since ADM will use the real user ID
         if let persistedState = ADMPersistenceManager.loadState(for: testUserId) {
             newADM.loadState(from: persistedState)
@@ -149,7 +149,7 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         
         config.clearPastSessionData = false
         let loadStartTime = CFAbsoluteTimeGetCurrent()
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         // Load state for our test user ID manually since ADM will use the real user ID
         if let persistedState = ADMPersistenceManager.loadState(for: testUserId) {
             newADM.loadState(from: persistedState)
@@ -259,7 +259,7 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         
         // Verify persistence
         config.clearPastSessionData = false
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         // Load state for our test user ID manually since ADM will use the real user ID
         if let persistedState = ADMPersistenceManager.loadState(for: testUserId) {
             newADM.loadState(from: persistedState)
@@ -297,7 +297,7 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         
         // Simulate app relaunch
         config.clearPastSessionData = false
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         // Load state for our test user ID manually since ADM will use the real user ID
         if let persistedState = ADMPersistenceManager.loadState(for: testUserId) {
             newADM.loadState(from: persistedState)

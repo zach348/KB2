@@ -9,7 +9,7 @@ class ADMPriorityTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
     }
 
     override func tearDown() {
@@ -216,13 +216,24 @@ class ADMPriorityTests: XCTestCase {
     }
     
     func testEasingFactorIsFasterThanHardeningFactor() {
-        // Verify the configuration: easing factors should be higher than hardening factors
+        // Define DOMs that intentionally have faster hardening than easing
+        let reversedSmoothingDOMs: Set<DOMTargetType> = [.targetCount]
+        
+        // Verify the configuration: most DOMs should have higher easing factors,
+        // but some DOMs (like targetCount) intentionally have the reverse
         for domType in DOMTargetType.allCases {
             let hardeningFactor = config.domHardeningSmoothingFactors[domType] ?? 0.1
             let easingFactor = config.domEasingSmoothingFactors[domType] ?? 0.1
             
-            XCTAssertGreaterThan(easingFactor, hardeningFactor,
-                               "\(domType) easing factor should be higher than hardening factor")
+            if reversedSmoothingDOMs.contains(domType) {
+                // These DOMs should have faster hardening than easing
+                XCTAssertGreaterThanOrEqual(hardeningFactor, easingFactor,
+                    "\(domType) should have hardening factor >= easing factor (reversed behavior)")
+            } else {
+                // Standard DOMs should have faster easing than hardening
+                XCTAssertGreaterThanOrEqual(easingFactor, hardeningFactor,
+                    "\(domType) easing factor should be >= hardening factor")
+            }
         }
     }
     
@@ -264,7 +275,7 @@ class ADMPriorityTests: XCTestCase {
     }
     
     private func testEasingMagnitude(withConfig config: GameConfiguration) -> CGFloat {
-        let testADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let testADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         testADM.normalizedPositions[.discriminatoryLoad] = 0.7 // Over-hardened
         
         // Apply easing

@@ -20,7 +20,7 @@ class ADMColorPipelineTests: XCTestCase {
         gameConfig = GameConfiguration()
         
         // Initialize ADM at mid-arousal (0.5) for consistent testing
-        adm = AdaptiveDifficultyManager(configuration: gameConfig, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: gameConfig, initialArousal: 0.5, sessionDuration: 600)
         
         print("Test Setup Complete:")
         print("- Initial arousal: 0.5")

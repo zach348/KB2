@@ -17,7 +17,7 @@ class ADMHysteresisTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
     }
     
     override func tearDown() {
@@ -35,7 +35,7 @@ class ADMHysteresisTests: XCTestCase {
         
         for score in performanceScores {
             let thresholds = adm.getEffectiveAdaptationThresholds()
-            let (signal, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds)
+            let (signal, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds, performanceTarget: 0.5)
             
             if score <= config.adaptationIncreaseThreshold {
                 // Below threshold - should not adapt to increase
@@ -74,7 +74,7 @@ class ADMHysteresisTests: XCTestCase {
         
         for score in performanceScores {
             let thresholds = adm.getEffectiveAdaptationThresholds()
-            let (signal, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds)
+            let (signal, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds, performanceTarget: 0.5)
             
             if score >= config.adaptationDecreaseThreshold {
                 // Above threshold - should not adapt to decrease
@@ -112,7 +112,7 @@ class ADMHysteresisTests: XCTestCase {
         
         for score in neutralScores {
             let thresholds = adm.getEffectiveAdaptationThresholds()
-            let (signal, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds)
+            let (signal, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds, performanceTarget: 0.5)
             
             let distanceFromTarget = abs(score - 0.5)
             if distanceFromTarget < config.hysteresisDeadZone {
@@ -143,7 +143,7 @@ class ADMHysteresisTests: XCTestCase {
         
         // Now try to immediately reverse - should be prevented
         let thresholds1 = adm.getEffectiveAdaptationThresholds()
-        let (signal1, direction1) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: 0.4, thresholds: thresholds1)
+        let (signal1, direction1) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: 0.4, thresholds: thresholds1, performanceTarget: 0.5)
         XCTAssertEqual(direction1, .stable, "Should prevent immediate reversal")
         XCTAssertEqual(signal1, 0.0, "Signal should be 0 when reversal is prevented")
         
@@ -152,7 +152,7 @@ class ADMHysteresisTests: XCTestCase {
         simulatePerformanceRound(adm: adm, performanceScore: 0.4)
         
         let thresholds2 = adm.getEffectiveAdaptationThresholds()
-        let (signal2, direction2) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: 0.4, thresholds: thresholds2)
+        let (signal2, direction2) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: 0.4, thresholds: thresholds2, performanceTarget: 0.5)
         XCTAssertEqual(direction2, .decreasing, "Should allow reversal after stable rounds")
         XCTAssertLessThan(signal2, 0, "Signal should be negative after allowed reversal")
     }
@@ -170,7 +170,7 @@ class ADMHysteresisTests: XCTestCase {
         
         // Now try poor performance - reversal should be allowed after meeting stable rounds requirement
         let thresholds1 = adm.getEffectiveAdaptationThresholds()
-        let (signal1, direction1) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: 0.4, thresholds: thresholds1)
+        let (signal1, direction1) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: 0.4, thresholds: thresholds1, performanceTarget: 0.5)
         XCTAssertEqual(direction1, .decreasing, "Should allow reversal after stable rounds requirement is met")
         XCTAssertLessThan(signal1, 0.0, "Signal should be negative when reversal is allowed")
         
@@ -197,7 +197,7 @@ class ADMHysteresisTests: XCTestCase {
         
         for score in erraticScores {
             let thresholds = adm.getEffectiveAdaptationThresholds()
-            let (_, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds)
+            let (_, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds, performanceTarget: 0.5)
             simulatePerformanceRound(adm: adm, performanceScore: score)
             
             // Count only significant direction changes (not transitions to/from stable)
@@ -223,7 +223,7 @@ class ADMHysteresisTests: XCTestCase {
         
         for score in boundaryScores {
             let thresholds = adm.getEffectiveAdaptationThresholds()
-            let (signal, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds)
+            let (signal, direction) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds, performanceTarget: 0.5)
             
             if score < config.adaptationDecreaseThreshold {
                 XCTAssertEqual(direction, .decreasing)
@@ -245,7 +245,7 @@ class ADMHysteresisTests: XCTestCase {
         // Create a mock configuration with hysteresis disabled
         // Since GameConfiguration uses let constants, we need to create a custom init or use reflection
         // For now, we'll test the behavior by checking the config flag
-        let admNoHysteresis = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let admNoHysteresis = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         
         // Skip this test if hysteresis is enabled in the default config
         guard !config.enableHysteresis else {
@@ -258,7 +258,7 @@ class ADMHysteresisTests: XCTestCase {
         
         for score in scores {
             let thresholds = admNoHysteresis.getEffectiveAdaptationThresholds()
-            let (signal, direction) = admNoHysteresis.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds)
+            let (signal, direction) = admNoHysteresis.calculateAdaptationSignalWithHysteresis(performanceScore: score, thresholds: thresholds, performanceTarget: 0.5)
             
             // Should use original calculation
             let expectedSignal = (score - 0.5) * 2.0
@@ -316,7 +316,7 @@ class ADMHysteresisTests: XCTestCase {
     private func simulatePerformanceRound(adm: AdaptiveDifficultyManager, performanceScore: CGFloat) {
         // Simulate the calculation that would happen in modulateDOMTargets
         let thresholds = adm.getEffectiveAdaptationThresholds()
-        let (_, newDirection) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: performanceScore, thresholds: thresholds)
+        let (_, newDirection) = adm.calculateAdaptationSignalWithHysteresis(performanceScore: performanceScore, thresholds: thresholds, performanceTarget: 0.5)
         
         // Update direction tracking (mimicking modulateDOMTargets logic)
         if newDirection != adm.lastAdaptationDirection {

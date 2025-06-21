@@ -19,7 +19,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
         config = GameConfiguration()
         config.clearPastSessionData = true // Start fresh
         // performanceHistoryWindowSize is already 10 in GameConfiguration, which is enough for our tests
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         adm.userId = testUserId
     }
     
@@ -69,7 +69,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
         
         // Create a new ADM instance that will load the persisted state
         config.clearPastSessionData = false // Don't clear, we want to load the saved data
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         
         // Verify old history is loaded by checking confidence metrics
         // We can't access performanceHistory directly as it's private
@@ -198,7 +198,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
         
         // Create new ADM that will load this history
         config.clearPastSessionData = false
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         
         // WHEN: Calculating confidence
         let confidence = adm.calculateAdaptationConfidence()
@@ -247,7 +247,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
         
         // Create new ADM instance that will load the persisted state
         config.clearPastSessionData = false
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         
         // Get initial metrics
         let (_, initialTrend, _) = newADM.getPerformanceMetrics()
@@ -323,7 +323,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
         
         // Create new ADM instance that will load the persisted state
         config.clearPastSessionData = false
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         
         // WHEN: Recording performance that continues the trend
         newADM.recordIdentificationPerformance(

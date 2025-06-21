@@ -219,7 +219,8 @@ class ADMPersistenceTests: XCTestCase {
         // Create ADM with clearPastSessionData = false
         var testConfig = GameConfiguration()
         testConfig.clearPastSessionData = false
-        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        testConfig.enableSessionPhases = false // Disable warmup phase to prevent modification of loaded state
+        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         
         // Check that state was loaded
         XCTAssertEqual(adm.performanceHistory.count, 1)
@@ -243,7 +244,7 @@ class ADMPersistenceTests: XCTestCase {
         // Create ADM with clearPastSessionData = true
         var testConfig = GameConfiguration()
         testConfig.clearPastSessionData = true
-        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         
         // Verify state was cleared and ADM starts fresh
         XCTAssertEqual(adm.performanceHistory.count, 0)
@@ -256,7 +257,7 @@ class ADMPersistenceTests: XCTestCase {
     
     func testADMSaveState() {
         // Create ADM and modify its state
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.6)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.6, sessionDuration: 600)
         
         // Add some performance history
         adm.recordIdentificationPerformance(
@@ -305,7 +306,7 @@ class ADMPersistenceTests: XCTestCase {
         // Create ADM which should load and apply recency weighting
         var testConfig = GameConfiguration()
         testConfig.clearPastSessionData = false
-        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         
         // Verify history was loaded
         XCTAssertEqual(adm.performanceHistory.count, 1)
@@ -320,7 +321,7 @@ class ADMPersistenceTests: XCTestCase {
     
     func testSaveNotificationTriggersADMSave() {
         // Create a mock ADM
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         
         // Add some test data
         adm.recordIdentificationPerformance(
@@ -422,7 +423,7 @@ class ADMPersistenceTests: XCTestCase {
         // Create ADM which should trim history on load
         var testConfig = GameConfiguration()
         testConfig.clearPastSessionData = false
-        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         
         // Verify history was trimmed to max size
         XCTAssertLessThanOrEqual(adm.performanceHistory.count, config.performanceHistoryWindowSize)
@@ -446,7 +447,8 @@ class ADMPersistenceTests: XCTestCase {
         // Create ADM with clearPastSessionData = true
         var testConfig = GameConfiguration()
         testConfig.clearPastSessionData = true
-        let adm1 = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        testConfig.enableSessionPhases = false // Disable warmup phase for this test
+        let adm1 = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         
         // Verify ADM state was cleared
         XCTAssertNil(ADMPersistenceManager.loadState(for: currentUserId))
@@ -466,7 +468,8 @@ class ADMPersistenceTests: XCTestCase {
         
         // Create another ADM without clearing
         testConfig.clearPastSessionData = false
-        let adm2 = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        testConfig.enableSessionPhases = false // Keep warmup disabled
+        let adm2 = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         
         // Verify it loaded the new state
         XCTAssertEqual(adm2.lastAdaptationDirection, .decreasing)
@@ -482,7 +485,7 @@ class ADMPersistenceTests: XCTestCase {
         // Create ADM for first session
         var config1 = GameConfiguration()
         config1.clearPastSessionData = true // Start fresh
-        let adm1 = AdaptiveDifficultyManager(configuration: config1, initialArousal: 0.7)
+        let adm1 = AdaptiveDifficultyManager(configuration: config1, initialArousal: 0.7, sessionDuration: 600)
         
         // Simulate several identification rounds with good performance
         for i in 0..<5 {
@@ -539,7 +542,7 @@ class ADMPersistenceTests: XCTestCase {
         // Create new ADM instance (simulating app launch)
         var config2 = GameConfiguration()
         config2.clearPastSessionData = false // Keep old data
-        let adm2 = AdaptiveDifficultyManager(configuration: config2, initialArousal: 0.5)
+        let adm2 = AdaptiveDifficultyManager(configuration: config2, initialArousal: 0.5, sessionDuration: 600)
         
         // Verify aged data was loaded
         XCTAssertEqual(adm2.performanceHistory.count, 5)
