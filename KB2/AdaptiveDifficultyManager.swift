@@ -16,7 +16,7 @@ import CoreGraphics
 // GameConfiguration now provides DOMTargetType and KPIType
 
 // MARK: - Performance History Structure
-struct PerformanceHistoryEntry {
+struct PerformanceHistoryEntry: Codable {
     let timestamp: TimeInterval
     let overallScore: CGFloat
     let normalizedKPIs: [KPIType: CGFloat]
@@ -25,10 +25,20 @@ struct PerformanceHistoryEntry {
     let sessionContext: String? // e.g., "warmup", "challenge_phase"
 }
 
+// MARK: - Persisted State Structure (Phase 4.5)
+struct PersistedADMState: Codable {
+    let performanceHistory: [PerformanceHistoryEntry]
+    let lastAdaptationDirection: AdaptiveDifficultyManager.AdaptationDirection
+    let directionStableCount: Int
+    let normalizedPositions: [DOMTargetType: CGFloat]
+    var version: Int = 1 // For future migration support
+}
+
 class AdaptiveDifficultyManager {
     var dataLogger: DataLogger = DataLogger.shared
-    private let config: GameConfiguration // Resolved: GameConfiguration is now findable
+    private let config: GameConfiguration
     private var currentArousalLevel: CGFloat
+    var userId: String // Changed to var and made internal for testing
 
     // Current actual values of DOM targets (owned by ADM)
     private(set) var currentDiscriminabilityFactor: CGFloat
@@ -53,7 +63,7 @@ class AdaptiveDifficultyManager {
     private let logThrottleInterval: TimeInterval = 1.0 // Log once per second
     
     // MARK: - Hysteresis State Tracking (Phase 3)
-    enum AdaptationDirection {
+    enum AdaptationDirection: String, Codable {
         case increasing, decreasing, stable
     }
     
@@ -79,6 +89,7 @@ class AdaptiveDifficultyManager {
         self.config = configuration
         self.currentArousalLevel = initialArousal
         self.maxHistorySize = configuration.performanceHistoryWindowSize
+        self.userId = UserIDManager.getUserId()
 
         // Initialize stored properties with placeholder values first
         self.currentDiscriminabilityFactor = 0.0
@@ -95,6 +106,20 @@ class AdaptiveDifficultyManager {
             } else {
                 normalizedPositions[domType] = 0.5 // Others start at midpoint
             }
+        }
+        
+        // Phase 4.5: Load persisted state if available and not clearing
+        if !configuration.clearPastSessionData {
+            if let persistedState = ADMPersistenceManager.loadState(for: self.userId) {
+                print("[ADM] Loading persisted state for user: \(self.userId)")
+                loadState(from: persistedState)
+            } else {
+                print("[ADM] No persisted state found for user: \(self.userId)")
+            }
+        } else {
+            // Clear any existing state for this user
+            ADMPersistenceManager.clearState(for: self.userId)
+            print("[ADM] Cleared past session data for user: \(self.userId)")
         }
         
         // Initialize current valid ranges based on initial arousal
@@ -125,7 +150,7 @@ class AdaptiveDifficultyManager {
     
     /// Converts a normalized value (0-1) to an absolute value for a DOM target
     private func normalizedToAbsoluteValue(normalizedValue: CGFloat, for domType: DOMTargetType) -> CGFloat {
-        guard let range = currentValidRanges[domType] else { return 0 }
+        guard let _ = currentValidRanges[domType] else { return 0 }
         
         // Clamp normalized value between 0 and 1
         let clampedNormalized = max(0.0, min(1.0, normalizedValue))
@@ -950,5 +975,53 @@ class AdaptiveDifficultyManager {
              return (minA_Val, maxA_Val)
         // Removed default case as DOMTargetType is exhaustive
         }
+    }
+    
+    // MARK: - Persistence Methods (Phase 4.5)
+    
+    /// Saves the current ADM state
+    func saveState() {
+        let state = PersistedADMState(
+            performanceHistory: performanceHistory,
+            lastAdaptationDirection: lastAdaptationDirection,
+            directionStableCount: directionStableCount,
+            normalizedPositions: normalizedPositions
+        )
+        
+        ADMPersistenceManager.saveState(state, for: self.userId)
+        print("[ADM] State saved for user: \(self.userId)")
+    }
+    
+    /// Loads persisted state into the current ADM instance
+    private func loadState(from state: PersistedADMState) {
+        // Load performance history (apply recency weighting)
+        performanceHistory = state.performanceHistory
+        
+        // Trim history to max size if needed
+        if performanceHistory.count > maxHistorySize {
+            performanceHistory = Array(performanceHistory.suffix(maxHistorySize))
+        }
+        
+        // Apply recency weighting to older entries
+        if !performanceHistory.isEmpty {
+            let currentTime = CACurrentMediaTime()
+            let oldestTime = performanceHistory.first?.timestamp ?? currentTime
+            let timeSpan = currentTime - oldestTime
+            
+            // If data is older than 24 hours, apply decay
+            if timeSpan > 86400 { // 24 hours in seconds
+                // We can't modify the scores directly, but we'll consider this in confidence calculation
+                // The decay factor will be used in calculateAdaptationConfidence
+            }
+        }
+        
+        // Load adaptation state
+        lastAdaptationDirection = state.lastAdaptationDirection
+        directionStableCount = state.directionStableCount
+        
+        // Load normalized positions
+        normalizedPositions = state.normalizedPositions
+        
+        print("[ADM] Loaded state with \(performanceHistory.count) history entries")
     }
 }

@@ -369,11 +369,27 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         if currentState == .tracking {
             startThrottledMotionControl()
         }
+        
+        // Phase 4.5: Register for ADM state saving notification
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(saveADMState),
+            name: Notification.Name("SaveADMState"),
+            object: nil
+        )
+        
         print("--- GameScene: didMove(to:) Finished ---")
     }
 
     override func willMove(from view: SKView) {
         print("--- GameScene: willMove(from:) ---")
+        
+        // Phase 4.5: Remove notification observer
+        NotificationCenter.default.removeObserver(self, name: Notification.Name("SaveADMState"), object: nil)
+        
+        // Phase 4.5: Save ADM state before cleanup
+        adaptiveDifficultyManager?.saveState()
+        
         precisionTimer?.stop();
         stopIdentificationTimeout()
         stopBreathingAnimation()
@@ -2896,6 +2912,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         DispatchQueue.main.async {
             view.presentScene(startScreen, transition: SKTransition.fade(withDuration: 0.5))
         }
+    }
+    
+    // Phase 4.5: Handle save notification
+    @objc private func saveADMState() {
+        adaptiveDifficultyManager?.saveState()
     }
     // --- END ADDED ---
 

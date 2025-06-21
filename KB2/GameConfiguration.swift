@@ -8,7 +8,7 @@ import CoreGraphics // For CGFloat
 import SpriteKit // For SKColor
 
 // Enum for Difficulty Optimization Matrix (DOM) targets
-enum DOMTargetType: Hashable, CaseIterable { // Made Hashable
+enum DOMTargetType: String, Codable, Hashable, CaseIterable { // Made Hashable and Codable
     case discriminatoryLoad
     case meanBallSpeed
     case ballSpeedSD
@@ -17,7 +17,7 @@ enum DOMTargetType: Hashable, CaseIterable { // Made Hashable
 }
 
 // Enum for Key Performance Indicator (KPI) types
-enum KPIType: Hashable { // Made Hashable
+enum KPIType: String, Codable, Hashable, CaseIterable { // Made Hashable and Codable
     case taskSuccess
     case tfTtfRatio
     case reactionTime
@@ -341,4 +341,7 @@ struct GameConfiguration {
     let enableConfidenceScaling: Bool = true
     let minConfidenceMultiplier: CGFloat = 0.2  // Minimum adaptation strength
     let confidenceThresholdWideningFactor: CGFloat = 0.05 // How much thresholds expand when confidence is low
+    
+    // --- Cross-Session Persistence (Phase 4.5) ---
+    var clearPastSessionData: Bool = false  // Set to true to clear previous session data on startup
 }
