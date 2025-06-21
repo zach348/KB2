@@ -188,7 +188,7 @@ struct GameConfiguration {
     
     // --- DOM Target Parameter Ranges ---
     // Target Count (fewer is easier at high arousal, more is harder)
-    let targetCount_MinArousal_EasiestSetting: Int = 4
+    let targetCount_MinArousal_EasiestSetting: Int = 5
     let targetCount_MinArousal_HardestSetting: Int = 7
     let targetCount_MaxArousal_EasiestSetting: Int = 1
     let targetCount_MaxArousal_HardestSetting: Int = 1

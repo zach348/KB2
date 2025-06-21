@@ -182,6 +182,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     internal var targetsToFind: Int = 0
     internal var targetsFoundThisRound: Int = 0
     internal var score: Int = 0
+    internal var totalIterations: Int = 0
     internal var isEndingIdentification: Bool = false
     
     //====================================================================================================
@@ -480,7 +481,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
     // --- UI Update ---
     private func updateUI() {
-        scoreLabel.text = "Score: \(score)"
+        scoreLabel.text = "Score: \(score)/\(totalIterations)"
         
         // Display both system and user arousal if estimator is available
         if let estimator = arousalEstimator {
@@ -738,6 +739,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     //====================================================================================================
     internal func startIdentificationPhase() {
         isEndingIdentification = false
+        totalIterations += 1
         currentState = .identifying; updateUI()
         physicsWorld.speed = 0; balls.forEach { ball in ball.storedVelocity = ball.physicsBody?.velocity; ball.physicsBody?.velocity = .zero; ball.physicsBody?.isDynamic = false }
         
