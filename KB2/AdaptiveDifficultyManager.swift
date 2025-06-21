@@ -91,7 +91,7 @@ class AdaptiveDifficultyManager {
         // EXCEPT targetCount which starts at easiest (0.0)
         for domType in [DOMTargetType.discriminatoryLoad, .meanBallSpeed, .ballSpeedSD, .responseTime, .targetCount] {
             if domType == .targetCount {
-                normalizedPositions[domType] = 0.25 // Start at easier end of range
+                normalizedPositions[domType] = 0.5 // Start at easier end of range
             } else {
                 normalizedPositions[domType] = 0.5 // Others start at midpoint
             }
@@ -395,7 +395,7 @@ class AdaptiveDifficultyManager {
         
         // Scale adaptation by confidence (Phase 4)
         if config.enableConfidenceScaling {
-            let confidence = calculateAdaptationConfidence()
+            let confidence = calculateAdaptationConfidence().total
             let confidenceMultiplier = config.minConfidenceMultiplier + (1.0 - config.minConfidenceMultiplier) * confidence
             adaptationSignalBudget *= confidenceMultiplier
             
@@ -541,26 +541,29 @@ class AdaptiveDifficultyManager {
     // MARK: - Confidence Calculation (Phase 4)
 
     /// Calculates the confidence of the current adaptation decision
-    func calculateAdaptationConfidence() -> CGFloat {
-        guard !performanceHistory.isEmpty else { return 0.5 }
+    func calculateAdaptationConfidence() -> (total: CGFloat, variance: CGFloat, direction: CGFloat, history: CGFloat) {
+        guard !performanceHistory.isEmpty else { return (0.5, 0.5, 0.5, 0.0) }
         
         let (_, _, variance) = getPerformanceMetrics()
         
         // 1. Variance Confidence (lower variance = higher confidence)
-        // Normalize variance to a 0-1 scale where 1 is high confidence
         let varianceConfidence = max(0, 1.0 - min(variance / 0.5, 1.0))
         
         // 2. Direction Confidence (consistent direction = higher confidence)
-        // More stable rounds in one direction increases confidence
         let directionConfidence = min(CGFloat(directionStableCount) / 5.0, 1.0)
         
         // 3. History Confidence (more data = more confidence)
         let historyConfidence = min(CGFloat(performanceHistory.count) / CGFloat(config.performanceHistoryWindowSize), 1.0)
         
         // Combine the confidence scores (equal weighting for now)
-        let combinedConfidence = (varianceConfidence + directionConfidence + historyConfidence) / 3.0
+        let totalConfidence = (varianceConfidence + directionConfidence + historyConfidence) / 3.0
         
-        return max(0.0, min(1.0, combinedConfidence))
+        return (
+            total: max(0.0, min(1.0, totalConfidence)),
+            variance: varianceConfidence,
+            direction: directionConfidence,
+            history: historyConfidence
+        )
     }
 
     /// Gets effective adaptation thresholds, widened by low confidence
@@ -574,7 +577,7 @@ class AdaptiveDifficultyManager {
             )
         }
         
-        let confidence = calculateAdaptationConfidence()
+        let confidence = calculateAdaptationConfidence().total
         // Uncertainty is the inverse of confidence
         let uncertaintyMultiplier = 1.0 - confidence // Ranges from 0 (high confidence) to 1 (low confidence)
         
@@ -590,6 +593,7 @@ class AdaptiveDifficultyManager {
 
     func modulateDOMsWithWeightedBudget(totalBudget: CGFloat, arousal: CGFloat, invertPriorities: Bool) -> CGFloat {
         var remainingBudget = totalBudget
+        let confidence = calculateAdaptationConfidence()
         
         // Pass 1: Reset-to-Midpoint (only for easing)
         if invertPriorities && totalBudget < 0 {
@@ -612,7 +616,7 @@ class AdaptiveDifficultyManager {
                 for (domType, budgetShare) in budgetForReset {
                     let currentPosition = normalizedPositions[domType] ?? 0.5
                     let targetPosition = max(0.5, currentPosition + budgetShare) // Don't go below 0.5 in this pass
-                    let actualChange = applyModulation(domType: domType, currentPosition: currentPosition, desiredPosition: targetPosition)
+                    let actualChange = applyModulation(domType: domType, currentPosition: currentPosition, desiredPosition: targetPosition, confidence: confidence)
                     budgetSpentInPass1 += actualChange
                 }
                 remainingBudget -= budgetSpentInPass1
@@ -631,7 +635,7 @@ class AdaptiveDifficultyManager {
         for (domType, budgetShare) in budgetForStandardPass {
             let currentPosition = normalizedPositions[domType] ?? 0.5
             let targetPosition = currentPosition + budgetShare
-            let actualChange = applyModulation(domType: domType, currentPosition: currentPosition, desiredPosition: targetPosition)
+            let actualChange = applyModulation(domType: domType, currentPosition: currentPosition, desiredPosition: targetPosition, confidence: confidence)
             budgetSpentInPass2 += actualChange
         }
         remainingBudget -= budgetSpentInPass2
@@ -639,7 +643,7 @@ class AdaptiveDifficultyManager {
         return remainingBudget
     }
 
-    func applyModulation(domType: DOMTargetType, currentPosition: CGFloat, desiredPosition: CGFloat) -> CGFloat {
+    func applyModulation(domType: DOMTargetType, currentPosition: CGFloat, desiredPosition: CGFloat, confidence: (total: CGFloat, variance: CGFloat, direction: CGFloat, history: CGFloat)) -> CGFloat {
         let achievedPosition = max(0.0, min(1.0, desiredPosition))
         let rawChange = achievedPosition - currentPosition
         
@@ -664,7 +668,8 @@ class AdaptiveDifficultyManager {
         
         normalizedPositions[domType] = smoothedPosition
         
-        print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", rawChange / (smoothing > 0 ? smoothing : 1) )) -> ActualChange=\(String(format: "%.3f", smoothedChange)). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedPosition))")
+        let confidenceString = String(format: "C:%.2f (V:%.2f, D:%.2f, H:%.2f)", confidence.total, confidence.variance, confidence.direction, confidence.history)
+        print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", rawChange / (smoothing > 0 ? smoothing : 1) )) -> ActualChange=\(String(format: "%.3f", smoothedChange)). \(confidenceString). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedPosition))")
         
         return smoothedChange
     }

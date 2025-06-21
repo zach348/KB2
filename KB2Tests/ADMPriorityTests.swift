@@ -180,7 +180,7 @@ class ADMPriorityTests: XCTestCase {
         let desiredPosition = initialPosition + 0.1 // Move in hardening direction
         let smoothedChange = adm.applyModulation(domType: .discriminatoryLoad,
                                                  currentPosition: initialPosition,
-                                                 desiredPosition: desiredPosition)
+                                                 desiredPosition: desiredPosition, confidence: (total: 1.0, variance: 1.0, direction: 1.0, history: 1.0))
         
         // THEN: Hardening smoothing factor should have been applied
         let hardeningFactor = config.domHardeningSmoothingFactors[.discriminatoryLoad]!
@@ -202,7 +202,7 @@ class ADMPriorityTests: XCTestCase {
         let desiredPosition = initialPosition - 0.1 // Move in easing direction
         let smoothedChange = adm.applyModulation(domType: .discriminatoryLoad,
                                                  currentPosition: initialPosition,
-                                                 desiredPosition: desiredPosition)
+                                                 desiredPosition: desiredPosition, confidence: (total: 1.0, variance: 1.0, direction: 1.0, history: 1.0))
         
         // THEN: Easing smoothing factor should have been applied
         let easingFactor = config.domEasingSmoothingFactors[.discriminatoryLoad]!

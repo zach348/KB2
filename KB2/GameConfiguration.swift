@@ -111,7 +111,7 @@ struct GameConfiguration {
     let holdAfterExhaleProportionHighArousal: CGFloat = 0.20 // 20% of exhale duration at tracking threshold
     
     // NEW: Proportion of exhale that occurs *before* the first hold (now mid-exhale)
-    let preHoldExhaleProportion: TimeInterval = 0.02 // % of exhale, then hold, then remaining %
+    let preHoldExhaleProportion: TimeInterval = 0.035 // % of exhale, then hold, then remaining %
     
     // Breathing animation settings
     let breathingCircleMinRadius: CGFloat = 60.0
@@ -128,7 +128,7 @@ struct GameConfiguration {
     // Breathing haptic tempo parameters
     let breathingHapticMinDelay: TimeInterval = 0.013  // ~77Hz - Fastest tempo at max radius (was 0.04)
     let breathingHapticMaxDelay: TimeInterval = 0.075   // ~6.7Hz - Slowest tempo at min radius
-    let breathingHapticTempoExponent: Double = 1.1     // Controls the curve mapping (higher = more dramatic change)
+    let breathingHapticTempoExponent: Double = 1.2     // Controls the curve mapping (higher = more dramatic change)
 
     // --- Identification Task ---
     let identificationStartDelay: TimeInterval = 0.5
@@ -191,7 +191,7 @@ struct GameConfiguration {
     let targetCount_MinArousal_EasiestSetting: Int = 4
     let targetCount_MinArousal_HardestSetting: Int = 7
     let targetCount_MaxArousal_EasiestSetting: Int = 1
-    let targetCount_MaxArousal_HardestSetting: Int = 2
+    let targetCount_MaxArousal_HardestSetting: Int = 1
     
     // Discriminability Factor (higher is easier - more different colors)
     let discriminabilityFactor_MinArousal_EasiestSetting: CGFloat = 1.0

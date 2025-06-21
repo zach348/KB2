@@ -29,7 +29,7 @@ class ADMConfidenceTests: XCTestCase {
 
     func testConfidence_InitialState() {
         // With no history, confidence should be 0.5
-        let confidence = adm.calculateAdaptationConfidence()
+        let confidence = adm.calculateAdaptationConfidence().total
         XCTAssertEqual(confidence, 0.5, "Initial confidence should be 0.5")
     }
 
@@ -39,7 +39,7 @@ class ADMConfidenceTests: XCTestCase {
         adm.directionStableCount = 5 // Max stability
         
         // WHEN: Confidence is calculated
-        let confidence = adm.calculateAdaptationConfidence()
+        let confidence = adm.calculateAdaptationConfidence().total
         
         // THEN: Confidence should be high due to low variance
         XCTAssertGreaterThan(confidence, 0.7, "Confidence should be high for low variance performance")
@@ -50,7 +50,7 @@ class ADMConfidenceTests: XCTestCase {
         adm.performanceHistory = TestHelpers.createPerformanceHistory(scores: [0.9, 0.1, 0.8])
         
         // WHEN: Confidence is calculated
-        let confidence = adm.calculateAdaptationConfidence()
+        let confidence = adm.calculateAdaptationConfidence().total
         
         // THEN: Confidence should be low
         XCTAssertLessThan(confidence, 0.4, "Confidence should be low for high variance performance")
@@ -63,7 +63,7 @@ class ADMConfidenceTests: XCTestCase {
         adm.performanceHistory = TestHelpers.createPerformanceHistory(scores: [0.6, 0.65, 0.7])
         
         // WHEN: Confidence is calculated
-        let confidence = adm.calculateAdaptationConfidence()
+        let confidence = adm.calculateAdaptationConfidence().total
         
         // THEN: Confidence should be high
         XCTAssertGreaterThan(confidence, 0.7, "Confidence should be high for stable adaptation direction")
@@ -74,7 +74,7 @@ class ADMConfidenceTests: XCTestCase {
         adm.performanceHistory = [TestHelpers.createPerformanceHistory(scores: [0.6]).first!]
         
         // WHEN: Confidence is calculated
-        let confidence = adm.calculateAdaptationConfidence()
+        let confidence = adm.calculateAdaptationConfidence().total
         
         // THEN: History component of confidence should be low
         let historyConfidence = min(CGFloat(adm.performanceHistory.count) / CGFloat(config.performanceHistoryWindowSize), 1.0)
@@ -119,7 +119,7 @@ class ADMConfidenceTests: XCTestCase {
         
         // AND: A low confidence state
         adm.performanceHistory = TestHelpers.createPerformanceHistory(scores: [0.9, 0.1, 0.8])
-        let confidence = adm.calculateAdaptationConfidence()
+        let confidence = adm.calculateAdaptationConfidence().total
         XCTAssertLessThan(confidence, 0.5, "Precondition: confidence should be low")
 
         // WHEN: The DOM targets are modulated
