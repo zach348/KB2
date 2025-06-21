@@ -427,4 +427,176 @@ class ADMPersistenceTests: XCTestCase {
         // Verify history was trimmed to max size
         XCTAssertLessThanOrEqual(adm.performanceHistory.count, config.performanceHistoryWindowSize)
     }
+    
+    // MARK: - UserIDManager Independence Tests
+    
+    func testUserIDManagerIndependence() {
+        // Get current user ID
+        let currentUserId = UserIDManager.getUserId()
+        
+        // Save ADM state for this user
+        let testState = PersistedADMState(
+            performanceHistory: [],
+            lastAdaptationDirection: .increasing,
+            directionStableCount: 2,
+            normalizedPositions: [.targetCount: 0.6]
+        )
+        ADMPersistenceManager.saveState(testState, for: currentUserId)
+        
+        // Create ADM with clearPastSessionData = true
+        var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true
+        let adm1 = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        
+        // Verify ADM state was cleared
+        XCTAssertNil(ADMPersistenceManager.loadState(for: currentUserId))
+        
+        // Verify UserIDManager still returns the same user ID
+        let userIdAfterClear = UserIDManager.getUserId()
+        XCTAssertEqual(currentUserId, userIdAfterClear, "UserIDManager should maintain user ID independently of ADM clear flag")
+        
+        // Save new state and verify it persists
+        let newState = PersistedADMState(
+            performanceHistory: [],
+            lastAdaptationDirection: .decreasing,
+            directionStableCount: 1,
+            normalizedPositions: [.targetCount: 0.3]
+        )
+        ADMPersistenceManager.saveState(newState, for: currentUserId)
+        
+        // Create another ADM without clearing
+        testConfig.clearPastSessionData = false
+        let adm2 = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5)
+        
+        // Verify it loaded the new state
+        XCTAssertEqual(adm2.lastAdaptationDirection, .decreasing)
+        XCTAssertEqual(adm2.normalizedPositions[.targetCount], 0.3)
+    }
+    
+    // MARK: - Full Lifecycle Integration Test
+    
+    func testFullLifecycleWithAgedData() {
+        // PHASE 1: Initial session
+        print("=== PHASE 1: Initial Session ===")
+        
+        // Create ADM for first session
+        var config1 = GameConfiguration()
+        config1.clearPastSessionData = true // Start fresh
+        let adm1 = AdaptiveDifficultyManager(configuration: config1, initialArousal: 0.7)
+        
+        // Simulate several identification rounds with good performance
+        for i in 0..<5 {
+            adm1.recordIdentificationPerformance(
+                taskSuccess: true,
+                tfTtfRatio: 0.9 - (Double(i) * 0.05), // Gradually declining
+                reactionTime: 1.0 + (Double(i) * 0.1), // Getting slower
+                responseDuration: 2.0 + (Double(i) * 0.2),
+                averageTapAccuracy: 30.0 + (Double(i) * 5.0),
+                actualTargetsToFindInRound: 3
+            )
+        }
+        
+        // Check final state of first session
+        XCTAssertEqual(adm1.performanceHistory.count, 5)
+        let finalPositions1 = adm1.normalizedPositions
+        print("Final positions after session 1:")
+        for (dom, pos) in finalPositions1 {
+            print("  \(dom): \(String(format: "%.3f", pos))")
+        }
+        
+        // Save state (simulating app backgrounding)
+        adm1.saveState()
+        
+        // PHASE 2: Return after 25 hours (data should be aged)
+        print("\n=== PHASE 2: Return After 25 Hours ===")
+        
+        // Manually age the saved data by modifying timestamps
+        if var savedState = ADMPersistenceManager.loadState(for: adm1.userId) {
+            // Age all history entries by 25 hours
+            let ageOffset = 25.0 * 3600.0 // 25 hours in seconds
+            let agedHistory = savedState.performanceHistory.map { entry in
+                PerformanceHistoryEntry(
+                    timestamp: entry.timestamp - ageOffset,
+                    overallScore: entry.overallScore,
+                    normalizedKPIs: entry.normalizedKPIs,
+                    arousalLevel: entry.arousalLevel,
+                    currentDOMValues: entry.currentDOMValues,
+                    sessionContext: entry.sessionContext
+                )
+            }
+            
+            let agedState = PersistedADMState(
+                performanceHistory: agedHistory,
+                lastAdaptationDirection: savedState.lastAdaptationDirection,
+                directionStableCount: savedState.directionStableCount,
+                normalizedPositions: savedState.normalizedPositions
+            )
+            
+            // Save the aged state
+            ADMPersistenceManager.saveState(agedState, for: adm1.userId)
+        }
+        
+        // Create new ADM instance (simulating app launch)
+        var config2 = GameConfiguration()
+        config2.clearPastSessionData = false // Keep old data
+        let adm2 = AdaptiveDifficultyManager(configuration: config2, initialArousal: 0.5)
+        
+        // Verify aged data was loaded
+        XCTAssertEqual(adm2.performanceHistory.count, 5)
+        
+        // Check confidence is reduced due to aged data
+        let confidence = adm2.calculateAdaptationConfidence()
+        print("Confidence with aged data:")
+        print("  Total: \(String(format: "%.3f", confidence.total))")
+        print("  History: \(String(format: "%.3f", confidence.history))")
+        XCTAssertLessThan(confidence.history, 0.5, "History confidence should be reduced due to aged data")
+        
+        // Simulate a performance round with different performance
+        adm2.recordIdentificationPerformance(
+            taskSuccess: false,
+            tfTtfRatio: 0.4,
+            reactionTime: 3.0,
+            responseDuration: 6.0,
+            averageTapAccuracy: 100.0,
+            actualTargetsToFindInRound: 5
+        )
+        
+        // Check that adaptation is more cautious due to low confidence
+        let positions2 = adm2.normalizedPositions
+        print("\nPositions after poor performance with aged data:")
+        for (dom, pos) in positions2 {
+            let change = pos - (finalPositions1[dom] ?? 0.5)
+            print("  \(dom): \(String(format: "%.3f", pos)) (change: \(String(format: "%+.3f", change)))")
+        }
+        
+        // PHASE 3: Continue with more rounds to rebuild confidence
+        print("\n=== PHASE 3: Rebuilding Confidence ===")
+        
+        // Add more recent performance data
+        for i in 0..<3 {
+            adm2.recordIdentificationPerformance(
+                taskSuccess: true,
+                tfTtfRatio: 0.6,
+                reactionTime: 2.0,
+                responseDuration: 4.0,
+                averageTapAccuracy: 60.0,
+                actualTargetsToFindInRound: 4
+            )
+        }
+        
+        // Check confidence has improved with fresh data
+        let newConfidence = adm2.calculateAdaptationConfidence()
+        print("Confidence after new data:")
+        print("  Total: \(String(format: "%.3f", newConfidence.total))")
+        print("  History: \(String(format: "%.3f", newConfidence.history))")
+        XCTAssertGreaterThan(newConfidence.total, confidence.total, "Confidence should improve with fresh data")
+        
+        // Verify history contains both old and new entries
+        XCTAssertEqual(adm2.performanceHistory.count, 9) // 5 old + 1 + 3 new
+        
+        // Check that recent entries have more influence
+        let recentScores = adm2.performanceHistory.suffix(4).map { $0.overallScore }
+        let averageRecentScore = recentScores.reduce(0.0, +) / CGFloat(recentScores.count)
+        print("\nAverage of recent 4 scores: \(String(format: "%.3f", averageRecentScore))")
+    }
 }

@@ -576,26 +576,78 @@ class AdaptiveDifficultyManager {
     func calculateAdaptationConfidence() -> (total: CGFloat, variance: CGFloat, direction: CGFloat, history: CGFloat) {
         guard !performanceHistory.isEmpty else { return (0.5, 0.5, 0.5, 0.0) }
         
-        let (_, _, variance) = getPerformanceMetrics()
+        // Calculate recency-weighted metrics
+        let currentTime = CACurrentMediaTime()
+        let recencyWeightedHistory = performanceHistory.map { entry in
+            let age = (currentTime - entry.timestamp) / 3600.0 // Convert to hours
+            // Exponential decay: full weight for recent data, decreasing weight for older data
+            // Using 24-hour half-life (weight = 0.5 at 24 hours old)
+            let weight = CGFloat(exp(-age * log(2.0) / 24.0))
+            return (entry: entry, weight: weight)
+        }
+        
+        // Calculate weighted variance
+        let weightedVariance = calculateWeightedVariance(recencyWeightedHistory)
         
         // 1. Variance Confidence (lower variance = higher confidence)
-        let varianceConfidence = max(0, 1.0 - min(variance / 0.5, 1.0))
+        let varianceConfidence = max(0, 1.0 - min(weightedVariance / 0.5, 1.0))
         
         // 2. Direction Confidence (consistent direction = higher confidence)
-        let directionConfidence = min(CGFloat(directionStableCount) / 5.0, 1.0)
+        // Give more weight to recent direction stability
+        let recentDirectionWeight = recencyWeightedHistory.last?.weight ?? 1.0
+        let weightedDirectionConfidence = min(CGFloat(directionStableCount) / 5.0, 1.0) * recentDirectionWeight
         
-        // 3. History Confidence (more data = more confidence)
-        let historyConfidence = min(CGFloat(performanceHistory.count) / CGFloat(config.performanceHistoryWindowSize), 1.0)
+        // 3. History Confidence (more data = more confidence, but weighted by recency)
+        let effectiveHistorySize = recencyWeightedHistory.reduce(0.0) { $0 + $1.weight }
+        let historyConfidence = min(effectiveHistorySize / CGFloat(config.performanceHistoryWindowSize), 1.0)
         
-        // Combine the confidence scores (equal weighting for now)
-        let totalConfidence = (varianceConfidence + directionConfidence + historyConfidence) / 3.0
+        // Log recency weighting details if significant aging detected
+        if !recencyWeightedHistory.isEmpty {
+            let oldestWeight = recencyWeightedHistory.first?.weight ?? 1.0
+            let newestWeight = recencyWeightedHistory.last?.weight ?? 1.0
+            
+            if oldestWeight < 0.5 { // If oldest data has less than 50% weight
+                let oldestAge = (currentTime - performanceHistory.first!.timestamp) / 3600.0
+                print("[ADM] Recency weighting applied:")
+                print("  ├─ Oldest entry: \(String(format: "%.1f", oldestAge)) hours old (weight: \(String(format: "%.2f", oldestWeight)))")
+                print("  ├─ Newest entry weight: \(String(format: "%.2f", newestWeight))")
+                print("  └─ Effective history size: \(String(format: "%.1f", effectiveHistorySize)) of \(performanceHistory.count)")
+            }
+        }
+        
+        // Combine the confidence scores with adjusted weights
+        // Give slightly more weight to recency-adjusted metrics
+        let totalConfidence = (varianceConfidence * 0.35 + weightedDirectionConfidence * 0.35 + historyConfidence * 0.30)
         
         return (
             total: max(0.0, min(1.0, totalConfidence)),
             variance: varianceConfidence,
-            direction: directionConfidence,
+            direction: weightedDirectionConfidence,
             history: historyConfidence
         )
+    }
+    
+    /// Calculates weighted variance considering recency of data points
+    private func calculateWeightedVariance(_ weightedHistory: [(entry: PerformanceHistoryEntry, weight: CGFloat)]) -> CGFloat {
+        guard weightedHistory.count >= 2 else { return 0.0 }
+        
+        // Calculate weighted mean
+        let totalWeight = weightedHistory.reduce(0.0) { $0 + $1.weight }
+        guard totalWeight > 0 else { return 0.0 }
+        
+        let weightedMean = weightedHistory.reduce(0.0) { 
+            $0 + ($1.entry.overallScore * $1.weight) 
+        } / totalWeight
+        
+        // Calculate weighted variance
+        let weightedSquaredDifferences = weightedHistory.reduce(0.0) { result, item in
+            let diff = item.entry.overallScore - weightedMean
+            return result + (pow(diff, 2) * item.weight)
+        }
+        
+        let weightedVariance = weightedSquaredDifferences / totalWeight
+        
+        return weightedVariance
     }
 
     /// Gets effective adaptation thresholds, widened by low confidence

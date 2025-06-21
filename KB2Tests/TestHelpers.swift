@@ -71,11 +71,17 @@ class MockUITouch: UITouch {
 
 // MARK: - ADM Test Helpers
 class TestHelpers {
-    static func createPerformanceHistory(scores: [CGFloat]) -> [PerformanceHistoryEntry] {
+    static func createPerformanceHistory(scores: [CGFloat], hoursAgo: [Double]? = nil) -> [PerformanceHistoryEntry] {
         var history: [PerformanceHistoryEntry] = []
+        let currentTime = CACurrentMediaTime()
+        
         for (index, score) in scores.enumerated() {
+            // Default to recent entries (5 minutes apart)
+            let ageInHours = hoursAgo?[safe: index] ?? Double(index) * 0.0833 // 5 minutes = 0.0833 hours
+            let timestamp = currentTime - (ageInHours * 3600)
+            
             let entry = PerformanceHistoryEntry(
-                timestamp: TimeInterval(index),
+                timestamp: timestamp,
                 overallScore: score,
                 normalizedKPIs: [:], // Keep empty for simplicity in these tests
                 arousalLevel: 0.5,
@@ -85,5 +91,12 @@ class TestHelpers {
             history.append(entry)
         }
         return history
+    }
+}
+
+// Safe array subscript extension
+extension Collection {
+    subscript(safe index: Index) -> Element? {
+        return indices.contains(index) ? self[index] : nil
     }
 }
