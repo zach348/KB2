@@ -278,7 +278,7 @@ struct GameConfiguration {
         .meanBallSpeed: 0.2,       // Original value
         .ballSpeedSD: 0.1,         // Original value
         .responseTime: 0.1,       // Original value
-        .targetCount: 0.2          // Original value
+        .targetCount: 0.3          // Original value
     ]
     
     // For easing (making the game easier - higher values for faster response to poor performance)
@@ -287,7 +287,7 @@ struct GameConfiguration {
         .meanBallSpeed: 0.4,       // 2x hardening factor
         .ballSpeedSD: 0.3,         // 2x hardening factor
         .responseTime: 0.2,        // 2x hardening factor
-        .targetCount: 0.4          // 2x hardening factor
+        .targetCount: 0.2          // 2x hardening factor
     ]
     
     // Keeping this for backward compatibility, now maps to hardening factors

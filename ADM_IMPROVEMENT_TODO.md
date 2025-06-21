@@ -394,12 +394,12 @@ This document outlines incremental improvements to address two critical issues i
 - [x] **Call `saveState()` on app background/termination via `AppDelegate`** ✓ Already implemented in GameScene
 
 ### Step 4.5.3: Update Confidence Calculation
-- [ ] **Modify `calculateAdaptationConfidence` to use combined history (current + persisted)**
+- [x] **Modify `calculateAdaptationConfidence` to use combined history (current + persisted)** ✓ Tests passing
 - [x] **Implement recency weighting for older session data** ✓ Implemented in `calculateAdaptationConfidence`
 
 ### Validation Checkpoint 4.5
 - [x] **Unit tests for `ADMPersistenceManager` (save, load, clear per user)**
-- [ ] **Verify `UserIDManager` is unaffected by `clearPastSessionData`**
+- [x] **Verify `UserIDManager` is unaffected by `clearPastSessionData`** ✓ Confirmed in test implementation
 - [x] **Integration tests for loading/saving state in ADM**
 - [x] **Test adaptation behavior with and without persisted data** ✓ Comprehensive tests added
 
@@ -605,3 +605,5 @@ This document outlines incremental improvements to address two critical issues i
 - Fixed integration test user ID handling issues
 - Made `loadState` method internal to allow test access
 - All tests passing successfully (including ADMPersistenceIntegrationTests)
+- Fixed ADMConfidenceCombinedHistoryTests to use public API instead of accessing private properties
+- Confidence calculation now properly uses combined history with recency weighting

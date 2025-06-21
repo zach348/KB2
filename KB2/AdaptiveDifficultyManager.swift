@@ -570,21 +570,30 @@ class AdaptiveDifficultyManager {
         }
     }
 
-    // MARK: - Confidence Calculation (Phase 4)
-
-    /// Calculates the confidence of the current adaptation decision
-    func calculateAdaptationConfidence() -> (total: CGFloat, variance: CGFloat, direction: CGFloat, history: CGFloat) {
-        guard !performanceHistory.isEmpty else { return (0.5, 0.5, 0.5, 0.0) }
+    // MARK: - Recency Weighting Helper
+    
+    /// Calculates recency-weighted history entries using exponential decay
+    private func getRecencyWeightedHistory() -> [(entry: PerformanceHistoryEntry, weight: CGFloat)] {
+        guard !performanceHistory.isEmpty else { return [] }
         
-        // Calculate recency-weighted metrics
         let currentTime = CACurrentMediaTime()
-        let recencyWeightedHistory = performanceHistory.map { entry in
+        return performanceHistory.map { entry in
             let age = (currentTime - entry.timestamp) / 3600.0 // Convert to hours
             // Exponential decay: full weight for recent data, decreasing weight for older data
             // Using 24-hour half-life (weight = 0.5 at 24 hours old)
             let weight = CGFloat(exp(-age * log(2.0) / 24.0))
             return (entry: entry, weight: weight)
         }
+    }
+    
+    // MARK: - Confidence Calculation (Phase 4)
+
+    /// Calculates the confidence of the current adaptation decision
+    func calculateAdaptationConfidence() -> (total: CGFloat, variance: CGFloat, direction: CGFloat, history: CGFloat) {
+        guard !performanceHistory.isEmpty else { return (0.5, 0.5, 0.5, 0.0) }
+        
+        // Get recency-weighted history
+        let recencyWeightedHistory = getRecencyWeightedHistory()
         
         // Calculate weighted variance
         let weightedVariance = calculateWeightedVariance(recencyWeightedHistory)
@@ -607,6 +616,7 @@ class AdaptiveDifficultyManager {
             let newestWeight = recencyWeightedHistory.last?.weight ?? 1.0
             
             if oldestWeight < 0.5 { // If oldest data has less than 50% weight
+                let currentTime = CACurrentMediaTime()
                 let oldestAge = (currentTime - performanceHistory.first!.timestamp) / 3600.0
                 print("[ADM] Recency weighting applied:")
                 print("  ├─ Oldest entry: \(String(format: "%.1f", oldestAge)) hours old (weight: \(String(format: "%.2f", oldestWeight)))")
@@ -776,17 +786,26 @@ class AdaptiveDifficultyManager {
             return (average: 0.5, trend: 0.0, variance: 0.0)
         }
         
-        // Calculate average
-        let scores = performanceHistory.map { $0.overallScore }
-        let average = scores.reduce(0.0, +) / CGFloat(scores.count)
+        // Get recency-weighted history
+        let weightedHistory = getRecencyWeightedHistory()
         
-        // Calculate trend using linear regression
-        let trend = calculateLinearTrend()
+        // Calculate weighted average
+        let totalWeight = weightedHistory.reduce(0.0) { $0 + $1.weight }
+        guard totalWeight > 0 else {
+            return (average: 0.5, trend: 0.0, variance: 0.0)
+        }
         
-        // Calculate variance
-        let variance = calculatePerformanceVariance()
+        let weightedAverage = weightedHistory.reduce(0.0) { 
+            $0 + ($1.entry.overallScore * $1.weight) 
+        } / totalWeight
         
-        return (average: average, trend: trend, variance: variance)
+        // Calculate trend using weighted linear regression
+        let trend = calculateWeightedLinearTrend(weightedHistory)
+        
+        // Calculate variance using existing weighted variance function
+        let variance = calculateWeightedVariance(weightedHistory)
+        
+        return (average: weightedAverage, trend: trend, variance: variance)
     }
     
     // MARK: - DOM Modulation & Interpolation (Phase 2.5)
@@ -928,6 +947,53 @@ class AdaptiveDifficultyManager {
         // Normalize slope to be meaningful in the context of performance (typically -1 to 1)
         // Since we're using indices, a slope of 1 means performance increases by 1 per sample
         // We'll scale this to be more reasonable
+        let normalizedSlope = slope / max(1.0, n / 10.0) // Scale down for larger histories
+        
+        return max(-1.0, min(1.0, normalizedSlope))
+    }
+    
+    /// Calculates weighted linear trend using weighted least squares regression
+    private func calculateWeightedLinearTrend(_ weightedHistory: [(entry: PerformanceHistoryEntry, weight: CGFloat)]) -> CGFloat {
+        guard weightedHistory.count >= 2 else {
+            return 0.0
+        }
+        
+        let totalWeight = weightedHistory.reduce(0.0) { $0 + $1.weight }
+        guard totalWeight > 0 else {
+            return 0.0
+        }
+        
+        // Use normalized time indices (0, 1, 2, ...) for x values
+        var sumW: CGFloat = 0.0    // sum of weights
+        var sumWX: CGFloat = 0.0   // sum of weighted x
+        var sumWY: CGFloat = 0.0   // sum of weighted y
+        var sumWXY: CGFloat = 0.0  // sum of weighted x*y
+        var sumWX2: CGFloat = 0.0  // sum of weighted x^2
+        
+        for (index, item) in weightedHistory.enumerated() {
+            let x = CGFloat(index)
+            let y = item.entry.overallScore
+            let w = item.weight
+            
+            sumW += w
+            sumWX += w * x
+            sumWY += w * y
+            sumWXY += w * x * y
+            sumWX2 += w * x * x
+        }
+        
+        // Calculate weighted slope using weighted least squares formula
+        let denominator = sumW * sumWX2 - sumWX * sumWX
+        
+        // Avoid division by zero
+        guard abs(denominator) > 0.0001 else {
+            return 0.0
+        }
+        
+        let slope = (sumW * sumWXY - sumWX * sumWY) / denominator
+        
+        // Normalize slope to be meaningful in the context of performance
+        let n = CGFloat(weightedHistory.count)
         let normalizedSlope = slope / max(1.0, n / 10.0) // Scale down for larger histories
         
         return max(-1.0, min(1.0, normalizedSlope))
