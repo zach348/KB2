@@ -1064,7 +1064,7 @@ class AdaptiveDifficultyManager {
     }
     
     /// Loads persisted state into the current ADM instance
-    private func loadState(from state: PersistedADMState) {
+    internal func loadState(from state: PersistedADMState) {
         print("[ADM] === LOADING PERSISTED STATE ===")
         
         // Load performance history (apply recency weighting)
