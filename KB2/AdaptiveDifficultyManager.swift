@@ -12,13 +12,9 @@
 //    - Acts as a recalibration phase, not an automatic ease-in
 //    - Exits at adapted values (no reset to original difficulty)
 //
-// 2. STANDARD PHASE (50% of session):
+// 2. STANDARD PHASE (remaining 75% of session):
 //    - Normal adaptation based on performance target of 0.50
 //    - Standard adaptation rate and thresholds
-//
-// 3. FATIGUE PHASE (final 25% of session, if detected):
-//    - Reduced adaptation rate (0.75x) to avoid over-correction
-//    - Triggered by negative performance trend and high variance
 //
 // Key Features:
 // - Performance-based adaptation with configurable KPI weights
@@ -95,11 +91,9 @@ class AdaptiveDifficultyManager {
     /// Represents the current phase of the gaming session
     /// - warmup: Initial recalibration phase with reduced difficulty and faster adaptation
     /// - standard: Main gameplay phase with normal adaptation
-    /// - fatigue: Late-session phase with reduced adaptation to avoid over-correction
     private enum SessionPhase {
         case warmup
         case standard
-        case fatigue
     }
     
     /// Current session phase
@@ -110,9 +104,6 @@ class AdaptiveDifficultyManager {
     
     /// Total number of rounds in the warmup phase (calculated based on session duration)
     private let warmupPhaseLength: Int
-    
-    /// Round number at which to start checking for fatigue patterns
-    private let fatigueStartRound: Int
     
     // MARK: - Hysteresis Helper Structures
     struct AdaptationThresholds {
@@ -147,7 +138,6 @@ class AdaptiveDifficultyManager {
         // Ensure at least 1 warmup round if warmup is enabled and there are any rounds
         let calculatedWarmupLength = Int(CGFloat(expectedRounds) * configuration.warmupPhaseProportion)
         self.warmupPhaseLength = (configuration.enableSessionPhases && expectedRounds > 0) ? max(1, calculatedWarmupLength) : calculatedWarmupLength
-        self.fatigueStartRound = Int(CGFloat(expectedRounds) * (configuration.warmupPhaseProportion + 0.45)) // Warmup + 45% of session
 
         if configuration.enableSessionPhases {
             self.currentPhase = .warmup
@@ -539,8 +529,6 @@ class AdaptiveDifficultyManager {
             let progressBar = String(repeating: "█", count: filledLength) + String(repeating: "░", count: emptyLength)
             print("[ADM Warm-up] Progress bar: [\(progressBar)]")
             
-        case .fatigue:
-            adaptationRateMultiplier = config.fatigueAdaptationRateMultiplier
         case .standard:
             break // Use default values
         }
@@ -711,31 +699,11 @@ class AdaptiveDifficultyManager {
                 DataLogger.shared.logCustomEvent(eventType: "ADM_Phase_Transition_To_Standard", data: [:])
             }
         case .standard:
-            // Check for fatigue patterns in the later part of the session
-            if config.enableFatigueDetection && roundsInCurrentPhase >= fatigueStartRound {
-                if detectFatiguePattern() {
-                    currentPhase = .fatigue
-                    roundsInCurrentPhase = 0
-                    DataLogger.shared.logCustomEvent(eventType: "ADM_Phase_Transition_To_Fatigue", data: [:])
-                }
-            }
-        case .fatigue:
-            // Once in fatigue, remain for the rest of the session
-            // Adaptation rate is reduced to avoid over-correction
+            // Standard phase continues for the rest of the session
             break
         }
     }
 
-    /// Detects fatigue patterns in performance history
-    /// - Returns: true if fatigue pattern is detected
-    /// 
-    /// Fatigue is indicated by:
-    /// - Negative performance trend (getting worse over time)
-    /// - High performance variance (inconsistent performance)
-    private func detectFatiguePattern() -> Bool {
-        let (_, trend, variance) = getPerformanceMetrics()
-        return trend < config.fatigueTrendThreshold && variance > config.fatigueVarianceThreshold
-    }
 
     // MARK: - Hysteresis & Confidence Implementation (Phase 3 & 4)
     

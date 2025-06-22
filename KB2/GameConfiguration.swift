@@ -348,7 +348,7 @@ struct GameConfiguration {
 
     // --- Session-Aware Adaptation (Phase 5) ---
     
-    /// Enables session phase management (warmup, standard, fatigue)
+    /// Enables session phase management (warmup, standard)
     /// When true, sessions start with a warmup phase for recalibration
     var enableSessionPhases: Bool = true
     
@@ -356,10 +356,6 @@ struct GameConfiguration {
     /// Default: 0.25 (25% of expected rounds)
     /// The warmup phase serves as a recalibration period to find appropriate difficulty
     let warmupPhaseProportion: CGFloat = 0.25
-    
-    /// Proportion of session after which to start checking for fatigue patterns
-    /// Default: 0.60 (60% through the session)
-    let fatigueStartProportion: CGFloat = 0.60
     
     /// Initial difficulty multiplier applied during warmup phase
     /// Default: 0.85 (85% of normal difficulty)
@@ -375,20 +371,4 @@ struct GameConfiguration {
     /// Default: 1.7 (1.7x faster than normal)
     /// Faster adaptation helps quickly find the player's current appropriate difficulty
     let warmupAdaptationRateMultiplier: CGFloat = 1.7
-    
-    /// Enables automatic fatigue detection in late session
-    let enableFatigueDetection: Bool = true
-    
-    /// Performance trend threshold for fatigue detection
-    /// Negative values indicate declining performance
-    let fatigueTrendThreshold: CGFloat = -0.15
-    
-    /// Performance variance threshold for fatigue detection
-    /// Higher variance indicates inconsistent performance
-    let fatigueVarianceThreshold: CGFloat = 0.3
-    
-    /// Adaptation rate multiplier during fatigue phase
-    /// Default: 0.75 (75% of normal rate)
-    /// Reduced rate prevents over-correction when player is fatigued
-    let fatigueAdaptationRateMultiplier: CGFloat = 0.75
 }
