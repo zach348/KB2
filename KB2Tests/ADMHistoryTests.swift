@@ -167,7 +167,6 @@ class ADMHistoryTests: XCTestCase {
         
         // Create a new ADM instance with a config that enables history
         var testConfig = GameConfiguration()
-        testConfig.usePerformanceHistory = true
         adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         adm.dataLogger = mockLogger
 

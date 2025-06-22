@@ -354,46 +354,44 @@ class AdaptiveDifficultyManager {
         // 2. Calculate overallPerformanceScore
         let performanceScore = calculateOverallPerformanceScore(normalizedKPIs: normalizedKPIs)
         
-        // 3. Store performance history (if enabled)
-        if config.usePerformanceHistory {
-            let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
-                $0[$1] = getCurrentValue(for: $1)
-            }
-            
-            let entry = PerformanceHistoryEntry(
-                timestamp: CACurrentMediaTime(),
-                overallScore: performanceScore,
-                normalizedKPIs: normalizedKPIs,
-                arousalLevel: currentArousalLevel,
-                currentDOMValues: domValues,
-                sessionContext: nil // Placeholder for now
+        // 3. Store performance history
+        let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
+            $0[$1] = getCurrentValue(for: $1)
+        }
+        
+        let entry = PerformanceHistoryEntry(
+            timestamp: CACurrentMediaTime(),
+            overallScore: performanceScore,
+            normalizedKPIs: normalizedKPIs,
+            arousalLevel: currentArousalLevel,
+            currentDOMValues: domValues,
+            sessionContext: nil // Placeholder for now
+        )
+        addPerformanceEntry(entry)
+        
+        // Log performance metrics after adding to history (with throttling)
+        var currentTime = Date().timeIntervalSince1970
+        if currentTime - lastLogTime >= logThrottleInterval {
+            let (average, trend, variance) = getPerformanceMetrics()
+            dataLogger.logCustomEvent(
+                eventType: "adm_performance_history",
+                data: [
+                    "history_size": performanceHistory.count,
+                    "performance_average": average,
+                    "performance_trend": trend,
+                    "performance_variance": variance,
+                    "recent_score": performanceScore
+                ],
+                description: "ADM performance history metrics"
             )
-            addPerformanceEntry(entry)
-            
-            // Log performance metrics after adding to history (with throttling)
-            let currentTime = Date().timeIntervalSince1970
-            if currentTime - lastLogTime >= logThrottleInterval {
-                let (average, trend, variance) = getPerformanceMetrics()
-                dataLogger.logCustomEvent(
-                    eventType: "adm_performance_history",
-                    data: [
-                        "history_size": performanceHistory.count,
-                        "performance_average": average,
-                        "performance_trend": trend,
-                        "performance_variance": variance,
-                        "recent_score": performanceScore
-                    ],
-                    description: "ADM performance history metrics"
-                )
-                lastLogTime = currentTime
-            }
+            lastLogTime = currentTime
         }
         
         // 4. Modulate DOM targets
         modulateDOMTargets(overallPerformanceScore: performanceScore)
         
         // Log the adaptive difficulty step (with throttling)
-        let currentTime = Date().timeIntervalSince1970
+        currentTime = Date().timeIntervalSince1970
         if currentTime - lastLogTime >= logThrottleInterval {
             let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
                 $0[$1] = getCurrentValue(for: $1)
@@ -469,7 +467,7 @@ class AdaptiveDifficultyManager {
     }
 
     func calculateAdaptivePerformanceScore(currentScore: CGFloat) -> CGFloat {
-        guard config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend else {
+        guard performanceHistory.count >= config.minimumHistoryForTrend else {
             return currentScore
         }
         
@@ -535,7 +533,7 @@ class AdaptiveDifficultyManager {
 
         let adaptiveScore = calculateAdaptivePerformanceScore(currentScore: overallPerformanceScore)
         
-        if config.usePerformanceHistory && performanceHistory.count >= config.minimumHistoryForTrend {
+        if performanceHistory.count >= config.minimumHistoryForTrend {
             let currentTime = Date().timeIntervalSince1970
             if currentTime - lastLogTime >= logThrottleInterval {
                 let (_, trend, _) = getPerformanceMetrics()

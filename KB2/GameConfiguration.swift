@@ -242,24 +242,6 @@ struct GameConfiguration {
         tapAccuracy: 0.10
     )
     
-    // --- DOM Target Hierarchies ---
-    // High Arousal Hierarchy
-    let domHierarchy_HighArousal: [DOMTargetType] = [
-        .discriminatoryLoad,
-        .meanBallSpeed,
-        .ballSpeedSD,
-        .responseTime,
-        .targetCount
-    ]
-    
-    // Low/Mid Arousal Hierarchy
-    let domHierarchy_LowMidArousal: [DOMTargetType] = [
-        .targetCount,
-        .responseTime,
-        .discriminatoryLoad,
-        .meanBallSpeed,
-        .ballSpeedSD
-    ]
     
     // --- KPI Normalization Parameters ---
     let reactionTime_BestExpected: TimeInterval = 0.2
@@ -300,7 +282,6 @@ struct GameConfiguration {
     
     // --- Performance History Configuration (NEW) ---
     var performanceHistoryWindowSize: Int = 10  // Changed to var for testing
-    var usePerformanceHistory: Bool = true  // Start disabled for safety
     
     // --- KPI Weight Interpolation Configuration (Phase 1.5) ---
     let kpiWeightTransitionStart: CGFloat = 0.55
@@ -311,7 +292,6 @@ struct GameConfiguration {
     let currentPerformanceWeight: CGFloat = 0.75 // Emphasize the most recent performance
     let historyInfluenceWeight: CGFloat = 0.25   // Stabilize with a small historical influence
     let trendInfluenceWeight: CGFloat = 0.15     // Nudge based on trajectory
-    let enableTrendPrediction: Bool = true
     let minimumHistoryForTrend: Int = 3
 
     // --- DOM Priority Weights (Phase 2.5) ---

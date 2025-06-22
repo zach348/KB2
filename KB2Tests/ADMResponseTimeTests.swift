@@ -229,7 +229,6 @@ class ADMResponseTimeTests: XCTestCase {
     func testResponseTimeAdaptationWithPerformanceHistory() {
         // Setup ADM with history enabled
         var testConfig = GameConfiguration()
-        testConfig.usePerformanceHistory = true
         adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
         adm.normalizedPositions[.responseTime] = 0.5
         adm.updateForCurrentArousal()
