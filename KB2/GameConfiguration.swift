@@ -299,7 +299,7 @@ struct GameConfiguration {
     let adaptationSignalDeadZone: CGFloat = 0.035     // Reduced from 0.05 to react to smaller performance changes
     
     // --- Performance History Configuration (NEW) ---
-    let performanceHistoryWindowSize: Int = 10
+    var performanceHistoryWindowSize: Int = 10  // Changed to var for testing
     var usePerformanceHistory: Bool = true  // Start disabled for safety
     
     // --- KPI Weight Interpolation Configuration (Phase 1.5) ---
@@ -347,14 +347,48 @@ struct GameConfiguration {
     var clearPastSessionData: Bool = false  // Set to true to clear previous session data on startup
 
     // --- Session-Aware Adaptation (Phase 5) ---
+    
+    /// Enables session phase management (warmup, standard, fatigue)
+    /// When true, sessions start with a warmup phase for recalibration
     var enableSessionPhases: Bool = true
-    let warmupPhaseProportion: CGFloat = 0.25  // Use first 15% of rounds for warm-up
-    let fatigueStartProportion: CGFloat = 0.60 // Start checking for fatigue after 60% of rounds
+    
+    /// Proportion of the session dedicated to warmup phase (0.0-1.0)
+    /// Default: 0.25 (25% of expected rounds)
+    /// The warmup phase serves as a recalibration period to find appropriate difficulty
+    let warmupPhaseProportion: CGFloat = 0.25
+    
+    /// Proportion of session after which to start checking for fatigue patterns
+    /// Default: 0.60 (60% through the session)
+    let fatigueStartProportion: CGFloat = 0.60
+    
+    /// Initial difficulty multiplier applied during warmup phase
+    /// Default: 0.85 (85% of normal difficulty)
+    /// This ensures players start at a comfortable level while the system recalibrates
     let warmupInitialDifficultyMultiplier: CGFloat = 0.85
+    
+    /// Performance target during warmup phase (0.0-1.0)
+    /// Default: 0.60 (vs 0.50 in standard phase)
+    /// Higher target prevents over-hardening while finding appropriate difficulty
     let warmupPerformanceTarget: CGFloat = 0.60
-    let warmupAdaptationRateMultiplier: CGFloat = 2.0
+    
+    /// Adaptation rate multiplier during warmup phase
+    /// Default: 1.7 (1.7x faster than normal)
+    /// Faster adaptation helps quickly find the player's current appropriate difficulty
+    let warmupAdaptationRateMultiplier: CGFloat = 1.7
+    
+    /// Enables automatic fatigue detection in late session
     let enableFatigueDetection: Bool = true
+    
+    /// Performance trend threshold for fatigue detection
+    /// Negative values indicate declining performance
     let fatigueTrendThreshold: CGFloat = -0.15
+    
+    /// Performance variance threshold for fatigue detection
+    /// Higher variance indicates inconsistent performance
     let fatigueVarianceThreshold: CGFloat = 0.3
+    
+    /// Adaptation rate multiplier during fatigue phase
+    /// Default: 0.75 (75% of normal rate)
+    /// Reduced rate prevents over-correction when player is fatigued
     let fatigueAdaptationRateMultiplier: CGFloat = 0.75
 }

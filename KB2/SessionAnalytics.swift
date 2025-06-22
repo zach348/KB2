@@ -1,7 +1,24 @@
 import Foundation
 
+/// SessionAnalytics provides calculations for session-related metrics
+/// including round estimation which is crucial for determining warmup phase length
 struct SessionAnalytics {
 
+    /// Estimates the expected number of rounds for a given session duration
+    /// - Parameters:
+    ///   - sessionDuration: Total session duration in seconds
+    ///   - config: Game configuration containing timing parameters
+    ///   - initialArousal: Starting arousal level (0.0-1.0)
+    /// - Returns: Estimated number of rounds that will fit in the session
+    /// 
+    /// This estimate is used by AdaptiveDifficultyManager to calculate:
+    /// - Warmup phase length (25% of expected rounds)
+    /// - Fatigue detection threshold (starts after 70% of expected rounds)
+    /// 
+    /// The calculation considers:
+    /// - Interactive portion of session (typically 65%)
+    /// - Arousal decay over time
+    /// - Round duration changes based on arousal level
     static func estimateExpectedRounds(
         forSessionDuration sessionDuration: TimeInterval,
         config: GameConfiguration,
@@ -43,13 +60,24 @@ struct SessionAnalytics {
         return estimatedRounds
     }
 
+    /// Calculates arousal level at a given progress point in the session
+    /// Uses exponential decay model for arousal reduction over time
     private static func calculateArousalForProgress(progress: Double, initialLevel: CGFloat) -> CGFloat {
         let endArousal: CGFloat = 0.0
-        let decayConstant: Double = 1.5 // Further reduced to achieve more rounds in longer sessions
+        let decayConstant: Double = 1.5 // Controls steepness of arousal decay
         let result = endArousal + (initialLevel - endArousal) * CGFloat(exp(-decayConstant * progress))
         return max(0.0, min(initialLevel, result))
     }
 
+    /// Calculates the expected duration of a single round at the given arousal level
+    /// - Parameters:
+    ///   - arousal: Current arousal level (0.0-1.0)
+    ///   - config: Game configuration containing timing parameters
+    /// - Returns: Expected round duration in seconds
+    /// 
+    /// A round consists of:
+    /// - Inter-trial interval (ITI) - time between identification phases
+    /// - Response time - time allowed for player to identify targets
     private static func calculateRoundDuration(
         arousal: CGFloat,
         config: GameConfiguration

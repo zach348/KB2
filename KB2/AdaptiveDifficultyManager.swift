@@ -1,17 +1,36 @@
 // Kalibrate/AdaptiveDifficultyManager.swift
 // Created: [Current Date]
 // Role: Manages adaptive difficulty based on Key Performance Indicators (KPIs) and arousal levels.
+//
+// The Adaptive Difficulty Manager (ADM) is the core system for dynamically adjusting game difficulty
+// based on player performance. It uses a multi-phase approach:
+//
+// 1. WARMUP PHASE (25% of session):
+//    - Starts at 85% of persisted or default difficulty
+//    - Adapts 1.7x faster than normal to quickly find appropriate difficulty
+//    - Performance target is 0.60 (vs 0.50 in standard phase)
+//    - Acts as a recalibration phase, not an automatic ease-in
+//    - Exits at adapted values (no reset to original difficulty)
+//
+// 2. STANDARD PHASE (50% of session):
+//    - Normal adaptation based on performance target of 0.50
+//    - Standard adaptation rate and thresholds
+//
+// 3. FATIGUE PHASE (final 25% of session, if detected):
+//    - Reduced adaptation rate (0.75x) to avoid over-correction
+//    - Triggered by negative performance trend and high variance
+//
+// Key Features:
+// - Performance-based adaptation with configurable KPI weights
+// - Arousal-responsive difficulty ranges for each DOM target
+// - Hysteresis to prevent oscillation
+// - Confidence-based adaptation scaling
+// - Cross-session persistence
+// - Direction-specific smoothing (faster easing, slower hardening)
 
 import Foundation
 import CoreGraphics
-import SpriteKit // For SKColor, though not directly used in this file yet
-
-// Kalibrate/AdaptiveDifficultyManager.swift
-// Created: [Current Date]
-// Role: Manages adaptive difficulty based on Key Performance Indicators (KPIs) and arousal levels.
-
-import Foundation
-import CoreGraphics
+import QuartzCore // For CACurrentMediaTime
 // import SpriteKit // For SKColor, though not directly used in this file yet
 // GameConfiguration now provides DOMTargetType and KPIType
 
@@ -72,14 +91,27 @@ class AdaptiveDifficultyManager {
     internal var lastSignificantChangeTime: TimeInterval = 0
 
     // MARK: - Session Phase Management (Phase 5)
+    
+    /// Represents the current phase of the gaming session
+    /// - warmup: Initial recalibration phase with reduced difficulty and faster adaptation
+    /// - standard: Main gameplay phase with normal adaptation
+    /// - fatigue: Late-session phase with reduced adaptation to avoid over-correction
     private enum SessionPhase {
         case warmup
         case standard
         case fatigue
     }
+    
+    /// Current session phase
     private var currentPhase: SessionPhase
+    
+    /// Number of rounds completed in the current phase
     private var roundsInCurrentPhase: Int = 0
+    
+    /// Total number of rounds in the warmup phase (calculated based on session duration)
     private let warmupPhaseLength: Int
+    
+    /// Round number at which to start checking for fatigue patterns
     private let fatigueStartRound: Int
     
     // MARK: - Hysteresis Helper Structures
@@ -112,7 +144,9 @@ class AdaptiveDifficultyManager {
             config: configuration,
             initialArousal: initialArousal
         )
-        self.warmupPhaseLength = Int(CGFloat(expectedRounds) * configuration.warmupPhaseProportion)
+        // Ensure at least 1 warmup round if warmup is enabled and there are any rounds
+        let calculatedWarmupLength = Int(CGFloat(expectedRounds) * configuration.warmupPhaseProportion)
+        self.warmupPhaseLength = (configuration.enableSessionPhases && expectedRounds > 0) ? max(1, calculatedWarmupLength) : calculatedWarmupLength
         self.fatigueStartRound = Int(CGFloat(expectedRounds) * (configuration.warmupPhaseProportion + 0.45)) // Warmup + 45% of session
 
         if configuration.enableSessionPhases {
@@ -173,6 +207,10 @@ class AdaptiveDifficultyManager {
         print("[ADM] === END PERSISTENCE INITIALIZATION ===")
 
         // Phase 5: Apply warmup difficulty reduction if applicable
+        // The warmup phase serves as a recalibration period where:
+        // - Difficulty starts at 85% of normal to ensure a comfortable start
+        // - Adaptation happens 1.7x faster to quickly find appropriate difficulty
+        // - Performance target is slightly higher (0.60) to avoid over-hardening
         if self.currentPhase == .warmup {
             print("[ADM Warm-up] === APPLYING WARMUP DIFFICULTY SCALING ===")
             if didLoadState {
@@ -462,6 +500,15 @@ class AdaptiveDifficultyManager {
         return max(0.0, min(1.0, weightedScore)) // Clamp the final adaptive score
     }
     
+    /// Modulates DOM targets based on performance score
+    /// - Parameter overallPerformanceScore: Normalized performance score (0.0-1.0)
+    /// 
+    /// This method:
+    /// 1. Updates the session phase
+    /// 2. Applies phase-specific performance targets and adaptation rates
+    /// 3. Calculates adaptation signal with hysteresis
+    /// 4. Distributes adaptation budget across DOM targets
+    /// 5. Updates absolute values from normalized positions
     func modulateDOMTargets(overallPerformanceScore: CGFloat) {
         updateSessionPhase() // Update phase at the start of each round
 
@@ -470,6 +517,8 @@ class AdaptiveDifficultyManager {
 
         switch currentPhase {
         case .warmup:
+            // Warmup phase uses higher performance target and faster adaptation
+            // to quickly find the player's appropriate difficulty level
             performanceTarget = config.warmupPerformanceTarget
             adaptationRateMultiplier = config.warmupAdaptationRateMultiplier
             
@@ -626,6 +675,9 @@ class AdaptiveDifficultyManager {
     // MARK: - Hysteresis & Confidence Implementation (Phase 3 & 4)
     
     // MARK: - Session Phase Logic (Phase 5)
+    
+    /// Updates the current session phase based on round count and performance metrics
+    /// Called at the start of each round to check for phase transitions
     private func updateSessionPhase() {
         guard config.enableSessionPhases else { return }
         
@@ -633,6 +685,8 @@ class AdaptiveDifficultyManager {
         
         switch currentPhase {
         case .warmup:
+            // Warmup phase completes after a fixed number of rounds
+            // Transitions to standard phase with adapted difficulty values
             if roundsInCurrentPhase >= warmupPhaseLength {
                 print("[ADM Warm-up] === WARMUP PHASE COMPLETE ===")
                 print("[ADM Warm-up] Total rounds in warmup: \(warmupPhaseLength)")
@@ -651,11 +705,13 @@ class AdaptiveDifficultyManager {
                 }
                 
                 print("[ADM Warm-up] === TRANSITIONING TO STANDARD PHASE ===")
+                // NOTE: Difficulty remains at adapted values - no reset to pre-warmup levels
                 currentPhase = .standard
                 roundsInCurrentPhase = 0
                 DataLogger.shared.logCustomEvent(eventType: "ADM_Phase_Transition_To_Standard", data: [:])
             }
         case .standard:
+            // Check for fatigue patterns in the later part of the session
             if config.enableFatigueDetection && roundsInCurrentPhase >= fatigueStartRound {
                 if detectFatiguePattern() {
                     currentPhase = .fatigue
@@ -664,11 +720,18 @@ class AdaptiveDifficultyManager {
                 }
             }
         case .fatigue:
-            // Once in fatigue, remain for the rest of the session.
+            // Once in fatigue, remain for the rest of the session
+            // Adaptation rate is reduced to avoid over-correction
             break
         }
     }
 
+    /// Detects fatigue patterns in performance history
+    /// - Returns: true if fatigue pattern is detected
+    /// 
+    /// Fatigue is indicated by:
+    /// - Negative performance trend (getting worse over time)
+    /// - High performance variance (inconsistent performance)
     private func detectFatiguePattern() -> Bool {
         let (_, trend, variance) = getPerformanceMetrics()
         return trend < config.fatigueTrendThreshold && variance > config.fatigueVarianceThreshold

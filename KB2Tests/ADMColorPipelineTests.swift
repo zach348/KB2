@@ -18,6 +18,7 @@ class ADMColorPipelineTests: XCTestCase {
     override func setUp() {
         super.setUp()
         gameConfig = GameConfiguration()
+        gameConfig.enableSessionPhases = false  // Disable warmup for consistent testing
         
         // Initialize ADM at mid-arousal (0.5) for consistent testing
         adm = AdaptiveDifficultyManager(configuration: gameConfig, initialArousal: 0.5, sessionDuration: 600)
