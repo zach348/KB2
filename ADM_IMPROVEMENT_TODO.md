@@ -407,18 +407,7 @@ This document outlines incremental improvements to address two critical issues i
 
 ## Phase 5: Polish and Advanced Features
 
-### Step 5.1: Predictive Elements
-- [ ] **Implement fatigue detection**
-  ```swift
-  private func detectFatiguePattern() -> Bool {
-      // Declining trend + increasing variance over time
-      let (_, trend, variance) = getPerformanceMetrics()
-      let sessionProgress = calculateSessionProgress()
-      
-      return trend < -0.1 && variance > 0.3 && sessionProgress > 0.5
-  }
-  ```
-
+### Step 5.1: Session-Aware Adaptation
 - [ ] **Add warm-up detection**
   ```swift
   private func isInWarmupPhase() -> Bool {
@@ -432,9 +421,7 @@ This document outlines incremental improvements to address two critical issues i
       let progress = calculateSessionProgress()
       
       if isInWarmupPhase() {
-          return config.warmupAdaptationRate  // Slower adaptation
-      } else if detectFatiguePattern() {
-          return config.fatigueAdaptationRate  // Faster difficulty reduction
+          return config.warmupAdaptationRate  // Different adaptation during warmup
       } else {
           return 1.0  // Normal adaptation rate
       }
