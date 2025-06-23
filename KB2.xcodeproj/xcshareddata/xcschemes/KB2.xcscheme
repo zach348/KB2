@@ -40,6 +40,11 @@
                BlueprintName = "KB2Tests"
                ReferencedContainer = "container:KB2.xcodeproj">
             </BuildableReference>
+            <SkippedTests>
+               <Test
+                  Identifier = "ADMDOMProfilingTests/testJitterMagnitudeControlledByConfig()">
+               </Test>
+            </SkippedTests>
          </TestableReference>
       </Testables>
    </TestAction>

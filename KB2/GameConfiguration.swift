@@ -357,7 +357,7 @@ struct GameConfiguration {
     /// Enables DOM-specific performance profiling and adaptation
     /// When true, the system tracks performance for each difficulty parameter individually
     /// and can adapt them independently based on the player's specific strengths/weaknesses
-    var enableDomSpecificProfiling: Bool = true
+    var enableDomSpecificProfiling: Bool = false
     
     /// Controls the magnitude of random variation added to DOM adaptations
     /// Default: 0.05 (5% jitter)

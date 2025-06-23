@@ -19,6 +19,7 @@ class ADMColorPipelineTests: XCTestCase {
         super.setUp()
         gameConfig = GameConfiguration()
         gameConfig.enableSessionPhases = false  // Disable warmup for consistent testing
+        gameConfig.enableDomSpecificProfiling = false  // Disable DOM profiling to avoid jitter
         
         // Initialize ADM at mid-arousal (0.5) for consistent testing
         adm = AdaptiveDifficultyManager(configuration: gameConfig, initialArousal: 0.5, sessionDuration: 600)

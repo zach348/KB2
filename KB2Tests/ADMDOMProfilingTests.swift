@@ -16,17 +16,29 @@ class ADMDOMProfilingTests: XCTestCase {
     
     override func setUp() {
         super.setUp()
+        
+        // Create a config that clears past session data to ensure clean state
         testConfig = GameConfiguration()
-        // Use configuration as-is since we can't modify constants
+        testConfig.clearPastSessionData = true  // This will prevent loading persisted state
         
         adm = AdaptiveDifficultyManager(
             configuration: testConfig,
             initialArousal: 0.5,
             sessionDuration: 300
         )
+        
+        // Re-initialize DOM profiles to ensure they're empty
+        // This is necessary because the ADM might have loaded state before we could intervene
+        for domType in DOMTargetType.allCases {
+            adm.domPerformanceProfiles[domType] = DOMPerformanceProfile(domType: domType)
+        }
     }
     
     override func tearDown() {
+        // Clean up test user state
+        if let testUserId = adm?.userId {
+            ADMPersistenceManager.clearState(for: testUserId)
+        }
         testConfig = nil
         adm = nil
         super.tearDown()
