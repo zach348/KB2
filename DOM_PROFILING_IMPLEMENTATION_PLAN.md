@@ -67,8 +67,7 @@ This document outlines a detailed, phased implementation plan for the **DOM-Spec
 
 ### Phase 2: Passive Data Collection
 
-**Status**: � In Progress
-
+**Status**: 🟢 Completed
 **Goal**: Start collecting the necessary data for profiling without affecting the current adaptation logic.
 
 **Progress Notes**:
@@ -97,12 +96,17 @@ This document outlines a detailed, phased implementation plan for the **DOM-Spec
 
 ### Phase 3: Introduce Controlled Variance (Adaptation Jitter)
 
-**Status**: ⚪️ Not Started
+**Status**: ✅ Completed
 
 **Goal**: Introduce the "jitter" mechanism to de-correlate DOM movements, which is essential for effective profiling.
 
 **Progress Notes**:
-- None
+- Started: 6/23/2025, 3:51 PM
+- Completed: 6/23/2025, 4:00 PM
+- Implemented jitter logic in `applyModulation` when `enableDomSpecificProfiling` is true
+- Added comprehensive unit tests for jitter functionality
+- Tests confirm jitter produces variation while respecting bounds
+- Build successful, all tests pass (except one intentionally skipped test)
 
 
 **Steps**:

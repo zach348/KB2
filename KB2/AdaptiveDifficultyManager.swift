@@ -93,7 +93,7 @@ class AdaptiveDifficultyManager {
     private let maxHistorySize: Int  // Will be set from config
 
     // MARK: - DOM Performance Profiles (Phase 5.2)
-    private var domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile] = [:]
+    internal var domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile] = [:] // Made internal for testing
 
     // MARK: - Logging Throttling
     private var lastLogTime: TimeInterval = 0
@@ -993,7 +993,21 @@ class AdaptiveDifficultyManager {
         let smoothedChange = rawChange * smoothing
         let smoothedPosition = currentPosition + smoothedChange
         
-        normalizedPositions[domType] = smoothedPosition
+        // Phase 5.3: Apply jitter if DOM profiling is enabled
+        var finalPosition = smoothedPosition
+        if config.enableDomSpecificProfiling {
+            let jitterRange = config.domAdaptationJitterFactor
+            let jitter = CGFloat.random(in: -jitterRange...jitterRange)
+            finalPosition += jitter
+            // Clamp the final position to ensure it stays within the 0.0-1.0 range
+            finalPosition = max(0.0, min(1.0, finalPosition))
+            
+            if abs(jitter) > 0.001 {
+                print("[ADM DOM Profiling] Applied jitter to \(domType): \(String(format: "%.3f", jitter)) (position: \(String(format: "%.3f", smoothedPosition)) → \(String(format: "%.3f", finalPosition)))")
+            }
+        }
+        
+        normalizedPositions[domType] = finalPosition
         
         let confidenceString = String(format: "C:%.2f (V:%.2f, D:%.2f, H:%.2f)", confidence.total, confidence.variance, confidence.direction, confidence.history)
         print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", rawChange / (smoothing > 0 ? smoothing : 1) )) -> ActualChange=\(String(format: "%.3f", smoothedChange)). \(confidenceString). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedPosition))")
