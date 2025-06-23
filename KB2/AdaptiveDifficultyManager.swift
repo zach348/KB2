@@ -381,6 +381,20 @@ class AdaptiveDifficultyManager {
         // 2. Calculate overallPerformanceScore
         let performanceScore = calculateOverallPerformanceScore(normalizedKPIs: normalizedKPIs)
         
+        // Phase 5.2: Collect DOM-specific performance data (passive)
+        for domType in DOMTargetType.allCases {
+            let currentValue = getCurrentValue(for: domType)
+            domPerformanceProfiles[domType]?.recordPerformance(
+                domValue: currentValue,
+                performance: performanceScore
+            )
+            
+            // Temporary logging to verify data collection
+            if let profile = domPerformanceProfiles[domType] {
+                print("[ADM DOM Profiling] \(domType): value=\(String(format: "%.3f", currentValue)), performance=\(String(format: "%.3f", performanceScore)), buffer_size=\(profile.performanceByValue.count)")
+            }
+        }
+        
         // 3. Store performance history
         let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
             $0[$1] = getCurrentValue(for: $1)

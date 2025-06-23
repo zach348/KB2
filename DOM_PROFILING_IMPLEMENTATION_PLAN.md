@@ -67,12 +67,12 @@ This document outlines a detailed, phased implementation plan for the **DOM-Spec
 
 ### Phase 2: Passive Data Collection
 
-**Status**: ⚪️ Not Started
+**Status**: � In Progress
 
 **Goal**: Start collecting the necessary data for profiling without affecting the current adaptation logic.
 
 **Progress Notes**:
-- None
+- Started: 6/23/2025, 3:36 PM
 
 
 **Steps**:
