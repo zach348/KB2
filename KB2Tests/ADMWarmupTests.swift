@@ -8,6 +8,7 @@ class ADMWarmupTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
+        config.clearPastSessionData = true  // Ensure clean state for tests
         // Clear any persisted state
         ADMPersistenceManager.clearState(for: UserIDManager.getUserId())
     }
@@ -52,8 +53,8 @@ class ADMWarmupTests: XCTestCase {
     
     func testWarmupInitialDifficultyScaling_FreshSession() {
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         testConfig.enableSessionPhases = true
-        testConfig.clearPastSessionData = true // Ensure fresh start
         
         let adm = AdaptiveDifficultyManager(
             configuration: testConfig,
@@ -127,6 +128,7 @@ class ADMWarmupTests: XCTestCase {
     
     func testWarmupAdaptationRate() {
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         testConfig.enableSessionPhases = true
         
         let adm = AdaptiveDifficultyManager(
@@ -144,6 +146,7 @@ class ADMWarmupTests: XCTestCase {
     
     func testWarmupPerformanceBasedAdaptation_GoodPerformance() {
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         testConfig.enableSessionPhases = true
         testConfig.performanceHistoryWindowSize = 5
         
@@ -179,6 +182,7 @@ class ADMWarmupTests: XCTestCase {
     
     func testWarmupPerformanceBasedAdaptation_PoorPerformance() {
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         testConfig.enableSessionPhases = true
         testConfig.performanceHistoryWindowSize = 5
         
@@ -216,6 +220,7 @@ class ADMWarmupTests: XCTestCase {
     
     func testWarmupToStandardPhaseTransition() {
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         testConfig.enableSessionPhases = true
         testConfig.performanceHistoryWindowSize = 10
         
@@ -276,6 +281,7 @@ class ADMWarmupTests: XCTestCase {
     
     func testWarmupDisabled() {
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         testConfig.enableSessionPhases = false // Disable warmup
         
         let adm = AdaptiveDifficultyManager(
@@ -293,6 +299,7 @@ class ADMWarmupTests: XCTestCase {
     
     func testWarmupWithVeryShortSession() {
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         testConfig.enableSessionPhases = true
         
         let sessionDuration: TimeInterval = 2 * 60 // 2 minutes

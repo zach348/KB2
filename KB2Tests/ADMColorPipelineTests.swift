@@ -18,6 +18,7 @@ class ADMColorPipelineTests: XCTestCase {
     override func setUp() {
         super.setUp()
         gameConfig = GameConfiguration()
+        gameConfig.clearPastSessionData = true  // Ensure clean state for tests
         gameConfig.enableSessionPhases = false  // Disable warmup for consistent testing
         gameConfig.enableDomSpecificProfiling = false  // Disable DOM profiling to avoid jitter
         

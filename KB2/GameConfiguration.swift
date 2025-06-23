@@ -364,4 +364,9 @@ struct GameConfiguration {
     /// This "jitter" ensures DOM values don't move in perfect lockstep,
     /// allowing the system to isolate the impact of individual difficulty parameters
     let domAdaptationJitterFactor: CGFloat = 0.05
+    
+    /// Minimum standard deviation in DOM values required before adaptation signals are calculated
+    /// Default: 0.1 (10% of the 0-1 normalized range)
+    /// This prevents adaptation decisions based on insufficient exploration of the parameter space
+    let minimumDOMVarianceThreshold: CGFloat = 0.1
 }

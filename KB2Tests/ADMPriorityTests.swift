@@ -9,6 +9,7 @@ class ADMPriorityTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
+        config.clearPastSessionData = true  // Ensure clean state for tests
         // Disable DOM profiling to avoid jitter in tests
         config.enableDomSpecificProfiling = false
         adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)

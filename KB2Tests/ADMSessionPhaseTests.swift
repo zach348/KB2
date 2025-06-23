@@ -8,6 +8,7 @@ class ADMSessionPhaseTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
+        config.clearPastSessionData = true  // Ensure clean state for tests
     }
 
     override func tearDown() {
@@ -43,8 +44,10 @@ class ADMSessionPhaseTests: XCTestCase {
     // MARK: - ADM Initialization Tests
 
     func testADMInitialization_WarmupEnabled() {
+        var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         let adm = AdaptiveDifficultyManager(
-            configuration: config,
+            configuration: testConfig,
             initialArousal: 1.0,
             sessionDuration: 15 * 60
         )
@@ -56,6 +59,7 @@ class ADMSessionPhaseTests: XCTestCase {
 
     func testWarmupInitialDifficulty_FreshSession() {
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         // Ensure persistence is off for this test
         // In a real scenario, this would be handled by ADMPersistenceManager returning nil
         

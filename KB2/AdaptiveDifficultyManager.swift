@@ -53,6 +53,7 @@ struct PersistedADMState: Codable {
 // MARK: - DOM Performance Profile Structure (Phase 5.2)
 struct DOMPerformanceProfile: Codable {
     struct PerformanceDataPoint: Codable {
+        let timestamp: TimeInterval
         let value: CGFloat
         let performance: CGFloat
     }
@@ -61,7 +62,11 @@ struct DOMPerformanceProfile: Codable {
     var performanceByValue: [PerformanceDataPoint] = []
     
     mutating func recordPerformance(domValue: CGFloat, performance: CGFloat) {
-        performanceByValue.append(PerformanceDataPoint(value: domValue, performance: performance))
+        performanceByValue.append(PerformanceDataPoint(
+            timestamp: CACurrentMediaTime(),
+            value: domValue,
+            performance: performance
+        ))
         // Buffer size of 200 to maintain long-term performance history across sessions
         if performanceByValue.count > 200 {
             performanceByValue.removeFirst()
@@ -71,7 +76,7 @@ struct DOMPerformanceProfile: Codable {
 
 class AdaptiveDifficultyManager {
     var dataLogger: DataLogger = DataLogger.shared
-    private let config: GameConfiguration
+    internal let config: GameConfiguration
     private var currentArousalLevel: CGFloat
     var userId: String // Changed to var and made internal for testing
 
@@ -301,7 +306,7 @@ class AdaptiveDifficultyManager {
     }
     
     /// Updates all absolute DOM values based on their normalized positions and current ranges
-    private func updateAbsoluteValuesFromNormalizedPositions() {
+    internal func updateAbsoluteValuesFromNormalizedPositions() {
         for (domType, normalizedPosition) in normalizedPositions {
             let absoluteValue = normalizedToAbsoluteValue(normalizedValue: normalizedPosition, for: domType)
             setCurrentValue(for: domType, rawValue: absoluteValue)
@@ -541,6 +546,13 @@ class AdaptiveDifficultyManager {
     /// 5. Updates absolute values from normalized positions
     func modulateDOMTargets(overallPerformanceScore: CGFloat) {
         updateSessionPhase() // Update phase at the start of each round
+
+        // Phase 5: Check if DOM-specific profiling should be used instead
+        if config.enableDomSpecificProfiling && currentPhase == .standard {
+            // Use DOM-specific profiling instead of overall performance score
+            modulateDOMsWithProfiling()
+            return
+        }
 
         var performanceTarget = config.adaptationIncreaseThreshold - 0.05 // Default target
         var adaptationRateMultiplier: CGFloat = 1.0
@@ -1361,6 +1373,150 @@ class AdaptiveDifficultyManager {
              return (minA_Val, maxA_Val)
         // Removed default case as DOMTargetType is exhaustive
         }
+    }
+    
+    // MARK: - DOM-Specific Profiling Methods (Phase 4)
+    
+    /// Calculates the standard deviation of a set of values
+    internal func calculateStandardDeviation(values: [CGFloat]) -> CGFloat {
+        guard values.count > 1 else { return 0.0 }
+        
+        let mean = values.reduce(0.0, +) / CGFloat(values.count)
+        let squaredDifferences = values.map { pow($0 - mean, 2) }
+        let variance = squaredDifferences.reduce(0.0, +) / CGFloat(values.count)
+        
+        return sqrt(variance)
+    }
+    
+    /// Calculates weighted linear regression slope for DOM performance data
+    internal func calculateWeightedSlope(data: [DOMPerformanceProfile.PerformanceDataPoint], weights: [CGFloat]) -> CGFloat {
+        guard data.count >= 2, data.count == weights.count else { return 0.0 }
+        
+        let totalWeight = weights.reduce(0.0, +)
+        guard totalWeight > 0 else { return 0.0 }
+        
+        // Calculate weighted means
+        var sumWX: CGFloat = 0.0   // sum of weighted x (DOM values)
+        var sumWY: CGFloat = 0.0   // sum of weighted y (performance)
+        
+        for (index, point) in data.enumerated() {
+            let w = weights[index]
+            sumWX += w * point.value
+            sumWY += w * point.performance
+        }
+        
+        let meanX = sumWX / totalWeight
+        let meanY = sumWY / totalWeight
+        
+        // Calculate weighted covariance and variance
+        var sumWXY: CGFloat = 0.0  // sum of weighted (x - meanX)(y - meanY)
+        var sumWXX: CGFloat = 0.0  // sum of weighted (x - meanX)^2
+        
+        for (index, point) in data.enumerated() {
+            let w = weights[index]
+            let dx = point.value - meanX
+            let dy = point.performance - meanY
+            
+            sumWXY += w * dx * dy
+            sumWXX += w * dx * dx
+        }
+        
+        // Avoid division by zero
+        guard sumWXX > 0.0001 else { return 0.0 }
+        
+        // Slope = covariance / variance
+        let slope = sumWXY / sumWXX
+        
+        return slope
+    }
+    
+    /// Calculates DOM-specific adaptation signal based on performance profiling
+    internal func calculateDOMSpecificAdaptationSignal(for domType: DOMTargetType) -> CGFloat {
+        guard let profile = domPerformanceProfiles[domType] else { return 0.0 }
+        
+        let dataPoints = profile.performanceByValue
+        
+        // Guard clause 1: Minimum history size
+        guard dataPoints.count >= 7 else {
+            print("[ADM DOM Signal] Insufficient data for \(domType): \(dataPoints.count) points (need 7+)")
+            return 0.0
+        }
+        
+        // Extract DOM values for variance check
+        let domValues = dataPoints.map { $0.value }
+        let domStdDev = calculateStandardDeviation(values: domValues)
+        
+        // Guard clause 2: Minimum variance threshold
+        let minimumVarianceThreshold = config.minimumDOMVarianceThreshold
+        guard domStdDev >= minimumVarianceThreshold else {
+            print("[ADM DOM Signal] Insufficient variance for \(domType): σ=\(String(format: "%.3f", domStdDev)) (need ≥\(minimumVarianceThreshold))")
+            return 0.0
+        }
+        
+        // Calculate recency weights (24-hour half-life)
+        let currentTime = CACurrentMediaTime()
+        let weights = dataPoints.map { entry in
+            let ageInHours = (currentTime - entry.timestamp) / 3600.0
+            return CGFloat(exp(-ageInHours * log(2.0) / 24.0))
+        }
+        
+        // Calculate weighted slope
+        let slope = calculateWeightedSlope(data: dataPoints, weights: weights)
+        
+        print("[ADM DOM Signal] \(domType): slope=\(String(format: "%.3f", slope)), σ=\(String(format: "%.3f", domStdDev)), n=\(dataPoints.count)")
+        
+        // Return the slope as the adaptation signal
+        // Positive slope = performance improves with higher DOM values (can handle harder)
+        // Negative slope = performance degrades with higher DOM values (struggling)
+        return slope
+    }
+    
+    /// Entry point for DOM-specific profiling modulation
+    internal func modulateDOMsWithProfiling() {
+        print("[ADM DOM Profiling] === PROFILE-BASED ADAPTATION ===")
+        
+        var totalAdaptationSignal: CGFloat = 0.0
+        var domSignals: [DOMTargetType: CGFloat] = [:]
+        
+        // Calculate adaptation signal for each DOM
+        for domType in DOMTargetType.allCases {
+            let signal = calculateDOMSpecificAdaptationSignal(for: domType)
+            domSignals[domType] = signal
+            totalAdaptationSignal += abs(signal)
+        }
+        
+        print("[ADM DOM Profiling] Individual signals:")
+        for (domType, signal) in domSignals.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            let direction = signal > 0 ? "↑" : signal < 0 ? "↓" : "→"
+            print("  - \(domType): \(String(format: "%.3f", signal)) \(direction)")
+        }
+        
+        // Apply signals to each DOM using existing modulation infrastructure
+        let confidence = calculateAdaptationConfidence()
+        
+        for (domType, signal) in domSignals {
+            guard abs(signal) > 0.001 else { continue }
+            
+            let currentPosition = normalizedPositions[domType] ?? 0.5
+            
+            // Scale signal appropriately (signals are typically in range -1 to 1)
+            // Apply a conservative scaling factor
+            let scaledSignal = signal * 0.1  // 10% max change per round
+            
+            let targetPosition = currentPosition + scaledSignal
+            
+            _ = applyModulation(
+                domType: domType,
+                currentPosition: currentPosition,
+                desiredPosition: targetPosition,
+                confidence: confidence
+            )
+        }
+        
+        // Update absolute values after all modulations
+        updateAbsoluteValuesFromNormalizedPositions()
+        
+        print("[ADM DOM Profiling] === ADAPTATION COMPLETE ===")
     }
     
     // MARK: - Persistence Methods (Phase 4.5)

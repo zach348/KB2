@@ -16,6 +16,7 @@ class ADMHistoryTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
+        config.clearPastSessionData = true  // Ensure clean state for tests
         // We can use a default arousal level for these tests, as history is independent of it
         adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
     }

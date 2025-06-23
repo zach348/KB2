@@ -9,6 +9,7 @@ class ADMTrendTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
+        config.clearPastSessionData = true  // Ensure clean state for tests
         adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
     }
 

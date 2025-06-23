@@ -14,6 +14,7 @@ class ADMResponseTimeTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
+        config.clearPastSessionData = true  // Ensure clean state for tests
         config.enableSessionPhases = false  // Disable warmup for consistent testing
         config.enableDomSpecificProfiling = false  // Disable DOM profiling to avoid jitter
         // Start with mid-range arousal
@@ -231,6 +232,7 @@ class ADMResponseTimeTests: XCTestCase {
     func testResponseTimeAdaptationWithPerformanceHistory() {
         // Setup ADM with history enabled
         var testConfig = GameConfiguration()
+        testConfig.clearPastSessionData = true  // Ensure clean state for tests
         testConfig.enableSessionPhases = false  // Disable warmup for consistent testing
         testConfig.enableDomSpecificProfiling = false  // Disable DOM profiling to avoid jitter
         adm = AdaptiveDifficultyManager(configuration: testConfig, initialArousal: 0.5, sessionDuration: 600)
