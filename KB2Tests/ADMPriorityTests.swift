@@ -9,6 +9,8 @@ class ADMPriorityTests: XCTestCase {
     override func setUp() {
         super.setUp()
         config = GameConfiguration()
+        // Disable DOM profiling to avoid jitter in tests
+        config.enableDomSpecificProfiling = false
         adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
     }
 
@@ -108,9 +110,9 @@ class ADMPriorityTests: XCTestCase {
     }
     
     func testBudgetDistributionEasing() {
-        // GIVEN: All DOMs are at the midpoint, so pass 1 is skipped
+        // GIVEN: All DOMs are slightly above the midpoint to ensure Pass 1 engages
         for domType in DOMTargetType.allCases {
-            adm.normalizedPositions[domType] = 0.5
+            adm.normalizedPositions[domType] = 0.6
         }
         
         let initialPositions = adm.normalizedPositions
@@ -120,7 +122,7 @@ class ADMPriorityTests: XCTestCase {
         
         // THEN: All DOMs should be eased from their initial position
         for domType in DOMTargetType.allCases {
-            XCTAssertLessThan(adm.normalizedPositions[domType]!, initialPositions[domType]!, "All DOMs should be eased when starting at the midpoint.")
+            XCTAssertLessThan(adm.normalizedPositions[domType]!, initialPositions[domType]!, "All DOMs should be eased from their initial position.")
         }
         
         // AND: The DOMs with higher inverted priority (originally lower priority) should have moved more

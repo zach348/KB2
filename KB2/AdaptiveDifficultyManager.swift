@@ -46,7 +46,8 @@ struct PersistedADMState: Codable {
     let lastAdaptationDirection: AdaptiveDifficultyManager.AdaptationDirection
     let directionStableCount: Int
     let normalizedPositions: [DOMTargetType: CGFloat]
-    var version: Int = 1 // For future migration support
+    let domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile]? // Optional for backward compatibility
+    var version: Int = 2 // Incremented for DOM profile support
 }
 
 // MARK: - DOM Performance Profile Structure (Phase 5.2)
@@ -61,8 +62,8 @@ struct DOMPerformanceProfile: Codable {
     
     mutating func recordPerformance(domValue: CGFloat, performance: CGFloat) {
         performanceByValue.append(PerformanceDataPoint(value: domValue, performance: performance))
-        // Simple buffer for now, can be made more sophisticated later
-        if performanceByValue.count > 20 {
+        // Buffer size of 200 to maintain long-term performance history across sessions
+        if performanceByValue.count > 200 {
             performanceByValue.removeFirst()
         }
     }
@@ -1382,7 +1383,8 @@ class AdaptiveDifficultyManager {
             performanceHistory: performanceHistory,
             lastAdaptationDirection: lastAdaptationDirection,
             directionStableCount: directionStableCount,
-            normalizedPositions: normalizedPositions
+            normalizedPositions: normalizedPositions,
+            domPerformanceProfiles: domPerformanceProfiles
         )
         
         ADMPersistenceManager.saveState(state, for: self.userId)
@@ -1460,6 +1462,36 @@ class AdaptiveDifficultyManager {
             
             print("\(prefix) \(label):")
             print("     └─ Position: \(String(format: "%.3f", position)) (\(difficulty))")
+        }
+        
+        // Load DOM performance profiles (Phase 5.2)
+        if let persistedProfiles = state.domPerformanceProfiles {
+            domPerformanceProfiles = persistedProfiles
+            print("[ADM] DOM Performance Profiles:")
+            
+            let sortedProfiles = persistedProfiles.sorted(by: { $0.key.rawValue < $1.key.rawValue })
+            for (index, (domType, profile)) in sortedProfiles.enumerated() {
+                let isLast = index == sortedProfiles.count - 1
+                let prefix = isLast ? "  └─" : "  ├─"
+                
+                let entryCount = profile.performanceByValue.count
+                print("\(prefix) \(domType): \(entryCount) data points")
+                
+                // Show summary statistics if data exists
+                if !profile.performanceByValue.isEmpty {
+                    let values = profile.performanceByValue.map { $0.value }
+                    let performances = profile.performanceByValue.map { $0.performance }
+                    
+                    let avgValue = values.reduce(0, +) / CGFloat(values.count)
+                    let avgPerformance = performances.reduce(0, +) / CGFloat(performances.count)
+                    
+                    print("     ├─ Avg DOM value: \(String(format: "%.2f", avgValue))")
+                    print("     └─ Avg performance: \(String(format: "%.2f", avgPerformance))")
+                }
+            }
+        } else {
+            print("[ADM] No DOM performance profiles found in persisted state (older save format)")
+            // Profiles are already initialized fresh in init()
         }
         
         // Calculate initial confidence based on loaded data

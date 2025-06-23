@@ -52,25 +52,22 @@ This document outlines the remaining and future improvements for the ADM. The co
 The foundational ADM is complete. The following advanced features are proposed for future development.
 
 ### Step 5.2: DOM-Specific Performance Profiling
-- **Status**: Not Started
+- **Status**: Partially Implemented (Phase 3.5 of 6 complete)
 - **Goal**: To understand which difficulty parameters are most impactful for a user by tracking performance at different settings for each DOM target. This moves the ADM beyond a single overall performance score to a more nuanced model of player skill.
-- **Implementation Sketch**:
-  ```swift
-  struct DOMPerformanceProfile {
-      let domType: DOMTargetType
-      var performanceByValue: [(value: CGFloat, performance: CGFloat)] = []
-      var optimalRange: (min: CGFloat, max: CGFloat)?
-      
-      mutating func recordPerformance(domValue: CGFloat, performance: CGFloat) {
-          performanceByValue.append((domValue, performance))
-          // Keep only recent samples
-          if performanceByValue.count > 20 {
-              performanceByValue.removeFirst()
-          }
-          updateOptimalRange()
-      }
-  }
-  ```
+- **Completed**:
+  - ✅ Phase 1: Data structures and configuration (200-entry buffer for long-term history)
+  - ✅ Phase 2: Passive data collection in `recordIdentificationPerformance`
+  - ✅ Phase 3: Adaptation jitter mechanism for DOM value exploration
+  - ✅ Phase 3.5: Cross-session persistence of DOM profiles
+- **Remaining**:
+  - ⚪ Phase 4: Profile-based adaptation logic using weighted linear regression
+  - ⚪ Phase 5: Feature flag activation and integration
+  - ⚪ Phase 6: Legacy code cleanup
+- **Key Design Decisions**:
+  - 200-entry buffer size to maintain ~20 sessions of history
+  - Timestamp-based recency weighting for regression analysis
+  - Minimum 7 data points required before adaptation signals activate
+  - Standard deviation threshold to ensure sufficient DOM value variance
 
 ### Step 5.3: Enhanced Configuration and Presets
 - **Status**: Not Started

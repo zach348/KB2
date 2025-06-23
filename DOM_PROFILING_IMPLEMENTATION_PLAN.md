@@ -1,15 +1,16 @@
-# DOM-Specific Performance Profiling Implementation Plan
+# DOM-Specific Performance Profiling Implementation Plan (v2)
 
 ## 1. Overview
 
-This document outlines a detailed, phased implementation plan for the **DOM-Specific Performance Profiling** feature in the Adaptive Difficulty Manager (ADM). The goal is to evolve the ADM from using a single, global performance score to a more nuanced model that can identify a user's specific strengths and weaknesses with respect to individual Difficulty of Mastery (DOM) parameters.
+This document outlines a detailed, phased implementation plan for the **DOM-Specific Performance Profiling** feature. The goal is to evolve the ADM from using a single, global performance score to a more nuanced, persistent model that identifies and adapts to a user's specific skills over time.
 
 ## 2. Guiding Principles
 
 -   **Minimally Invasive & Incremental**: Each phase consists of small, logical changes that can be independently developed, tested, and committed.
 -   **Always Buildable**: The project will be in a buildable and runnable state at the end of each phase.
--   **Feature Flag Controlled**: The new logic will be introduced behind a feature flag (`enableDomSpecificProfiling`) to allow for parallel implementation, A/B testing, and safe rollback if needed.
+-   **Feature Flag Controlled**: The new logic will be introduced behind a feature flag (`enableDomSpecificProfiling`) for safety and A/B testing.
 -   **Test-Driven**: New logic will be accompanied by corresponding unit and integration tests.
+-   **Long-Term & Adaptive**: The system will build a long-term skill profile that persists across sessions but intelligently adapts to recent performance.
 
 ---
 
@@ -19,78 +20,58 @@ This document outlines a detailed, phased implementation plan for the **DOM-Spec
 
 **Status**: 🟢 Completed
 
-**Goal**: Establish the necessary data structures and configuration parameters without introducing any functional changes.
+**Goal**: Establish the necessary data structures and configuration parameters.
 
 **Progress Notes**:
-- Started: 6/23/2025, 3:19 PM
-- Completed: 6/23/2025, 3:23 PM
-- Added `DOMPerformanceProfile` struct with `PerformanceDataPoint` sub-struct (fixed Codable issue)
-- Added `domPerformanceProfiles` dictionary to ADM
-- Initialized profiles for all DOM types in init
-- Added configuration parameters: `enableDomSpecificProfiling` (false) and `domAdaptationJitterFactor` (0.05)
-- Build successful with no functional changes
-
+- Added `DOMPerformanceProfile` struct.
+- Added `domPerformanceProfiles` dictionary to ADM.
+- Added `enableDomSpecificProfiling` and `domAdaptationJitterFactor` to config.
+- **REVISED**: Increased the data buffer size to support a long-term skill profile.
 
 **Steps**:
 1.  **Create `DOMPerformanceProfile` Struct**:
-    -   In `AdaptiveDifficultyManager.swift`, define the `DOMPerformanceProfile` struct as planned.
+    -   Define the struct with a `performanceByValue` array.
+    -   **Crucially, set the buffer size to 200 entries** to ensure a long-term history is maintained.
     ```swift
     struct DOMPerformanceProfile: Codable {
-        let domType: DOMTargetType
-        var performanceByValue: [(value: CGFloat, performance: CGFloat)] = []
+        // ...
+        var performanceByValue: [PerformanceDataPoint] = []
         
-        mutating func recordPerformance(domValue: CGFloat, performance: CGFloat) {
-            performanceByValue.append((domValue, performance))
-            // Simple buffer for now, can be made more sophisticated later
-            if performanceByValue.count > 20 {
+        mutating func recordPerformance(...) {
+            performanceByValue.append(...)
+            if performanceByValue.count > 200 { // Increased to 200
                 performanceByValue.removeFirst()
             }
         }
     }
     ```
 2.  **Integrate into `AdaptiveDifficultyManager`**:
-    -   Add the new property: `private var domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile] = [:]`.
-    -   In the `init` method, initialize this dictionary, creating a profile for each `DOMTargetType`.
-3.  **Add Configuration Parameters**:
-    -   In `GameConfiguration.swift`, add the following new parameters:
-        -   `enableDomSpecificProfiling: Bool = false` (The master feature flag).
-        -   `domAdaptationJitterFactor: CGFloat = 0.05` (Controls the magnitude of the random perturbation).
-
-**Build & Test**:
--   Ensure the project builds successfully. No functional tests are needed yet, as no logic has changed.
+    -   Add `private var domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile] = [:]`.
+    -   Initialize profiles for all DOM types in `init`.
 
 **Commit Point**:
 -   **Message**: `feat(ADM): Add data structures and config for DOM profiling`
--   **Description**: Introduces the foundational structs and configuration settings for the upcoming DOM-specific performance profiling feature. No functional changes.
+-   **Description**: Introduces foundational structs and config for DOM profiling, including a 200-entry buffer for long-term performance history.
 
 ---
 
 ### Phase 2: Passive Data Collection
 
 **Status**: 🟢 Completed
-**Goal**: Start collecting the necessary data for profiling without affecting the current adaptation logic.
+
+**Goal**: Start collecting performance data for each DOM parameter without affecting adaptation logic.
 
 **Progress Notes**:
-- Started: 6/23/2025, 3:36 PM
-
+- Implemented data collection in `recordIdentificationPerformance`.
+- Verified with logging that profiles are populated.
 
 **Steps**:
 1.  **Update `recordIdentificationPerformance`**:
-    -   In `AdaptiveDifficultyManager.swift`, inside `recordIdentificationPerformance`, after the `overallPerformanceScore` is calculated, add a new block of code.
-    -   This block will iterate through all `DOMTargetType` cases. For each `domType`, it will:
-        -   Get the current absolute value of the DOM target (e.g., `currentMeanBallSpeed`).
-        -   Call `domPerformanceProfiles[domType]?.recordPerformance(domValue: ..., performance: overallPerformanceScore)`.
-2.  **Add Logging**:
-    -   Add temporary `print` or `DataLogger` statements to verify that the `performanceByValue` arrays are being populated correctly each round.
-
-**Build & Test**:
--   Build the project and run a session.
--   Verify through logs that the `domPerformanceProfiles` dictionary is being populated with data each round.
--   Confirm that the game's difficulty adaptation behaves exactly as it did before (as the core logic is untouched).
+    -   After calculating `overallPerformanceScore`, iterate through all DOM types and call `recordPerformance` on the corresponding profile, storing the DOM's current absolute value and the player's performance.
 
 **Commit Point**:
 -   **Message**: `feat(ADM): Implement passive data collection for DOM performance profiling`
--   **Description**: The ADM now collects performance data for each DOM parameter in the background. The core adaptation logic remains unchanged.
+-   **Description**: The ADM now collects performance data for each DOM parameter in the background. Core adaptation logic is unchanged.
 
 ---
 
@@ -98,41 +79,54 @@ This document outlines a detailed, phased implementation plan for the **DOM-Spec
 
 **Status**: ✅ Completed
 
-**Goal**: Introduce the "jitter" mechanism to de-correlate DOM movements, which is essential for effective profiling.
+**Goal**: Introduce a "jitter" mechanism to de-correlate DOM movements, which is essential for effective profiling.
 
 **Progress Notes**:
-- Started: 6/23/2025, 3:51 PM
-- Completed: 6/23/2025, 4:00 PM
-- Implemented jitter logic in `applyModulation` when `enableDomSpecificProfiling` is true
-- Added comprehensive unit tests for jitter functionality
-- Tests confirm jitter produces variation while respecting bounds
-- Build successful, all tests pass (except one intentionally skipped test)
-
+- Implemented jitter logic in `applyModulation`.
+- Added comprehensive unit tests confirming correct behavior.
 
 **Steps**:
 1.  **Modify `applyModulation`**:
-    -   In `AdaptiveDifficultyManager.swift`, locate the `applyModulation` function.
-    -   Just before the final `normalizedPositions[domType] = smoothedPosition` line, add the jitter logic, wrapped in an `if config.enableDomSpecificProfiling` check.
-    ```swift
-    var finalPosition = smoothedPosition
-    if config.enableDomSpecificProfiling {
-        let jitterRange = config.domAdaptationJitterFactor
-        let jitter = CGFloat.random(in: -jitterRange...jitterRange)
-        finalPosition += jitter
-    }
-    // Clamp the final position to ensure it stays within the 0.0-1.0 range
-    normalizedPositions[domType] = max(0.0, min(1.0, finalPosition))
-    ```
-2.  **Add Unit Tests**:
-    -   Create a new test case to verify that when the feature flag is enabled, the final normalized position differs slightly from the calculated smoothed position.
-
-**Build & Test**:
--   Build and run unit tests to confirm the jitter logic works as expected.
--   Run a session with the feature flag temporarily enabled to observe the small, random variations in DOM target values.
+    -   Inside an `if config.enableDomSpecificProfiling` check, add a small, random value (`+/- domAdaptationJitterFactor`) to the calculated DOM position before it's finalized.
+    -   Ensure the final value is clamped between 0.0 and 1.0.
 
 **Commit Point**:
 -   **Message**: `feat(ADM): Add controlled adaptation jitter for DOM exploration`
--   **Description**: Implements a small, random jitter to DOM adaptations when the profiling feature is enabled. This provides the necessary variance for performance attribution.
+-   **Description**: Implements a small, random jitter to DOM adaptations when profiling is enabled, providing necessary variance for performance attribution.
+
+---
+
+### Phase 3.5: Implement Cross-Session Persistence for Profiles
+
+**Status**: In-progress (test suite has not been implemented)
+
+**Goal**: Ensure the collected `domPerformanceProfiles` data is saved and loaded across sessions, enabling a true long-term skill model.
+
+**Progress Notes**:
+- Successfully implemented persistence with backward compatibility
+- Added comprehensive test coverage through `ADMDOMProfilingPersistenceTests`
+- Incremented state version to 2 for version tracking
+
+**Implementation Details**:
+1.  **Updated `PersistedADMState`**:
+    -   Added `domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile]?` as optional field
+    -   Incremented `version` from 1 to 2 for migration support
+    -   Maintained backward compatibility with older saved states
+2.  **Updated `saveState()`**:
+    -   Now includes `domPerformanceProfiles` when creating `PersistedADMState`
+3.  **Updated `loadState()`**:
+    -   Checks for and loads `domPerformanceProfiles` if present
+    -   Initializes fresh profiles if loading from old format
+    -   Added detailed logging of loaded profile statistics
+4.  **Comprehensive Test Suite**:
+    -   `testDOMProfilesPersistAcrossSessions`: Verifies complete data persistence
+    -   `testBackwardCompatibilityWithOldSavedState`: Ensures old saves don't crash
+    -   `testLargeBufferPersistence`: Tests full 200-entry buffer save/load
+    -   `testContinuityAcrossSessions`: Validates append behavior for new data
+
+**Commit Point**:
+-   **Message**: `feat(ADM): Implement persistence for DOM performance profiles`
+-   **Description**: The `domPerformanceProfiles` are now saved and loaded across sessions, enabling the creation of a long-term user skill model.
 
 ---
 
@@ -140,33 +134,40 @@ This document outlines a detailed, phased implementation plan for the **DOM-Spec
 
 **Status**: ⚪️ Not Started
 
-**Goal**: Write and test the new, more sophisticated adaptation logic without activating it in the main gameplay loop.
+**Goal**: Write and test the new, more sophisticated adaptation logic without activating it.
 
-**Progress Notes**:
-- None
-
+**Key Design Decisions** (from team discussion):
+- **Recency Weighting**: Use exponential decay with 24-hour half-life to give recent data more influence
+- **Minimum Data Requirements**: 7 data points minimum before signals activate
+- **Variance Threshold**: Require sufficient DOM value variance (standard deviation) to ensure reliable regression
 
 **Steps**:
 1.  **Create `calculateDOMSpecificAdaptationSignal`**:
-    -   In `AdaptiveDifficultyManager.swift`, create this new private function.
-    -   It will take a `domType` as input.
-    -   Inside, it will access `domPerformanceProfiles[domType]`.
-    -   It will perform a simple weighted linear regression on the `performanceByValue` data to find the slope (performance gradient).
-    -   It will return this slope as the adaptation signal.
+    -   This new private function will take a `domType` as input.
+    -   **Core Logic**: Perform timestamp-based weighted linear regression:
+        ```swift
+        // Pseudo-code for recency weighting
+        let currentTime = CACurrentMediaTime()
+        let weights = performanceData.map { entry in
+            let ageInHours = (currentTime - entry.timestamp) / 3600.0
+            return exp(-ageInHours * log(2.0) / 24.0) // 24-hour half-life
+        }
+        ```
+    -   **Edge Case Handling**:
+        -   **Guard 1 (History Size)**: If the profile contains fewer than 7 data points, return a neutral signal (`0.0`).
+        -   **Guard 2 (Value Variance)**: If the standard deviation of the collected DOM values is below a minimum threshold (i.e., not enough exploration has occurred), return a neutral signal (`0.0`).
+    -   Return the calculated slope as the adaptation signal.
 2.  **Create `modulateDOMsWithProfiling`**:
-    -   Create a new function that mirrors the structure of the existing `modulateDOMsWithWeightedBudget`.
-    -   This new function will loop through each `DOMTargetType`, call `calculateDOMSpecificAdaptationSignal` for each, and then call `applyModulation` with the resulting signal. It will not use a shared "budget".
+    -   This new function will be the entry point for the new logic path.
+    -   It will loop through each `DOMTargetType`, call `calculateDOMSpecificAdaptationSignal` for each, and then call `applyModulation` with the resulting signal.
 3.  **Add Unit Tests**:
     -   Write extensive unit tests for `calculateDOMSpecificAdaptationSignal`.
-    -   Create mock `DOMPerformanceProfile` data with clear positive, negative, and neutral trends, and assert that the function returns the expected adaptation signal (+, -, or ~0).
-
-**Build & Test**:
--   Build and run the new unit tests to ensure the regression and signal generation logic is mathematically sound.
--   The core gameplay loop is still unaffected.
+    -   Test with mock data exhibiting clear positive, negative, and neutral trends.
+    -   Test the guard clauses for history size and value variance.
 
 **Commit Point**:
 -   **Message**: `feat(ADM): Implement profile-based adaptation logic (inactive)`
--   **Description**: Adds the core functions for calculating DOM-specific adaptation signals based on performance profiles. This logic is not yet active in the main adaptation loop.
+-   **Description**: Adds core functions for calculating DOM-specific adaptation signals using weighted linear regression. Logic is not yet active.
 
 ---
 
@@ -176,34 +177,16 @@ This document outlines a detailed, phased implementation plan for the **DOM-Spec
 
 **Goal**: Activate the new profiling system using the feature flag.
 
-**Progress Notes**:
-- None
-
-
 **Steps**:
 1.  **Modify `modulateDOMTargets`**:
-    -   In `AdaptiveDifficultyManager.swift`, at the top of `modulateDOMTargets`, add the control flow logic.
-    ```swift
-    if config.enableDomSpecificProfiling {
-        // Call the new logic path
-        modulateDOMsWithProfiling(overallPerformanceScore: adaptiveScore)
-    } else {
-        // Call the existing logic path
-        modulateDOMsWithWeightedBudget(...)
-    }
-    ```
-    *Note: The function signatures will need to be aligned to make this clean.*
+    -   Add control flow: if `config.enableDomSpecificProfiling` is true, call `modulateDOMsWithProfiling`; otherwise, call the existing `modulateDOMsWithWeightedBudget`.
 2.  **Integration Testing**:
-    -   Thoroughly test the full gameplay loop with `enableDomSpecificProfiling` set to `true`.
-    -   Use logging to observe the individual adaptation signals for each DOM and verify they are responding logically to performance.
-
-**Build & Test**:
--   Build and perform comprehensive integration testing.
--   Compare the feel and behavior of the system with the flag on versus off.
+    -   Thoroughly test the full gameplay loop with the feature flag enabled.
+    -   Use logging to observe and verify the individual adaptation signals.
 
 **Commit Point**:
 -   **Message**: `feat(ADM): Activate and integrate DOM-specific profiling`
--   **Description**: The new DOM-specific profiling and adaptation system is now active when the corresponding feature flag is enabled.
+-   **Description**: The new DOM-specific profiling system is now active when the feature flag is enabled.
 
 ---
 
@@ -211,23 +194,12 @@ This document outlines a detailed, phased implementation plan for the **DOM-Spec
 
 **Status**: ⚪️ Not Started
 
-**Goal**: Once the new system is proven to be superior and stable, remove the old code to reduce complexity.
-
-**Progress Notes**:
-- None
-
+**Goal**: Once the new system is proven superior, remove the old code.
 
 **Steps**:
-1.  **Remove Old Logic**:
-    -   Delete the old `modulateDOMsWithWeightedBudget` function and related logic (e.g., priority calculations).
-2.  **Remove Feature Flag**:
-    -   Remove the `enableDomSpecificProfiling` flag from `GameConfiguration` and the conditional logic from `modulateDOMTargets`.
-3.  **Refactor**:
-    -   Clean up any remaining code, logs, or comments related to the old system.
-
-**Build & Test**:
--   Ensure all tests still pass after the old code is removed.
+1.  **Remove Old Logic**: Delete `modulateDOMsWithWeightedBudget` and related priority calculations.
+2.  **Remove Feature Flag**: Remove the `enableDomSpecificProfiling` flag and the conditional logic.
 
 **Commit Point**:
 -   **Message**: `refactor(ADM): Remove legacy adaptation logic after profiling validation`
--   **Description**: Decommissions the old budget-based adaptation system, simplifying the codebase now that the new DOM-profiling system is validated.
+-   **Description**: Decommissions the old budget-based adaptation system, simplifying the codebase.

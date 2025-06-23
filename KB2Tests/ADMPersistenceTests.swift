@@ -46,7 +46,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: testHistory,
             lastAdaptationDirection: .increasing,
             directionStableCount: 3,
-            normalizedPositions: [.targetCount: 0.5, .meanBallSpeed: 0.6]
+            normalizedPositions: [.targetCount: 0.5, .meanBallSpeed: 0.6],
+            domPerformanceProfiles: nil
         )
         
         // Save state using actual userId
@@ -73,7 +74,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
-            normalizedPositions: [:]
+            normalizedPositions: [:],
+            domPerformanceProfiles: nil
         )
         
         ADMPersistenceManager.saveState(testState, for: actualUserId)
@@ -96,14 +98,16 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .increasing,
             directionStableCount: 1,
-            normalizedPositions: [.targetCount: 0.3]
+            normalizedPositions: [.targetCount: 0.3],
+            domPerformanceProfiles: nil
         )
         
         let state2 = PersistedADMState(
             performanceHistory: [],
             lastAdaptationDirection: .decreasing,
             directionStableCount: 2,
-            normalizedPositions: [.targetCount: 0.7]
+            normalizedPositions: [.targetCount: 0.7],
+            domPerformanceProfiles: nil
         )
         
         // Save states for different users
@@ -171,7 +175,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: history,
             lastAdaptationDirection: .stable,
             directionStableCount: 5,
-            normalizedPositions: [.targetCount: 0.4, .ballSpeedSD: 0.6]
+            normalizedPositions: [.targetCount: 0.4, .ballSpeedSD: 0.6],
+            domPerformanceProfiles: nil
         )
         
         // Encode
@@ -188,7 +193,7 @@ class ADMPersistenceTests: XCTestCase {
         XCTAssertEqual(decodedState?.lastAdaptationDirection, .stable)
         XCTAssertEqual(decodedState?.directionStableCount, 5)
         XCTAssertEqual(decodedState?.normalizedPositions.count, 2)
-        XCTAssertEqual(decodedState?.version, 1)
+        XCTAssertEqual(decodedState?.version, 2)
     }
     
     // MARK: - ADM Integration Tests
@@ -210,7 +215,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: testHistory,
             lastAdaptationDirection: .increasing,
             directionStableCount: 2,
-            normalizedPositions: [.targetCount: 0.6, .meanBallSpeed: 0.7]
+            normalizedPositions: [.targetCount: 0.6, .meanBallSpeed: 0.7],
+            domPerformanceProfiles: nil
         )
         
         // Save state using the actual userId that ADM will use
@@ -236,7 +242,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .decreasing,
             directionStableCount: 1,
-            normalizedPositions: [.targetCount: 0.8]
+            normalizedPositions: [.targetCount: 0.8],
+            domPerformanceProfiles: nil
         )
         
         ADMPersistenceManager.saveState(testState, for: actualUserId)
@@ -297,7 +304,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: testHistory,
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
-            normalizedPositions: [:]
+            normalizedPositions: [:],
+            domPerformanceProfiles: nil
         )
         
         // Save state using the actual userId
@@ -386,7 +394,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
-            normalizedPositions: [:]
+            normalizedPositions: [:],
+            domPerformanceProfiles: nil
         )
         
         ADMPersistenceManager.saveState(state, for: actualUserId)
@@ -414,7 +423,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: largeHistory,
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
-            normalizedPositions: [:]
+            normalizedPositions: [:],
+            domPerformanceProfiles: nil
         )
         
         // Save state using the actual userId
@@ -440,7 +450,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .increasing,
             directionStableCount: 2,
-            normalizedPositions: [.targetCount: 0.6]
+            normalizedPositions: [.targetCount: 0.6],
+            domPerformanceProfiles: nil
         )
         ADMPersistenceManager.saveState(testState, for: currentUserId)
         
@@ -462,7 +473,8 @@ class ADMPersistenceTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .decreasing,
             directionStableCount: 1,
-            normalizedPositions: [.targetCount: 0.3]
+            normalizedPositions: [.targetCount: 0.3],
+            domPerformanceProfiles: nil
         )
         ADMPersistenceManager.saveState(newState, for: currentUserId)
         
@@ -532,7 +544,8 @@ class ADMPersistenceTests: XCTestCase {
                 performanceHistory: agedHistory,
                 lastAdaptationDirection: savedState.lastAdaptationDirection,
                 directionStableCount: savedState.directionStableCount,
-                normalizedPositions: savedState.normalizedPositions
+                normalizedPositions: savedState.normalizedPositions,
+                domPerformanceProfiles: savedState.domPerformanceProfiles
             )
             
             // Save the aged state

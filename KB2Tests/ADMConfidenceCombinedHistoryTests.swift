@@ -63,6 +63,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             lastAdaptationDirection: .stable,
             directionStableCount: 5,
             normalizedPositions: adm.normalizedPositions,
+            domPerformanceProfiles: nil, // Old format compatibility
             version: 1
         )
         ADMPersistenceManager.saveState(persistedState, for: actualUserId)
@@ -192,6 +193,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
             normalizedPositions: [:],
+            domPerformanceProfiles: nil, // Old format compatibility
             version: 1
         )
         ADMPersistenceManager.saveState(persistedState, for: actualUserId)
@@ -241,6 +243,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
             normalizedPositions: [:],
+            domPerformanceProfiles: nil, // Old format compatibility
             version: 1
         )
         ADMPersistenceManager.saveState(persistedState, for: actualUserId)
@@ -317,6 +320,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             lastAdaptationDirection: .increasing,
             directionStableCount: 5,
             normalizedPositions: [:],
+            domPerformanceProfiles: nil, // Old format compatibility
             version: 1
         )
         ADMPersistenceManager.saveState(persistedState, for: actualUserId)

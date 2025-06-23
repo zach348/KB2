@@ -86,7 +86,8 @@ class ADMWarmupTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
-            normalizedPositions: persistedPositions
+            normalizedPositions: persistedPositions,
+            domPerformanceProfiles: nil // Old format compatibility
         )
         ADMPersistenceManager.saveState(persistedState, for: userId)
         
@@ -329,7 +330,8 @@ class ADMWarmupTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
-            normalizedPositions: originalPositions
+            normalizedPositions: originalPositions,
+            domPerformanceProfiles: nil // Old format compatibility
         )
         ADMPersistenceManager.saveState(originalState, for: userId)
         

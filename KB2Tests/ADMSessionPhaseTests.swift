@@ -89,7 +89,8 @@ class ADMSessionPhaseTests: XCTestCase {
             performanceHistory: [],
             lastAdaptationDirection: .stable,
             directionStableCount: 0,
-            normalizedPositions: persistedPositions
+            normalizedPositions: persistedPositions,
+            domPerformanceProfiles: nil // Old format compatibility
         )
         ADMPersistenceManager.saveState(persistedState, for: userId)
 

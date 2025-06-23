@@ -229,7 +229,7 @@ class ADMDOMProfilingTests: XCTestCase {
     
     func testPerformanceBufferLimitsSize() {
         // Record many rounds to test buffer limiting
-        for i in 0..<25 { // More than the 20 buffer limit
+        for i in 0..<210 { // More than the 200 buffer limit
             adm.recordIdentificationPerformance(
                 taskSuccess: i % 2 == 0, // Alternate success/failure
                 tfTtfRatio: CGFloat(i % 10) / 10.0,
@@ -240,14 +240,14 @@ class ADMDOMProfilingTests: XCTestCase {
             )
         }
         
-        // Verify buffer is limited to 20 entries
+        // Verify buffer is limited to 200 entries
         for domType in DOMTargetType.allCases {
             guard let profile = adm.domPerformanceProfiles[domType] else {
                 XCTFail("Profile should exist for \(domType)")
                 continue
             }
             
-            XCTAssertLessThanOrEqual(profile.performanceByValue.count, 20, "Buffer should not exceed 20 entries for \(domType)")
+            XCTAssertLessThanOrEqual(profile.performanceByValue.count, 200, "Buffer should not exceed 200 entries for \(domType)")
             XCTAssertGreaterThan(profile.performanceByValue.count, 0, "Buffer should contain data for \(domType)")
         }
     }
