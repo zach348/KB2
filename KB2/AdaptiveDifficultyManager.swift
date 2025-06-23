@@ -49,6 +49,25 @@ struct PersistedADMState: Codable {
     var version: Int = 1 // For future migration support
 }
 
+// MARK: - DOM Performance Profile Structure (Phase 5.2)
+struct DOMPerformanceProfile: Codable {
+    struct PerformanceDataPoint: Codable {
+        let value: CGFloat
+        let performance: CGFloat
+    }
+    
+    let domType: DOMTargetType
+    var performanceByValue: [PerformanceDataPoint] = []
+    
+    mutating func recordPerformance(domValue: CGFloat, performance: CGFloat) {
+        performanceByValue.append(PerformanceDataPoint(value: domValue, performance: performance))
+        // Simple buffer for now, can be made more sophisticated later
+        if performanceByValue.count > 20 {
+            performanceByValue.removeFirst()
+        }
+    }
+}
+
 class AdaptiveDifficultyManager {
     var dataLogger: DataLogger = DataLogger.shared
     private let config: GameConfiguration
@@ -72,6 +91,9 @@ class AdaptiveDifficultyManager {
     // MARK: - Performance History (NEW)
     var performanceHistory: [PerformanceHistoryEntry] = []
     private let maxHistorySize: Int  // Will be set from config
+
+    // MARK: - DOM Performance Profiles (Phase 5.2)
+    private var domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile] = [:]
 
     // MARK: - Logging Throttling
     private var lastLogTime: TimeInterval = 0
@@ -170,6 +192,11 @@ class AdaptiveDifficultyManager {
             } else {
                 normalizedPositions[domType] = 0.5 // Others start at midpoint
             }
+        }
+        
+        // Initialize DOM performance profiles (Phase 5.2)
+        for domType in DOMTargetType.allCases {
+            domPerformanceProfiles[domType] = DOMPerformanceProfile(domType: domType)
         }
 
         var didLoadState = false

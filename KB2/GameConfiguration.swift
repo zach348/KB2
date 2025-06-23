@@ -351,4 +351,17 @@ struct GameConfiguration {
     /// Default: 1.7 (1.7x faster than normal)
     /// Faster adaptation helps quickly find the player's current appropriate difficulty
     let warmupAdaptationRateMultiplier: CGFloat = 1.7
+    
+    // --- DOM-Specific Performance Profiling (Phase 5.2) ---
+    
+    /// Enables DOM-specific performance profiling and adaptation
+    /// When true, the system tracks performance for each difficulty parameter individually
+    /// and can adapt them independently based on the player's specific strengths/weaknesses
+    var enableDomSpecificProfiling: Bool = false
+    
+    /// Controls the magnitude of random variation added to DOM adaptations
+    /// Default: 0.05 (5% jitter)
+    /// This "jitter" ensures DOM values don't move in perfect lockstep,
+    /// allowing the system to isolate the impact of individual difficulty parameters
+    let domAdaptationJitterFactor: CGFloat = 0.05
 }
