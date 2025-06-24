@@ -1,205 +1,127 @@
-# DOM-Specific Performance Profiling Implementation Plan (v2)
+# ADM DOM-Specific Profiling Implementation Plan
 
-## 1. Overview
-
-This document outlines a detailed, phased implementation plan for the **DOM-Specific Performance Profiling** feature. The goal is to evolve the ADM from using a single, global performance score to a more nuanced, persistent model that identifies and adapts to a user's specific skills over time.
-
-## 2. Guiding Principles
-
--   **Minimally Invasive & Incremental**: Each phase consists of small, logical changes that can be independently developed, tested, and committed.
--   **Always Buildable**: The project will be in a buildable and runnable state at the end of each phase.
--   **Feature Flag Controlled**: The new logic will be introduced behind a feature flag (`enableDomSpecificProfiling`) for safety and A/B testing.
--   **Test-Driven**: New logic will be accompanied by corresponding unit and integration tests.
--   **Long-Term & Adaptive**: The system will build a long-term skill profile that persists across sessions but intelligently adapts to recent performance.
+This document outlines the phased implementation of the DOM-Specific Performance Profiling feature.
 
 ---
 
-## 3. Phased Implementation
+### Phase 1: Foundational Data Structures (COMPLETE)
+- [x] Define `DOMPerformanceProfile` struct.
+- [x] Integrate `domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile]` into `AdaptiveDifficultyManager`.
+- [x] Update `PersistedADMState` to include `domPerformanceProfiles`.
 
-### Phase 1: Foundational Data Structures & Configuration
+### Phase 2: Passive Data Collection (COMPLETE)
+- [x] In `recordIdentificationPerformance`, after calculating the `overallPerformanceScore`, record a `PerformanceDataPoint` for each DOM type.
+- [x] Ensure data collection is passive and does not yet influence adaptation.
 
-**Status**: 🟢 Completed
+### Phase 3: Adaptation Jitter (COMPLETE)
+- [x] In `applyModulation`, add a small, random jitter (`domAdaptationJitterFactor`) to the final `normalizedPosition` if `enableDomSpecificProfiling` is true.
+- [x] This ensures sufficient variance in DOM values for the profiling to be effective.
 
-**Goal**: Establish the necessary data structures and configuration parameters.
+### Phase 4: Initial Slope-Based Logic (COMPLETE)
+- [x] Implemented `calculateDOMSpecificAdaptationSignal` using a recency-weighted linear regression slope.
+- [x] Implemented `modulateDOMsWithProfiling` to use this signal.
+- [x] Added comprehensive unit tests.
+- [x] **Status:** This initial implementation is functional but has been superseded by the superior design in Phase 5.
 
-**Progress Notes**:
-- Added `DOMPerformanceProfile` struct.
-- Added `domPerformanceProfiles` dictionary to ADM.
-- Added `enableDomSpecificProfiling` and `domAdaptationJitterFactor` to config.
-- **REVISED**: Increased the data buffer size to support a long-term skill profile.
+---
 
-**Steps**:
-1.  **Create `DOMPerformanceProfile` Struct**:
-    -   Define the struct with a `performanceByValue` array.
-    -   **Crucially, set the buffer size to 200 entries** to ensure a long-term history is maintained.
-    ```swift
-    struct DOMPerformanceProfile: Codable {
-        // ...
-        var performanceByValue: [PerformanceDataPoint] = []
+### **Phase 5: Refactor to Hybrid PD Controller Model (NEXT TASK)**
+
+**Objective:** Rearchitect the DOM profiling logic to use a more robust and predictable Proportional-Derivative (PD) controller for each DOM. This model will target a specific performance level while using the performance trend's slope to modulate the adaptation rate, ensuring both accuracy and stability.
+
+#### **5.1: Configuration Changes (`GameConfiguration.swift`)**
+
+1.  **Introduce Performance Target:**
+    -   Add a new property: `public var domProfilingPerformanceTarget: CGFloat = 0.8`. This will be the explicit performance score the system tries to achieve for each DOM.
+
+2.  **Re-purpose DOM Priorities as Adaptation Rates:**
+    -   Rename `domPriorities_LowMidArousal` to `domAdaptationRates_LowMidArousal`.
+    -   Rename `domPriorities_HighArousal` to `domAdaptationRates_HighArousal`.
+    -   Review and potentially adjust the values to reflect their new role as "base adaptation rates" rather than "budget shares". A good starting point is to ensure they are scaled appropriately (e.g., values between 0.5 and 1.5).
+
+#### **5.2: Refactor Core Logic (`AdaptiveDifficultyManager.swift`)**
+
+1.  **Create Helper for Weighted Average Performance:**
+    -   Create a new private function: `private func calculateWeightedAveragePerformance(for profile: DOMPerformanceProfile) -> CGFloat`.
+    -   This function will take a DOM profile, calculate the recency weights for its data points (using the existing 24-hour half-life model), and return the weighted average of the `performance` values.
+
+2.  **Rearchitect `modulateDOMsWithProfiling`:**
+    -   This function will become the main entry point and contain the primary logic.
+    -   It should **no longer call** `calculateDOMSpecificAdaptationSignal`.
+    -   It should **bypass** the global `calculateAdaptationSignalWithHysteresis` function.
+
+3.  **Implement the PD Controller Loop:**
+    -   Inside `modulateDOMsWithProfiling`, iterate through each `DOMTargetType`. For each DOM:
         
-        mutating func recordPerformance(...) {
-            performanceByValue.append(...)
-            if performanceByValue.count > 200 { // Increased to 200
-                performanceByValue.removeFirst()
-            }
-        }
-    }
-    ```
-2.  **Integrate into `AdaptiveDifficultyManager`**:
-    -   Add `private var domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile] = [:]`.
-    -   Initialize profiles for all DOM types in `init`.
+        a. **Calculate Arousal-Gated Adaptation Rate:**
+           -   Calculate the `current_adaptation_rate` by interpolating between the new `domAdaptationRates_LowMidArousal` and `domAdaptationRates_HighArousal` based on the current arousal level. Use the existing `lerp` and `smoothstep` functions.
+        
+        b. **Apply Confidence Scaling:**
+           -   Calculate the global `confidence` score using the existing `calculateAdaptationConfidence()` function.
+           -   `confidence_adjusted_rate = current_adaptation_rate * confidence.total`.
+        
+        c. **Calculate Performance Gap (The P-Term):**
+           -   Call your new `calculateWeightedAveragePerformance` helper to get the `average_performance` for the current DOM.
+           -   `performance_gap = average_performance - config.domProfilingPerformanceTarget`.
+        
+        d. **Calculate Slope-Based Gain Modifier (The D-Term):**
+           -   Calculate the `slope` of the performance trend using the existing `calculateWeightedSlope` function.
+           -   `gain_modifier = 1.0 / (1.0 + abs(slope) * 10.0)`. (Note: Multiplying the slope by a factor, e.g., 10.0, will make the system more sensitive to changes in the slope).
+        
+        e. **Calculate Final Signal:**
+           -   `final_signal = performance_gap * confidence_adjusted_rate * gain_modifier`.
+        
+        f. **Apply Modulation:**
+           -   Call the existing `applyModulation` function, passing it the `final_signal` (potentially scaled by a small, constant factor to keep changes conservative). The `applyModulation` function already contains the necessary smoothing and jitter logic.
 
-**Commit Point**:
--   **Message**: `feat(ADM): Add data structures and config for DOM profiling`
--   **Description**: Introduces foundational structs and config for DOM profiling, including a 200-entry buffer for long-term performance history.
+4.  **Retain Existing Infrastructure:**
+    -   The `applyModulation` function remains unchanged and continues to handle:
+        -   Direction-specific smoothing factors
+        -   Final position clamping
+        -   Jitter application (when DOM profiling is enabled)
+    -   The arousal-gating system continues to function as before, converting normalized positions to absolute DOM values.
 
----
+#### **5.3: Update Unit Tests (`ADMDOMSignalCalculationTests.swift`)**
 
-### Phase 2: Passive Data Collection
+1.  **Disable Old Tests:** 
+    -   Rename the existing test functions for the slope-based signal (e.g., `testPositiveTrendAdaptationSignal`) to `test_DEPRECATED_PositiveTrendAdaptationSignal` to disable them without deleting them.
 
-**Status**: 🟢 Completed
+2.  **Write New Tests for the PD Controller:**
+    -   Test that a performance score *above* the `0.8` target produces a positive adaptation signal (which increases difficulty for most DOMs).
+    -   Test that a performance score *below* the target produces a negative adaptation signal (which decreases difficulty).
+    -   Test that a steep slope correctly dampens the adaptation magnitude compared to a shallow slope.
+    -   Test that the arousal-gated adaptation rates are working correctly (e.g., at high arousal, `discriminatoryLoad` adapts more aggressively than `targetCount`).
+    -   Test edge cases: insufficient data, all performance scores equal to target, extreme slopes.
 
-**Goal**: Start collecting performance data for each DOM parameter without affecting adaptation logic.
+#### **5.4: Integration Notes**
 
-**Progress Notes**:
-- Implemented data collection in `recordIdentificationPerformance`.
-- Verified with logging that profiles are populated.
+**Key Architectural Decisions:**
 
-**Steps**:
-1.  **Update `recordIdentificationPerformance`**:
-    -   After calculating `overallPerformanceScore`, iterate through all DOM types and call `recordPerformance` on the corresponding profile, storing the DOM's current absolute value and the player's performance.
+1. **Decoupling:** Each DOM operates independently with its own PD controller. There is no shared "budget" or competition between DOMs.
 
-**Commit Point**:
--   **Message**: `feat(ADM): Implement passive data collection for DOM performance profiling`
--   **Description**: The ADM now collects performance data for each DOM parameter in the background. Core adaptation logic is unchanged.
+2. **Obsolete Components:** When `enableDomSpecificProfiling` is true:
+   - The old `distributeAdaptationBudget` function is bypassed.
+   - The global hysteresis logic (`calculateAdaptationSignalWithHysteresis`) is bypassed.
+   - The concept of a single `adaptationSignal` for all DOMs is replaced by individual signals.
 
----
+3. **Retained Components:**
+   - Global confidence calculation still scales all adaptation rates.
+   - Smoothing factors continue to ensure gradual changes.
+   - Jitter continues to provide exploration.
+   - Arousal-gating continues to define the valid range for each DOM.
 
-### Phase 3: Introduce Controlled Variance (Adaptation Jitter)
+**Expected Behavior:**
 
-**Status**: ✅ Completed
-
-**Goal**: Introduce a "jitter" mechanism to de-correlate DOM movements, which is essential for effective profiling.
-
-**Progress Notes**:
-- Implemented jitter logic in `applyModulation`.
-- Added comprehensive unit tests confirming correct behavior.
-
-**Steps**:
-1.  **Modify `applyModulation`**:
-    -   Inside an `if config.enableDomSpecificProfiling` check, add a small, random value (`+/- domAdaptationJitterFactor`) to the calculated DOM position before it's finalized.
-    -   Ensure the final value is clamped between 0.0 and 1.0.
-
-**Commit Point**:
--   **Message**: `feat(ADM): Add controlled adaptation jitter for DOM exploration`
--   **Description**: Implements a small, random jitter to DOM adaptations when profiling is enabled, providing necessary variance for performance attribution.
-
----
-
-### Phase 3.5: Implement Cross-Session Persistence for Profiles
-
-**Status**: ✅ Completed
-
-**Goal**: Ensure the collected `domPerformanceProfiles` data is saved and loaded across sessions, enabling a true long-term skill model.
-
-**Progress Notes**:
-- Successfully implemented persistence with backward compatibility
-- Added comprehensive test coverage through `ADMDOMProfilingPersistenceTests`
-- Incremented state version to 2 for version tracking
-
-**Implementation Details**:
-1.  **Updated `PersistedADMState`**:
-    -   Added `domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile]?` as optional field
-    -   Incremented `version` from 1 to 2 for migration support
-    -   Maintained backward compatibility with older saved states
-2.  **Updated `saveState()`**:
-    -   Now includes `domPerformanceProfiles` when creating `PersistedADMState`
-3.  **Updated `loadState()`**:
-    -   Checks for and loads `domPerformanceProfiles` if present
-    -   Initializes fresh profiles if loading from old format
-    -   Added detailed logging of loaded profile statistics
-4.  **Comprehensive Test Suite**:
-    -   `testDOMProfilesPersistAcrossSessions`: Verifies complete data persistence
-    -   `testBackwardCompatibilityWithOldSavedState`: Ensures old saves don't crash
-    -   `testLargeBufferPersistence`: Tests full 200-entry buffer save/load
-    -   `testContinuityAcrossSessions`: Validates append behavior for new data
-
-**Commit Point**:
--   **Message**: `feat(ADM): Implement persistence for DOM performance profiles`
--   **Description**: The `domPerformanceProfiles` are now saved and loaded across sessions, enabling the creation of a long-term user skill model.
+- The system will continuously adjust each DOM to maintain player performance at approximately 80%.
+- DOMs with high arousal-specific adaptation rates will respond more aggressively to performance deviations.
+- When the player is very sensitive to a DOM (steep slope), the system will make smaller, more cautious adjustments.
+- The system will naturally find the "edge" of player capability for constraint-based DOMs like `responseTime`.
 
 ---
 
-### Phase 4: Implement Profile-Based Adaptation Logic (Inactive)
+### Phase 6: Activation and Monitoring (FUTURE)
 
-**Status**: ⚪️ Not Started
-
-**Goal**: Write and test the new, more sophisticated adaptation logic without activating it.
-
-**Key Design Decisions** (from team discussion):
-- **Recency Weighting**: Use exponential decay with 24-hour half-life to give recent data more influence
-- **Minimum Data Requirements**: 7 data points minimum before signals activate
-- **Variance Threshold**: Require sufficient DOM value variance (standard deviation) to ensure reliable regression
-
-**Steps**:
-1.  **Create `calculateDOMSpecificAdaptationSignal`**:
-    -   This new private function will take a `domType` as input.
-    -   **Core Logic**: Perform timestamp-based weighted linear regression:
-        ```swift
-        // Pseudo-code for recency weighting
-        let currentTime = CACurrentMediaTime()
-        let weights = performanceData.map { entry in
-            let ageInHours = (currentTime - entry.timestamp) / 3600.0
-            return exp(-ageInHours * log(2.0) / 24.0) // 24-hour half-life
-        }
-        ```
-    -   **Edge Case Handling**:
-        -   **Guard 1 (History Size)**: If the profile contains fewer than 7 data points, return a neutral signal (`0.0`).
-        -   **Guard 2 (Value Variance)**: If the standard deviation of the collected DOM values is below a minimum threshold (i.e., not enough exploration has occurred), return a neutral signal (`0.0`).
-    -   Return the calculated slope as the adaptation signal.
-2.  **Create `modulateDOMsWithProfiling`**:
-    -   This new function will be the entry point for the new logic path.
-    -   It will loop through each `DOMTargetType`, call `calculateDOMSpecificAdaptationSignal` for each, and then call `applyModulation` with the resulting signal.
-3.  **Add Unit Tests**:
-    -   Write extensive unit tests for `calculateDOMSpecificAdaptationSignal`.
-    -   Test with mock data exhibiting clear positive, negative, and neutral trends.
-    -   Test the guard clauses for history size and value variance.
-
-**Commit Point**:
--   **Message**: `feat(ADM): Implement profile-based adaptation logic (inactive)`
--   **Description**: Adds core functions for calculating DOM-specific adaptation signals using weighted linear regression. Logic is not yet active.
-
----
-
-### Phase 5: Activation and Integration
-
-**Status**: ⚪️ Not Started
-
-**Goal**: Activate the new profiling system using the feature flag.
-
-**Steps**:
-1.  **Modify `modulateDOMTargets`**:
-    -   Add control flow: if `config.enableDomSpecificProfiling` is true, call `modulateDOMsWithProfiling`; otherwise, call the existing `modulateDOMsWithWeightedBudget`.
-2.  **Integration Testing**:
-    -   Thoroughly test the full gameplay loop with the feature flag enabled.
-    -   Use logging to observe and verify the individual adaptation signals.
-
-**Commit Point**:
--   **Message**: `feat(ADM): Activate and integrate DOM-specific profiling`
--   **Description**: The new DOM-specific profiling system is now active when the feature flag is enabled.
-
----
-
-### Phase 6: Cleanup (Post-Validation)
-
-**Status**: ⚪️ Not Started
-
-**Goal**: Once the new system is proven superior, remove the old code.
-
-**Steps**:
-1.  **Remove Old Logic**: Delete `modulateDOMsWithWeightedBudget` and related priority calculations.
-2.  **Remove Feature Flag**: Remove the `enableDomSpecificProfiling` flag and the conditional logic.
-
-**Commit Point**:
--   **Message**: `refactor(ADM): Remove legacy adaptation logic after profiling validation`
--   **Description**: Decommissions the old budget-based adaptation system, simplifying the codebase.
+Once Phase 5 is complete and tested:
+- [ ] Set `enableDomSpecificProfiling = true` in production configuration.
+- [ ] Monitor telemetry for adaptation stability and player experience.
+- [ ] Consider adding UI elements to show DOM-specific adaptation in debug mode.
