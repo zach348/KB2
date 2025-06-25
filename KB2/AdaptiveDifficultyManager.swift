@@ -986,28 +986,37 @@ class AdaptiveDifficultyManager {
         return remainingBudget
     }
 
-    func applyModulation(domType: DOMTargetType, currentPosition: CGFloat, desiredPosition: CGFloat, confidence: (total: CGFloat, variance: CGFloat, direction: CGFloat, history: CGFloat)) -> CGFloat {
+    func applyModulation(domType: DOMTargetType, currentPosition: CGFloat, desiredPosition: CGFloat, confidence: (total: CGFloat, variance: CGFloat, direction: CGFloat, history: CGFloat), bypassSmoothing: Bool = false) -> CGFloat {
         let achievedPosition = max(0.0, min(1.0, desiredPosition))
         let rawChange = achievedPosition - currentPosition
         
-        // Choose smoothing factor based on direction of change
-        let smoothing: CGFloat
-        if rawChange < 0 {
-            // We're easing (making game easier)
-            smoothing = config.domEasingSmoothingFactors[domType] ?? 0.1
-            if domType == .discriminatoryLoad {
-                print("[ADM] Using EASING factor for \(domType): \(smoothing)")
-            }
-        } else {
-            // We're hardening (making game harder)
-            smoothing = config.domHardeningSmoothingFactors[domType] ?? 0.1
-            if domType == .discriminatoryLoad {
-                print("[ADM] Using HARDENING factor for \(domType): \(smoothing)")
-            }
-        }
+        let smoothedChange: CGFloat
+        let smoothedPosition: CGFloat
         
-        let smoothedChange = rawChange * smoothing
-        let smoothedPosition = currentPosition + smoothedChange
+        if bypassSmoothing {
+            // When using PD controller, don't apply additional smoothing
+            smoothedChange = rawChange
+            smoothedPosition = achievedPosition
+        } else {
+            // Choose smoothing factor based on direction of change
+            let smoothing: CGFloat
+            if rawChange < 0 {
+                // We're easing (making game easier)
+                smoothing = config.domEasingSmoothingFactors[domType] ?? 0.1
+                if domType == .discriminatoryLoad {
+                    print("[ADM] Using EASING factor for \(domType): \(smoothing)")
+                }
+            } else {
+                // We're hardening (making game harder)
+                smoothing = config.domHardeningSmoothingFactors[domType] ?? 0.1
+                if domType == .discriminatoryLoad {
+                    print("[ADM] Using HARDENING factor for \(domType): \(smoothing)")
+                }
+            }
+            
+            smoothedChange = rawChange * smoothing
+            smoothedPosition = currentPosition + smoothedChange
+        }
         
         // Clamp the final position to ensure it stays within the 0.0-1.0 range
         let finalPosition = max(0.0, min(1.0, smoothedPosition))
@@ -1015,7 +1024,11 @@ class AdaptiveDifficultyManager {
         normalizedPositions[domType] = finalPosition
         
         let confidenceString = String(format: "C:%.2f (V:%.2f, D:%.2f, H:%.2f)", confidence.total, confidence.variance, confidence.direction, confidence.history)
-        print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", rawChange / (smoothing > 0 ? smoothing : 1) )) -> ActualChange=\(String(format: "%.3f", smoothedChange)). \(confidenceString). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", smoothedPosition))")
+        if bypassSmoothing {
+            print("[ADM PD] Modulated \(domType): Signal=\(String(format: "%.3f", rawChange)) -> ActualChange=\(String(format: "%.3f", smoothedChange)). \(confidenceString). NormPos: \(String(format: "%.2f", currentPosition)) -> \(String(format: "%.2f", finalPosition))")
+        } else {
+            print("[ADM] Modulated \(domType): BudgetShare=\(String(format: "%.3f", rawChange / ((rawChange != 0 && !bypassSmoothing) ? (smoothedChange / rawChange) : 1))) -> ActualChange=\(String(format: "%.3f", smoothedChange)). \(confidenceString). NormPos: \(String(format: "%.2f", currentPosition)) -> SmoothNorm: \(String(format: "%.2f", finalPosition))")
+        }
         
         // Add warmup-specific DOM tracking
         if currentPhase == .warmup {
@@ -1595,7 +1608,8 @@ class AdaptiveDifficultyManager {
                 domType: domType,
                 currentPosition: currentPosition,
                 desiredPosition: targetPosition,
-                confidence: globalConfidence
+                confidence: globalConfidence,
+                bypassSmoothing: true // PD controller bypasses additional smoothing
             )
         }
         
