@@ -25,19 +25,19 @@ class ADMPriorityTests: XCTestCase {
 
     func testPriorityInterpolationAtLowArousal() {
         let priority = adm.calculateInterpolatedDOMPriority(domType: .targetCount, arousal: 0.5, invert: false)
-        XCTAssertEqual(priority, config.domPriorities_LowMidArousal[.targetCount]!, accuracy: 0.01)
+        XCTAssertEqual(priority, config.domAdaptationRates_LowMidArousal[.targetCount]!, accuracy: 0.01)
     }
 
     func testPriorityInterpolationAtHighArousal() {
         let priority = adm.calculateInterpolatedDOMPriority(domType: .targetCount, arousal: 0.9, invert: false)
-        XCTAssertEqual(priority, config.domPriorities_HighArousal[.targetCount]!, accuracy: 0.01)
+        XCTAssertEqual(priority, config.domAdaptationRates_HighArousal[.targetCount]!, accuracy: 0.01)
     }
 
     func testPriorityInterpolationMidTransition() {
         let arousal = (config.kpiWeightTransitionStart + config.kpiWeightTransitionEnd) / 2
         let priority = adm.calculateInterpolatedDOMPriority(domType: .targetCount, arousal: arousal, invert: false)
-        let lowPriority = config.domPriorities_LowMidArousal[.targetCount]!
-        let highPriority = config.domPriorities_HighArousal[.targetCount]!
+        let lowPriority = config.domAdaptationRates_LowMidArousal[.targetCount]!
+        let highPriority = config.domAdaptationRates_HighArousal[.targetCount]!
         
         // smoothstep at midpoint (t=0.5) is 0.5
         let expectedPriority = lowPriority + (highPriority - lowPriority) * 0.5

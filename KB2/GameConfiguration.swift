@@ -294,8 +294,9 @@ struct GameConfiguration {
     let trendInfluenceWeight: CGFloat = 0.15     // Nudge based on trajectory
     let minimumHistoryForTrend: Int = 3
 
-    // --- DOM Priority Weights (Phase 2.5) ---
-    let domPriorities_LowMidArousal: [DOMTargetType: CGFloat] = [
+    // --- DOM Adaptation Rates (Phase 5) ---
+    // These now act as base adaptation rates, not budget shares
+    let domAdaptationRates_LowMidArousal: [DOMTargetType: CGFloat] = [
         .targetCount: 5.0,
         .responseTime: 3.0,
         .discriminatoryLoad: 3.0,
@@ -303,7 +304,7 @@ struct GameConfiguration {
         .ballSpeedSD: 1.0
     ]
     
-    let domPriorities_HighArousal: [DOMTargetType: CGFloat] = [
+    let domAdaptationRates_HighArousal: [DOMTargetType: CGFloat] = [
         .discriminatoryLoad: 5.0,
         .meanBallSpeed: 4.0,
         .ballSpeedSD: 3.0,
@@ -359,11 +360,39 @@ struct GameConfiguration {
     /// and can adapt them independently based on the player's specific strengths/weaknesses
     var enableDomSpecificProfiling: Bool = false
     
-    /// Controls the magnitude of random variation added to DOM adaptations
-    /// Default: 0.05 (5% jitter)
-    /// This "jitter" ensures DOM values don't move in perfect lockstep,
-    /// allowing the system to isolate the impact of individual difficulty parameters
-    let domAdaptationJitterFactor: CGFloat = 0.05
+    // --- PD Controller Parameters (Phase 5) ---
+    
+    /// Target performance level for DOM-specific adaptation (0.0-1.0)
+    /// Default: 0.8 (80% performance target)
+    /// The PD controller will try to maintain this performance level for each DOM
+    let domProfilingPerformanceTarget: CGFloat = 0.8
+    
+    /// Dampening factor for the derivative term in the PD controller
+    /// Default: 10.0
+    /// Higher values reduce the impact of performance trend slope on adaptation
+    let domSlopeDampeningFactor: CGFloat = 10.0
+    
+    /// Minimum number of data points required before DOM-specific adaptation begins
+    /// Default: 15
+    /// Ensures statistical stability before making adaptation decisions
+    let domMinDataPointsForProfiling: Int = 15
+    
+    // --- Forced Exploration Parameters (Phase 5) ---
+    
+    /// Signal magnitude threshold below which a DOM is considered stable/converged
+    /// Default: 0.01 (1% of normalized range)
+    /// When adaptation signals fall below this threshold, the DOM has reached equilibrium
+    let domConvergenceThreshold: CGFloat = 0.01
+    
+    /// Number of consecutive rounds a DOM must be stable to be considered converged
+    /// Default: 5 rounds
+    /// Prevents premature convergence detection due to temporary stability
+    let domConvergenceDuration: Int = 5
+    
+    /// Controlled nudge factor applied to converged DOMs to stimulate learning
+    /// Default: 0.03 (3% of normalized range)
+    /// This deterministic exploration replaces the previous random jitter approach
+    let domExplorationNudgeFactor: CGFloat = 0.03
     
     /// Minimum standard deviation in DOM values required before adaptation signals are calculated
     /// Default: 0.1 (10% of the 0-1 normalized range)

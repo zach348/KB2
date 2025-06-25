@@ -101,6 +101,9 @@ class AdaptiveDifficultyManager {
     // MARK: - DOM Performance Profiles (Phase 5.2)
     internal var domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile] = [:] // Made internal for testing
 
+    // MARK: - Forced Exploration State Tracking (Phase 5)
+    private var domConvergenceCounters: [DOMTargetType: Int] = [:]
+
     // MARK: - Logging Throttling
     private var lastLogTime: TimeInterval = 0
     private let logThrottleInterval: TimeInterval = 1.0 // Log once per second
@@ -1006,19 +1009,8 @@ class AdaptiveDifficultyManager {
         let smoothedChange = rawChange * smoothing
         let smoothedPosition = currentPosition + smoothedChange
         
-        // Phase 5.3: Apply jitter if DOM profiling is enabled
-        var finalPosition = smoothedPosition
-        if config.enableDomSpecificProfiling {
-            let jitterRange = config.domAdaptationJitterFactor
-            let jitter = CGFloat.random(in: -jitterRange...jitterRange)
-            finalPosition += jitter
-            // Clamp the final position to ensure it stays within the 0.0-1.0 range
-            finalPosition = max(0.0, min(1.0, finalPosition))
-            
-            if abs(jitter) > 0.001 {
-                print("[ADM DOM Profiling] Applied jitter to \(domType): \(String(format: "%.3f", jitter)) (position: \(String(format: "%.3f", smoothedPosition)) → \(String(format: "%.3f", finalPosition)))")
-            }
-        }
+        // Clamp the final position to ensure it stays within the 0.0-1.0 range
+        let finalPosition = max(0.0, min(1.0, smoothedPosition))
         
         normalizedPositions[domType] = finalPosition
         
@@ -1084,8 +1076,8 @@ class AdaptiveDifficultyManager {
     // MARK: - DOM Modulation & Interpolation (Phase 2.5)
 
     func calculateInterpolatedDOMPriority(domType: DOMTargetType, arousal: CGFloat, invert: Bool) -> CGFloat {
-        let lowPriority = config.domPriorities_LowMidArousal[domType] ?? 1.0
-        let highPriority = config.domPriorities_HighArousal[domType] ?? 1.0
+        let lowPriority = config.domAdaptationRates_LowMidArousal[domType] ?? 1.0
+        let highPriority = config.domAdaptationRates_HighArousal[domType] ?? 1.0
         
         let t = smoothstep(config.kpiWeightTransitionStart, config.kpiWeightTransitionEnd, arousal)
         let interpolatedPriority = lerp(lowPriority, highPriority, t)
@@ -1099,8 +1091,8 @@ class AdaptiveDifficultyManager {
             
             // Find the max priority across all DOM types
             let allPriorities = DOMTargetType.allCases.map { 
-                let domLowP = config.domPriorities_LowMidArousal[$0] ?? 1.0
-                let domHighP = config.domPriorities_HighArousal[$0] ?? 1.0
+                let domLowP = config.domAdaptationRates_LowMidArousal[$0] ?? 1.0
+                let domHighP = config.domAdaptationRates_HighArousal[$0] ?? 1.0
                 let domT = smoothstep(config.kpiWeightTransitionStart, config.kpiWeightTransitionEnd, arousal)
                 return lerp(domLowP, domHighP, domT)
             }
@@ -1375,7 +1367,7 @@ class AdaptiveDifficultyManager {
         }
     }
     
-    // MARK: - DOM-Specific Profiling Methods (Phase 4)
+    // MARK: - DOM-Specific Profiling Methods (Phase 5)
     
     /// Calculates the standard deviation of a set of values
     internal func calculateStandardDeviation(values: [CGFloat]) -> CGFloat {
@@ -1386,6 +1378,50 @@ class AdaptiveDifficultyManager {
         let variance = squaredDifferences.reduce(0.0, +) / CGFloat(values.count)
         
         return sqrt(variance)
+    }
+    
+    /// Calculates local confidence based only on DOM-specific performance data
+    private func calculateLocalConfidence(for profile: DOMPerformanceProfile) -> CGFloat {
+        let dataPoints = profile.performanceByValue
+        
+        // If we have very few data points, confidence is low
+        guard dataPoints.count >= 5 else {
+            return CGFloat(dataPoints.count) / 5.0 // Linear scale up to 5 points
+        }
+        
+        // Calculate variance in performance values
+        let performances = dataPoints.map { $0.performance }
+        let performanceVariance = calculateStandardDeviation(values: performances)
+        
+        // Lower variance = higher confidence (capped at 0.5 variance)
+        let varianceConfidence = max(0, 1.0 - min(performanceVariance / 0.5, 1.0))
+        
+        // More data points = higher confidence (saturates at domMinDataPointsForProfiling)
+        let dataPointConfidence = min(CGFloat(dataPoints.count) / CGFloat(config.domMinDataPointsForProfiling), 1.0)
+        
+        // Calculate DOM value diversity (are we exploring the parameter space?)
+        let domValues = dataPoints.map { $0.value }
+        let domValueStdDev = calculateStandardDeviation(values: domValues)
+        let diversityConfidence = min(domValueStdDev / 0.25, 1.0) // 0.25 = 25% of normalized range is good diversity
+        
+        // Combine metrics
+        let totalConfidence = (varianceConfidence * 0.4 + dataPointConfidence * 0.3 + diversityConfidence * 0.3)
+        
+        return max(0.0, min(1.0, totalConfidence))
+    }
+    
+    /// Calculates weighted average performance for a DOM profile
+    internal func calculateWeightedAveragePerformance(data: [DOMPerformanceProfile.PerformanceDataPoint], weights: [CGFloat]) -> CGFloat {
+        guard !data.isEmpty, data.count == weights.count else { return 0.5 }
+        
+        let totalWeight = weights.reduce(0.0, +)
+        guard totalWeight > 0 else { return 0.5 }
+        
+        let weightedSum = zip(data, weights).reduce(0.0) { result, pair in
+            result + (pair.0.performance * pair.1)
+        }
+        
+        return weightedSum / totalWeight
     }
     
     /// Calculates weighted linear regression slope for DOM performance data
@@ -1471,52 +1507,102 @@ class AdaptiveDifficultyManager {
         return slope
     }
     
-    /// Entry point for DOM-specific profiling modulation
+    /// Entry point for DOM-specific profiling modulation with PD controller and forced exploration
     internal func modulateDOMsWithProfiling() {
-        print("[ADM DOM Profiling] === PROFILE-BASED ADAPTATION ===")
+        print("[ADM PD Controller] === PROFILE-BASED PD CONTROLLER ADAPTATION ===")
         
-        var totalAdaptationSignal: CGFloat = 0.0
-        var domSignals: [DOMTargetType: CGFloat] = [:]
+        // Get current arousal level to determine adaptation rates
+        let arousalBasedRates = currentArousalLevel >= config.arousalThresholdForKPIAndHierarchySwitch ?
+            config.domAdaptationRates_HighArousal : config.domAdaptationRates_LowMidArousal
         
-        // Calculate adaptation signal for each DOM
+        // Process each DOM independently
         for domType in DOMTargetType.allCases {
-            let signal = calculateDOMSpecificAdaptationSignal(for: domType)
-            domSignals[domType] = signal
-            totalAdaptationSignal += abs(signal)
-        }
-        
-        print("[ADM DOM Profiling] Individual signals:")
-        for (domType, signal) in domSignals.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            let direction = signal > 0 ? "↑" : signal < 0 ? "↓" : "→"
-            print("  - \(domType): \(String(format: "%.3f", signal)) \(direction)")
-        }
-        
-        // Apply signals to each DOM using existing modulation infrastructure
-        let confidence = calculateAdaptationConfidence()
-        
-        for (domType, signal) in domSignals {
-            guard abs(signal) > 0.001 else { continue }
+            guard let profile = domPerformanceProfiles[domType] else { continue }
             
+            let dataPoints = profile.performanceByValue
+            
+            // Guard clause: Check minimum data points
+            guard dataPoints.count >= config.domMinDataPointsForProfiling else {
+                print("[ADM PD Controller] \(domType): Insufficient data (\(dataPoints.count)/\(config.domMinDataPointsForProfiling) points)")
+                continue
+            }
+            
+            // a. Calculate localized, arousal-gated adaptation rate
+            let baseAdaptationRate = arousalBasedRates[domType] ?? 1.0
+            let localConfidence = calculateLocalConfidence(for: profile)
+            let confidenceAdjustedRate = baseAdaptationRate * localConfidence
+            
+            // b. Calculate performance gap (P-term)
+            let currentTime = CACurrentMediaTime()
+            let weights = dataPoints.map { entry in
+                let ageInHours = (currentTime - entry.timestamp) / 3600.0
+                return CGFloat(exp(-ageInHours * log(2.0) / 24.0))
+            }
+            let averagePerformance = calculateWeightedAveragePerformance(data: dataPoints, weights: weights)
+            let performanceGap = averagePerformance - config.domProfilingPerformanceTarget
+            
+            // c. Calculate slope-based gain modifier (D-term)
+            let slope = calculateWeightedSlope(data: dataPoints, weights: weights)
+            let gainModifier = 1.0 / (1.0 + abs(slope) * config.domSlopeDampeningFactor)
+            
+            // d. Calculate final signal
+            let finalSignal = performanceGap * confidenceAdjustedRate * gainModifier
+            
+            print("[ADM PD Controller] \(domType):")
+            print("  ├─ Data points: \(dataPoints.count)")
+            print("  ├─ Local confidence: \(String(format: "%.3f", localConfidence))")
+            print("  ├─ Avg performance: \(String(format: "%.3f", averagePerformance)) (target: \(String(format: "%.3f", config.domProfilingPerformanceTarget))")
+            print("  ├─ Performance gap (P): \(String(format: "%.3f", performanceGap))")
+            print("  ├─ Slope: \(String(format: "%.3f", slope))")
+            print("  ├─ Gain modifier (D): \(String(format: "%.3f", gainModifier))")
+            print("  └─ Final signal: \(String(format: "%.3f", finalSignal))")
+            
+            // e. Implement forced exploration logic
+            let currentConvergenceCount = domConvergenceCounters[domType] ?? 0
+            
+            if abs(finalSignal) < config.domConvergenceThreshold {
+                // DOM is stable/converged
+                domConvergenceCounters[domType] = currentConvergenceCount + 1
+                print("[ADM PD Controller]   └─ Convergence count: \(currentConvergenceCount + 1)/\(config.domConvergenceDuration)")
+                
+                // Check if ready for exploration nudge
+                if domConvergenceCounters[domType]! >= config.domConvergenceDuration {
+                    // Apply exploration nudge
+                    let currentPosition = normalizedPositions[domType] ?? 0.5
+                    let nudgeDirection: CGFloat = (currentPosition < 0.5) ? 1.0 : -1.0 // Nudge away from current position
+                    let nudgedPosition = currentPosition + (nudgeDirection * config.domExplorationNudgeFactor)
+                    let clampedPosition = max(0.0, min(1.0, nudgedPosition))
+                    
+                    normalizedPositions[domType] = clampedPosition
+                    domConvergenceCounters[domType] = 0 // Reset counter
+                    
+                    print("[ADM PD Controller]   └─ EXPLORATION NUDGE applied: \(String(format: "%.3f", currentPosition)) → \(String(format: "%.3f", clampedPosition))")
+                    
+                    // Skip regular modulation for this DOM this round
+                    continue
+                }
+            } else {
+                // DOM is actively adapting, reset convergence counter
+                domConvergenceCounters[domType] = 0
+            }
+            
+            // f. Apply modulation (standard adaptation)
             let currentPosition = normalizedPositions[domType] ?? 0.5
+            let targetPosition = currentPosition + finalSignal
             
-            // Scale signal appropriately (signals are typically in range -1 to 1)
-            // Apply a conservative scaling factor
-            let scaledSignal = signal * 0.1  // 10% max change per round
-            
-            let targetPosition = currentPosition + scaledSignal
-            
+            let globalConfidence = calculateAdaptationConfidence() // Use for smoothing
             _ = applyModulation(
                 domType: domType,
                 currentPosition: currentPosition,
                 desiredPosition: targetPosition,
-                confidence: confidence
+                confidence: globalConfidence
             )
         }
         
         // Update absolute values after all modulations
         updateAbsoluteValuesFromNormalizedPositions()
         
-        print("[ADM DOM Profiling] === ADAPTATION COMPLETE ===")
+        print("[ADM PD Controller] === PD CONTROLLER ADAPTATION COMPLETE ===")
     }
     
     // MARK: - Persistence Methods (Phase 4.5)

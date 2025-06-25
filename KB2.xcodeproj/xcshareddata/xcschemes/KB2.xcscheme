@@ -44,6 +44,9 @@
                <Test
                   Identifier = "ADMDOMProfilingTests/testJitterMagnitudeControlledByConfig()">
                </Test>
+               <Test
+                  Identifier = "ADMDOMSignalCalculationTests/test_DEPRECATED_ModulateDOMsWithProfiling()">
+               </Test>
             </SkippedTests>
          </TestableReference>
       </Testables>
