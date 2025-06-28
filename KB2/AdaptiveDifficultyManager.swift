@@ -550,11 +550,26 @@ class AdaptiveDifficultyManager {
     func modulateDOMTargets(overallPerformanceScore: CGFloat) {
         updateSessionPhase() // Update phase at the start of each round
 
-        // Phase 5: Check if DOM-specific profiling should be used instead
+        // Phase 5: Check if DOM-specific profiling should be used
         if config.enableDomSpecificProfiling && currentPhase == .standard {
-            // Use DOM-specific profiling instead of overall performance score
-            modulateDOMsWithProfiling()
-            return
+            // Try to use DOM-specific profiling
+            let pdControllerRan = modulateDOMsWithProfiling()
+            
+            if pdControllerRan {
+                // PD controller successfully handled adaptation
+                return
+            } else {
+                // PD controller couldn't run - fall back to global adaptation
+                print("[ADM] PD Controller not ready (insufficient data), falling back to global adaptation")
+                dataLogger.logCustomEvent(
+                    eventType: "ADM_PD_Controller_Fallback",
+                    data: [
+                        "reason": "insufficient_data",
+                        "phase": "standard"
+                    ]
+                )
+                // Continue with global adaptation below
+            }
         }
 
         var performanceTarget = config.adaptationIncreaseThreshold - 0.05 // Default target
@@ -1521,8 +1536,11 @@ class AdaptiveDifficultyManager {
     }
     
     /// Entry point for DOM-specific profiling modulation with PD controller and forced exploration
-    internal func modulateDOMsWithProfiling() {
+    /// - Returns: true if at least one DOM was successfully modulated, false if no DOMs had sufficient data
+    internal func modulateDOMsWithProfiling() -> Bool {
         print("[ADM PD Controller] === PROFILE-BASED PD CONTROLLER ADAPTATION ===")
+        
+        var anyDOMModulated = false  // Track if any DOM was processed
         
         // Get current arousal level to determine adaptation rates
         let arousalBasedRates = currentArousalLevel >= config.arousalThresholdForKPIAndHierarchySwitch ?
@@ -1539,6 +1557,9 @@ class AdaptiveDifficultyManager {
                 print("[ADM PD Controller] \(domType): Insufficient data (\(dataPoints.count)/\(config.domMinDataPointsForProfiling) points)")
                 continue
             }
+            
+            // If we get here, we're modulating this DOM
+            anyDOMModulated = true
             
             // a. Calculate localized, arousal-gated adaptation rate
             let baseAdaptationRate = arousalBasedRates[domType] ?? 1.0
@@ -1617,6 +1638,8 @@ class AdaptiveDifficultyManager {
         updateAbsoluteValuesFromNormalizedPositions()
         
         print("[ADM PD Controller] === PD CONTROLLER ADAPTATION COMPLETE ===")
+        
+        return anyDOMModulated
     }
     
     // MARK: - Persistence Methods (Phase 4.5)

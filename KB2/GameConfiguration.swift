@@ -336,7 +336,7 @@ struct GameConfiguration {
     /// Proportion of the session dedicated to warmup phase (0.0-1.0)
     /// Default: 0.25 (25% of expected rounds)
     /// The warmup phase serves as a recalibration period to find appropriate difficulty
-    let warmupPhaseProportion: CGFloat = 0.25
+    var warmupPhaseProportion: CGFloat = 0.25
     
     /// Initial difficulty multiplier applied during warmup phase
     /// Default: 0.85 (85% of normal difficulty)
@@ -375,7 +375,7 @@ struct GameConfiguration {
     /// Minimum number of data points required before DOM-specific adaptation begins
     /// Default: 15
     /// Ensures statistical stability before making adaptation decisions
-    let domMinDataPointsForProfiling: Int = 15
+    var domMinDataPointsForProfiling: Int = 15
     
     // --- Forced Exploration Parameters (Phase 5) ---
     
