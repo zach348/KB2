@@ -1408,6 +1408,18 @@ class AdaptiveDifficultyManager {
         return sqrt(variance)
     }
     
+    /// Gets interpolated DOM adaptation rate based on current arousal level
+    /// This is used by the PD controller and does NOT include inversion logic
+    private func getInterpolatedDOMAdaptationRate(for domType: DOMTargetType) -> CGFloat {
+        let lowRate = config.domAdaptationRates_LowMidArousal[domType] ?? 1.0
+        let highRate = config.domAdaptationRates_HighArousal[domType] ?? 1.0
+        
+        let t = smoothstep(config.kpiWeightTransitionStart, 
+                           config.kpiWeightTransitionEnd, 
+                           currentArousalLevel)
+        return lerp(lowRate, highRate, t)
+    }
+    
     /// Calculates local confidence based only on DOM-specific performance data
     private func calculateLocalConfidence(for profile: DOMPerformanceProfile) -> CGFloat {
         let dataPoints = profile.performanceByValue
@@ -1542,10 +1554,6 @@ class AdaptiveDifficultyManager {
         
         var anyDOMModulated = false  // Track if any DOM was processed
         
-        // Get current arousal level to determine adaptation rates
-        let arousalBasedRates = currentArousalLevel >= config.arousalThresholdForKPIAndHierarchySwitch ?
-            config.domAdaptationRates_HighArousal : config.domAdaptationRates_LowMidArousal
-        
         // Process each DOM independently
         for domType in DOMTargetType.allCases {
             guard let profile = domPerformanceProfiles[domType] else { continue }
@@ -1562,7 +1570,7 @@ class AdaptiveDifficultyManager {
             anyDOMModulated = true
             
             // a. Calculate localized, arousal-gated adaptation rate
-            let baseAdaptationRate = arousalBasedRates[domType] ?? 1.0
+            let baseAdaptationRate = getInterpolatedDOMAdaptationRate(for: domType)
             let localConfidence = calculateLocalConfidence(for: profile)
             let confidenceAdjustedRate = baseAdaptationRate * localConfidence
             

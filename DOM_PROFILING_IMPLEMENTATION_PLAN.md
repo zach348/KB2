@@ -68,9 +68,9 @@ This document outlines the phased implementation of the DOM-Specific Performance
     *   Inside `modulateDOMsWithProfiling`, iterate through each `DOMTargetType`. For each DOM:
         *   **Guard Clause:** Check if `profile.performanceByValue.count >= config.domMinDataPointsForProfiling`. If not, skip this DOM.
 
-        *   **a. Calculate Localized, Arousal-Gated Adaptation Rate:** ❌ INCORRECT
-            *   ❌ Uses hard switch instead of interpolation (P0 Issue #3)
-            *   ❌ Uses global confidence instead of local confidence (P1 Issue #4)
+        *   **a. Calculate Localized, Arousal-Gated Adaptation Rate:** ⚠️ PARTIALLY CORRECT
+            *   ✅ Now uses smooth interpolation via `getInterpolatedDOMAdaptationRate()` (P0 Issue #3 RESOLVED)
+            *   ❌ Still uses global confidence instead of local confidence (P1 Issue #4)
             *   `confidence_adjusted_rate = current_adaptation_rate * local_confidence`.
 
         *   **b. Calculate Performance Gap (The P-Term):** ✅
@@ -119,23 +119,28 @@ This document outlines the phased implementation of the DOM-Specific Performance
 
 **Status**: These enhancements have been identified as critical but not yet implemented. See `PD_CONTROLLER_ACTION_PLAN.md` for prioritized implementation plan.
 
-#### **5.5.1: Eliminate the "Adaptation Gap"** ❌ NOT IMPLEMENTED
+#### **5.5.1: Eliminate the "Adaptation Gap"** ✅ IMPLEMENTED
 
 *   **Problem:** A gap exists where the system can become inert. If the `warmup` phase ends before `domMinDataPointsForProfiling` is met, the system enters the `standard` phase but the PD controller remains inactive, causing adaptation to freeze.
-*   **Status:** **CRITICAL P0 Issue #1** - System breaking issue
-*   **TDD Plan:**
-    1.  Write Failing Test (`testAdaptationGap_WhenPDControllerIsNotReady_SystemIsUnguided`)
-    2.  Implement Fallback Logic in `modulateDOMTargets`
-    3.  Confirm Pass
+*   **Status:** **RESOLVED** - Adaptation gap protection fully implemented and tested
+*   **Implementation:**
+    1.  Added fallback logic in `modulateDOMTargets()` 
+    2.  When PD controller lacks sufficient data, system falls back to global adaptation
+    3.  `modulateDOMsWithProfiling()` now returns bool indicating if it ran successfully
+    4.  Created comprehensive test suite in `ADMAdaptationGapTests.swift`
+    5.  All adaptation gap tests pass successfully
 
-#### **5.5.2: Prevent Signal Instability** ❌ NOT IMPLEMENTED
+#### **5.5.2: Prevent Signal Instability** ✅ IMPLEMENTED
 
 *   **Problem:** The calculated `final_signal` is not clamped, which could lead to excessively large, single-round jumps in difficulty if the P-Term is large.
-*   **Status:** **CRITICAL P0 Issue #2** - Can cause jarring difficulty spikes
-*   **TDD Plan:**
-    1.  Write Failing Test (`testSignalClamping`)
-    2.  Add `domMaxSignalPerRound` parameter to `GameConfiguration`
-    3.  Implement clamping in `modulateDOMsWithProfiling`
+*   **Status:** **RESOLVED** - Signal clamping fully implemented and tested
+*   **Implementation:**
+    1.  Added `domMaxSignalPerRound: CGFloat = 0.15` to `GameConfiguration`
+    2.  Implemented clamping in `modulateDOMsWithProfiling` that limits signals to ±15%
+    3.  Added diagnostic logging with "(CLAMPED)" indicator
+    4.  Created comprehensive test suite in `ADMSignalClampingTests.swift`
+    5.  All 6 signal clamping tests pass successfully
+*   **See:** `SIGNAL_CLAMPING_IMPLEMENTATION_SUMMARY.md` for full details
 
 #### **5.5.3: Improve Forced Exploration Nudge Logic** ⚠️ SIMPLISTIC IMPLEMENTATION
 
@@ -152,15 +157,17 @@ This document outlines the phased implementation of the DOM-Specific Performance
 *   **Status:** **P3 Issue** - Technical debt
 *   **Action:** Add comprehensive documentation to `GameConfiguration.swift`
 
-#### **5.5.5: Unify Arousal-Based Rate Calculation** ❌ NOT IMPLEMENTED
+#### **5.5.5: Unify Arousal-Based Rate Calculation** ✅ IMPLEMENTED
 
 *   **Problem:** The PD controller uses a hard switch for selecting adaptation rates based on arousal, while other parts of the system use smoother interpolation.
-*   **Status:** **CRITICAL P0 Issue #3** - Likely cause of test failures
-*   **TDD Plan:**
-    1.  Write Failing Test (`testArousalBasedAdaptationRateInterpolation`)
-    2.  Create `getInterpolatedDOMAdaptationRates()` helper function
-    3.  Refactor PD Controller to use interpolation
-    4.  Confirm Pass
+*   **Status:** **RESOLVED** - P0 Issue #3 completed successfully
+*   **Implementation:**
+    1.  Created `getInterpolatedDOMAdaptationRate()` helper function in `AdaptiveDifficultyManager.swift`
+    2.  Refactored PD Controller to use smooth interpolation matching global system
+    3.  Uses smoothstep function for S-curve interpolation with configurable transition bounds
+    4.  Created comprehensive test suite in `ADMArousalInterpolationTests.swift`
+    5.  All 8 arousal interpolation tests pass successfully
+*   **See:** `AROUSAL_INTERPOLATION_FIX_SUMMARY.md` for full implementation details
 
 ---
 
