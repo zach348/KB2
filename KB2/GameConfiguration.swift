@@ -382,7 +382,7 @@ struct GameConfiguration {
     /// Signal magnitude threshold below which a DOM is considered stable/converged
     /// Default: 0.01 (1% of normalized range)
     /// When adaptation signals fall below this threshold, the DOM has reached equilibrium
-    let domConvergenceThreshold: CGFloat = 0.01
+    let domConvergenceThreshold: CGFloat = 0.035
     
     /// Number of consecutive rounds a DOM must be stable to be considered converged
     /// Default: 5 rounds
