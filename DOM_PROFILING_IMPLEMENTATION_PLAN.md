@@ -99,22 +99,35 @@ This document outlines the phased implementation of the DOM-Specific Performance
         *   **f. Apply Modulation:** ✅
             *   Correctly calls `applyModulation` with the signal
 
-5.  **Update `applyModulation`:** ❓ UNCLEAR
-    *   Jitter removal status needs verification
-    *   `bypassSmoothing` flag introduced without documentation (P1 Issue #5)
+5.  **Update `applyModulation`:** ✅ COMPLETE
+    *   ✅ Jitter has been removed from the system
+    *   ✅ `bypassSmoothing` flag is now properly documented - PD controller bypasses additional smoothing because:
+        - PD controller already provides smoothing via D-term (slope dampening)
+        - Direction-specific rate multipliers provide asymmetric adaptation
+        - Signal clamping prevents jarring changes
+        - Additional smoothing would interfere with PD control precision
+    *   ✅ Direction-specific rate multipliers implemented:
+        - `domEasingRateMultiplier: CGFloat = 1.0` (full speed when helping players)
+        - `domHardeningRateMultiplier: CGFloat = 0.6` (60% speed when increasing difficulty)
+    *   ✅ See `BYPASS_SMOOTHING_RESOLUTION_SUMMARY.md` for full details
 
 #### **5.3: Update Unit Tests (`ADMDOMSignalCalculationTests.swift`)** ⚠️ PARTIALLY COMPLETE
 
 1.  **Disable Old Tests:** ✅ Renamed to `test_DEPRECATED_*`
-2.  **Write New, Focused Tests:** ⚠️ PARTIAL
-    *   ❌ Test `calculateLocalConfidence` (function doesn't exist yet)
+2.  **Write New, Focused Tests:** ✅ SUBSTANTIALLY COMPLETE
+    *   ✅ Local confidence tests implemented in `ADMLocalConfidenceTests.swift` (5 tests)
+    *   ✅ Signal clamping tests implemented in `ADMSignalClampingTests.swift` (6 tests)
+    *   ✅ Arousal interpolation tests implemented in `ADMArousalInterpolationTests.swift` (8 tests)
+    *   ✅ Direction-specific rate tests implemented in `ADMDirectionSpecificRatesTests.swift` (5 tests)
+    *   ✅ Adaptation gap tests implemented in `ADMAdaptationGapTests.swift` (5 tests)
     *   ⚠️ Test the PD controller's P-Term and D-Term calculations (some tests exist but incomplete)
-    *   ⚠️ Test the "Forced Exploration" logic:
+    *   ✅ Test the "Forced Exploration" logic:
         *   ✅ Convergence counter increment tests exist
         *   ✅ Nudge application tests exist
         *   ✅ Test that nudged DOM skips standard modulation
     *   ✅ Test that the `domMinDataPointsForProfiling` guard clause works correctly
     *   **Note**: Many debug test files created during troubleshooting
+    *   **Remaining**: Integration testing is the critical next step
 
 ---
 

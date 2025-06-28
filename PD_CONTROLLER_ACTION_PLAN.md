@@ -69,13 +69,18 @@ The current PD controller implementation has progressed through Phase 5 but has 
 - See `LOCAL_CONFIDENCE_IMPLEMENTATION_SUMMARY.md` for full details
 **Status**: Fixed and tested - all 5 local confidence tests pass
 
-### 5. Fix bypassSmoothing Confusion
+### 5. Fix bypassSmoothing Confusion ✅ RESOLVED
 **Issue**: Undocumented flag bypasses intended smoothing behavior  
 **Impact**: Inconsistent adaptation behavior  
-**Solution**:
-- Document the flag's purpose in comments
-- Consider removing it and always applying appropriate smoothing
-- If kept, make it configurable rather than hardcoded
+**Solution Implemented**:
+- Added comprehensive inline documentation explaining why PD controller bypasses smoothing
+- Implemented direction-specific rate multipliers for asymmetric adaptation:
+  - `domEasingRateMultiplier: CGFloat = 1.0` (full speed when helping players)
+  - `domHardeningRateMultiplier: CGFloat = 0.6` (60% speed when increasing difficulty)
+- PD controller now applies these multipliers based on performance gap direction
+- Created comprehensive test suite in `ADMDirectionSpecificRatesTests.swift`
+- See `BYPASS_SMOOTHING_RESOLUTION_SUMMARY.md` for full details
+**Status**: Fixed and tested - all 5 direction-specific rate tests pass
 
 ---
 
@@ -179,11 +184,11 @@ func testFullSessionIntegration()
 3. ✅ Fix arousal-based rate interpolation - COMPLETE
 4. ✅ Write tests for P0 fixes - COMPLETE (All 3 P0 issues have comprehensive test suites)
 
-### Sprint 2 (Next Week): P1 Issues ⚠️ PARTIALLY COMPLETE
+### Sprint 2 (Next Week): P1 Issues ⚠️ NEARLY COMPLETE
 1. ✅ Implement calculateLocalConfidence() - COMPLETE
-2. Document/fix bypassSmoothing
+2. ✅ Document/fix bypassSmoothing - COMPLETE  
 3. ✅ Update all tests to use local confidence - COMPLETE (ADMLocalConfidenceTests.swift)
-4. Integration testing
+4. Integration testing - REMAINING (This is the next critical step)
 
 ### Sprint 3 (Following Week): P2 Issues
 1. Implement intelligent nudge logic
