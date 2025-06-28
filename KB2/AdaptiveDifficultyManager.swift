@@ -102,7 +102,7 @@ class AdaptiveDifficultyManager {
     internal var domPerformanceProfiles: [DOMTargetType: DOMPerformanceProfile] = [:] // Made internal for testing
 
     // MARK: - Forced Exploration State Tracking (Phase 5)
-    private var domConvergenceCounters: [DOMTargetType: Int] = [:]
+    internal var domConvergenceCounters: [DOMTargetType: Int] = [:] // Made internal for testing
 
     // MARK: - Logging Throttling
     private var lastLogTime: TimeInterval = 0
@@ -1583,12 +1583,18 @@ class AdaptiveDifficultyManager {
             let averagePerformance = calculateWeightedAveragePerformance(data: dataPoints, weights: weights)
             let performanceGap = averagePerformance - config.domProfilingPerformanceTarget
             
-            // c. Calculate slope-based gain modifier (D-term)
+            // c. Apply direction-specific rate multiplier
+            // When performance > target, we need to harden (make harder)
+            // When performance < target, we need to ease (make easier)
+            let directionMultiplier = (performanceGap > 0) ? config.domHardeningRateMultiplier : config.domEasingRateMultiplier
+            let directionAdjustedRate = confidenceAdjustedRate * directionMultiplier
+            
+            // d. Calculate slope-based gain modifier (D-term)
             let slope = calculateWeightedSlope(data: dataPoints, weights: weights)
             let gainModifier = 1.0 / (1.0 + abs(slope) * config.domSlopeDampeningFactor)
             
-            // d. Calculate final signal
-            let rawSignal = performanceGap * confidenceAdjustedRate * gainModifier
+            // e. Calculate final signal
+            let rawSignal = performanceGap * directionAdjustedRate * gainModifier
             
             // Apply signal clamping to prevent jarring difficulty changes
             let finalSignal = max(-config.domMaxSignalPerRound, min(config.domMaxSignalPerRound, rawSignal))
@@ -1655,7 +1661,11 @@ class AdaptiveDifficultyManager {
                 currentPosition: currentPosition,
                 desiredPosition: targetPosition,
                 confidence: localConfidenceStruct,
-                bypassSmoothing: true // PD controller bypasses additional smoothing
+                bypassSmoothing: true // PD controller bypasses additional smoothing because:
+                                      // 1. PD controller already provides smoothing via D-term (slope dampening)
+                                      // 2. Direction-specific rate multipliers provide asymmetric adaptation
+                                      // 3. Signal clamping prevents jarring changes
+                                      // 4. Additional smoothing would interfere with PD control precision
             )
         }
         

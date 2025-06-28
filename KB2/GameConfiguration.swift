@@ -387,7 +387,7 @@ struct GameConfiguration {
     /// Number of consecutive rounds a DOM must be stable to be considered converged
     /// Default: 5 rounds
     /// Prevents premature convergence detection due to temporary stability
-    let domConvergenceDuration: Int = 5
+    var domConvergenceDuration: Int = 5
     
     /// Controlled nudge factor applied to converged DOMs to stimulate learning
     /// Default: 0.03 (3% of normalized range)
@@ -403,4 +403,16 @@ struct GameConfiguration {
     /// Default: 0.15 (15% of normalized range)
     /// This clamps the PD controller output to ensure smooth difficulty transitions
     var domMaxSignalPerRound: CGFloat = 0.15
+    
+    // --- Direction-Specific Adaptation Rates (Phase 5 - bypassSmoothing resolution) ---
+    
+    /// Rate multiplier applied when easing (making the game easier) 
+    /// Default: 1.0 (full adaptation speed when helping struggling players)
+    /// This ensures quick response when players need difficulty reduction
+    let domEasingRateMultiplier: CGFloat = 1.0
+    
+    /// Rate multiplier applied when hardening (making the game harder)
+    /// Default: 0.6 (60% adaptation speed when increasing difficulty)
+    /// This provides a more cautious approach to difficulty increases
+    let domHardeningRateMultiplier: CGFloat = 0.6
 }
