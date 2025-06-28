@@ -312,9 +312,12 @@ struct GameConfiguration {
         .targetCount: 1.0
     ]
     
+    // --- Global Performance Target ---
+    let globalPerformanceTarget: CGFloat = 0.75
+    
     // --- Hysteresis Configuration (Phase 3) ---
-    let adaptationIncreaseThreshold: CGFloat = 0.55    // Must exceed to increase difficulty
-    let adaptationDecreaseThreshold: CGFloat = 0.45    // Must fall below to decrease
+    let adaptationIncreaseThreshold: CGFloat = 0.8    // Must exceed to increase difficulty
+    let adaptationDecreaseThreshold: CGFloat = 0.7    // Must fall below to decrease
     let enableHysteresis: Bool = true
     let minStableRoundsBeforeDirectionChange: Int = 2
     let hysteresisDeadZone: CGFloat = 0.02            // Additional dead zone when in neutral
@@ -341,12 +344,12 @@ struct GameConfiguration {
     /// Initial difficulty multiplier applied during warmup phase
     /// Default: 0.85 (85% of normal difficulty)
     /// This ensures players start at a comfortable level while the system recalibrates
-    let warmupInitialDifficultyMultiplier: CGFloat = 0.85
+    let warmupInitialDifficultyMultiplier: CGFloat = 0.9
     
     /// Performance target during warmup phase (0.0-1.0)
     /// Default: 0.60 (vs 0.50 in standard phase)
     /// Higher target prevents over-hardening while finding appropriate difficulty
-    let warmupPerformanceTarget: CGFloat = 0.60
+    let warmupPerformanceTarget: CGFloat = 0.8
     
     /// Adaptation rate multiplier during warmup phase
     /// Default: 1.7 (1.7x faster than normal)
@@ -363,9 +366,9 @@ struct GameConfiguration {
     // --- PD Controller Parameters (Phase 5) ---
     
     /// Target performance level for DOM-specific adaptation (0.0-1.0)
-    /// Default: 0.8 (80% performance target)
+    /// Default: 0.75 (75% performance target)
     /// The PD controller will try to maintain this performance level for each DOM
-    let domProfilingPerformanceTarget: CGFloat = 0.8
+    let domProfilingPerformanceTarget: CGFloat = 0.75
     
     /// Dampening factor for the derivative term in the PD controller
     /// Default: 10.0
@@ -382,7 +385,7 @@ struct GameConfiguration {
     /// Signal magnitude threshold below which a DOM is considered stable/converged
     /// Default: 0.01 (1% of normalized range)
     /// When adaptation signals fall below this threshold, the DOM has reached equilibrium
-    let domConvergenceThreshold: CGFloat = 0.035
+    let domConvergenceThreshold: CGFloat = 0.04
     
     /// Number of consecutive rounds a DOM must be stable to be considered converged
     /// Default: 5 rounds

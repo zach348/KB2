@@ -140,7 +140,7 @@ class ADMWarmupTests: XCTestCase {
         // Verify warmup configuration
         XCTAssertEqual(testConfig.warmupAdaptationRateMultiplier, 1.7,
                       "Warmup adaptation rate should be 1.7x")
-        XCTAssertEqual(testConfig.warmupPerformanceTarget, 0.60,
+        XCTAssertEqual(testConfig.warmupPerformanceTarget, 0.8,
                       "Warmup performance target should be 0.60")
     }
     
@@ -373,9 +373,9 @@ class ADMWarmupTests: XCTestCase {
         
         XCTAssertEqual(config.warmupPhaseProportion, 0.25,
                       "Warmup should be 25% of session")
-        XCTAssertEqual(config.warmupInitialDifficultyMultiplier, 0.85,
+        XCTAssertEqual(config.warmupInitialDifficultyMultiplier, 0.9,
                       "Initial difficulty should be 85%")
-        XCTAssertEqual(config.warmupPerformanceTarget, 0.60,
+        XCTAssertEqual(config.warmupPerformanceTarget, 0.8,
                       "Performance target should be 0.60")
         XCTAssertEqual(config.warmupAdaptationRateMultiplier, 1.7,
                       "Adaptation rate should be 1.7x")

@@ -6,9 +6,9 @@
 // based on player performance. It uses a multi-phase approach:
 //
 // 1. WARMUP PHASE (25% of session):
-//    - Starts at 85% of persisted or default difficulty
+//    - Starts at 90 of persisted or default difficulty
 //    - Adapts 1.7x faster than normal to quickly find appropriate difficulty
-//    - Performance target is 0.60 (vs 0.50 in standard phase)
+//    - Performance target is 0.80 (vs 0.75 in standard phase)
 //    - Acts as a recalibration phase, not an automatic ease-in
 //    - Exits at adapted values (no reset to original difficulty)
 //
@@ -138,7 +138,7 @@ class AdaptiveDifficultyManager {
     
     // MARK: - Hysteresis Helper Structures
     struct AdaptationThresholds {
-        let performanceTarget: CGFloat = 0.5
+        let performanceTarget: CGFloat = 0.75
         let increaseThreshold: CGFloat
         let decreaseThreshold: CGFloat
         let baseDeadZone: CGFloat
@@ -572,7 +572,7 @@ class AdaptiveDifficultyManager {
             }
         }
 
-        var performanceTarget = config.adaptationIncreaseThreshold - 0.05 // Default target
+        var performanceTarget = config.globalPerformanceTarget // Use configured global target
         var adaptationRateMultiplier: CGFloat = 1.0
 
         switch currentPhase {
@@ -660,7 +660,12 @@ class AdaptiveDifficultyManager {
         // Update direction tracking
         if newDirection != lastAdaptationDirection {
             if newDirection == .stable {
-                directionStableCount = 0
+                // Don't reset stable count if we're in stable due to hysteresis
+                // Only reset if we were actively adapting and now genuinely stable
+                if lastAdaptationDirection != .stable && abs(adaptationSignal) < config.adaptationSignalDeadZone {
+                    directionStableCount = 0
+                }
+                // Otherwise, maintain the count to allow eventual direction change
             } else if lastAdaptationDirection == .stable {
                 // Starting to adapt after being stable
                 directionStableCount = 1
@@ -689,6 +694,10 @@ class AdaptiveDifficultyManager {
             }
             lastAdaptationDirection = newDirection
         } else if newDirection != .stable {
+            directionStableCount += 1
+        } else if newDirection == .stable && lastAdaptationDirection != .stable {
+            // Continue counting stable rounds while in stable state after being non-stable
+            // This allows accumulation of rounds to eventually permit direction change
             directionStableCount += 1
         }
         
@@ -781,7 +790,8 @@ class AdaptiveDifficultyManager {
     func calculateAdaptationSignalWithHysteresis(performanceScore: CGFloat, thresholds: AdaptationThresholds, performanceTarget: CGFloat) -> (signal: CGFloat, direction: AdaptationDirection) {
         guard config.enableHysteresis else {
             // Original logic without hysteresis
-            let signal = (performanceScore - performanceTarget) * 2.0
+            let rawSignal = (performanceScore - performanceTarget) * 2.0
+            let signal = max(-1.0, min(1.0, rawSignal)) // Clamp signal to [-1, 1]
             
             if abs(signal) < config.adaptationSignalDeadZone {
                 return (0.0, .stable)
@@ -799,7 +809,8 @@ class AdaptiveDifficultyManager {
                 return (0.0, .stable)
             }
             
-            let signal = (performanceScore - performanceTarget) * 2.0
+            let rawSignal = (performanceScore - performanceTarget) * 2.0
+            let signal = max(-1.0, min(1.0, rawSignal)) // Clamp signal to [-1, 1]
             return (signal, .increasing)
             
         } else if performanceScore < thresholds.decreaseThreshold {
@@ -810,7 +821,8 @@ class AdaptiveDifficultyManager {
                 return (0.0, .stable)
             }
             
-            let signal = (performanceScore - performanceTarget) * 2.0
+            let rawSignal = (performanceScore - performanceTarget) * 2.0
+            let signal = max(-1.0, min(1.0, rawSignal)) // Clamp signal to [-1, 1]
             return (signal, .decreasing)
             
         } else {
@@ -823,7 +835,8 @@ class AdaptiveDifficultyManager {
             }
             
             // Small adaptation within neutral zone (dampened)
-            let signal = (performanceScore - performanceTarget) * 1.0 // Reduced multiplier
+            let rawSignal = (performanceScore - performanceTarget) * 1.0 // Reduced multiplier
+            let signal = max(-1.0, min(1.0, rawSignal)) // Clamp signal to [-1, 1]
             
             // Maintain current direction if signal is very small
             if abs(signal) < config.adaptationSignalDeadZone {

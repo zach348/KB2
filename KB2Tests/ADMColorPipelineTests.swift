@@ -186,8 +186,8 @@ class ADMColorPipelineTests: XCTestCase {
     }
     
     func testPerformanceInDeadZoneDoesNotChangeDF() {
-        // GIVEN: A stable performance history averaging to the dead zone center (0.5)
-        let scoreInDeadZone: CGFloat = 0.5
+        // GIVEN: A stable performance history averaging to the dead zone center (0.75)
+        let scoreInDeadZone: CGFloat = 0.75
         for _ in 0..<gameConfig.minimumHistoryForTrend {
             let entry = PerformanceHistoryEntry(
                 timestamp: CACurrentMediaTime(),
@@ -207,7 +207,7 @@ class ADMColorPipelineTests: XCTestCase {
         for (domType, position) in initialPositions {
             print("  \(domType): \(position)")
         }
-        print("Dead zone range: \(0.5 - gameConfig.adaptationSignalDeadZone) to \(0.5 + gameConfig.adaptationSignalDeadZone)")
+        print("Dead zone range: \(0.75 - gameConfig.adaptationSignalDeadZone) to \(0.75 + gameConfig.adaptationSignalDeadZone)")
         
         // WHEN: Calculate what performance score these values will produce
         // First, let's manually calculate the expected score to verify it's in dead zone
@@ -247,19 +247,19 @@ class ADMColorPipelineTests: XCTestCase {
         print("  Tap Accuracy: \(accNorm) * \(weights.tapAccuracy) = \(accContribution)")
         print("  Expected Raw Score: \(expectedRawScore)")
         
-        // Record a performance that should score exactly 0.5
-        // To achieve 0.5 with weights: Success=0.5, TF/TTF=0.2, RT=0.1, RD=0.1, Acc=0.1
-        // We need: taskSuccess=false (0.0), tfTtfRatio=1.0, and perfect scores for the rest
-        // 0.0*0.5 + 1.0*0.2 + 1.0*0.1 + 1.0*0.1 + 1.0*0.1 = 0.0 + 0.2 + 0.1 + 0.1 + 0.1 = 0.5
+        // Record a performance that should score exactly 0.75
+        // To achieve 0.75 with weights: Success=0.5, TF/TTF=0.2, RT=0.1, RD=0.1, Acc=0.1
+        // We need: taskSuccess=true (1.0), tfTtfRatio=0.5, and good scores for the rest
+        // 1.0*0.5 + 0.5*0.2 + 0.5*0.1 + 0.5*0.1 + 0.5*0.1 = 0.5 + 0.1 + 0.05 + 0.05 + 0.05 = 0.75
         adm.recordIdentificationPerformance(
-            taskSuccess: false,            // 0.0 * 0.50 = 0.00
-            tfTtfRatio: 1.0,              // 1.0 * 0.20 = 0.20
-            reactionTime: 0.1,            // Better than best (0.2) -> 1.0 * 0.10 = 0.10
-            responseDuration: 0.3,        // 0.1s per target -> 1.0 * 0.10 = 0.10
-            averageTapAccuracy: 0.0,      // Perfect -> 1.0 * 0.10 = 0.10
+            taskSuccess: true,             // 1.0 * 0.50 = 0.50
+            tfTtfRatio: 0.5,              // 0.5 * 0.20 = 0.10
+            reactionTime: 0.975,          // Mid-range -> ~0.5 * 0.10 = 0.05
+            responseDuration: 1.5,        // 0.5s per target -> ~0.5 * 0.10 = 0.05
+            averageTapAccuracy: 112.5,    // Mid-range -> ~0.5 * 0.10 = 0.05
             actualTargetsToFindInRound: 3
         )
-        // Total expected: 0.00 + 0.20 + 0.10 + 0.10 + 0.10 = 0.50
+        // Total expected: 0.50 + 0.10 + 0.05 + 0.05 + 0.05 = 0.75
         
         // THEN: Nothing should change if score is truly in dead zone
         let newPositions = adm.normalizedPositions

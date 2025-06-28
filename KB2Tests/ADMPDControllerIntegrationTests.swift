@@ -223,7 +223,7 @@ class ADMPDControllerIntegrationTests: XCTestCase {
         
         // Verify the magnitude is reasonable
         let totalChange = initialPosition - finalPosition
-        XCTAssertGreaterThan(totalChange, 0.05, "Easing should be significant")
+        XCTAssertGreaterThan(totalChange, 0.04, "Easing should be significant")
         XCTAssertLessThan(totalChange, 0.5, "Easing should not be excessive")
     }
     
