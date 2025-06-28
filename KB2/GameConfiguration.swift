@@ -392,10 +392,15 @@ struct GameConfiguration {
     /// Controlled nudge factor applied to converged DOMs to stimulate learning
     /// Default: 0.03 (3% of normalized range)
     /// This deterministic exploration replaces the previous random jitter approach
-    let domExplorationNudgeFactor: CGFloat = 0.03
+    var domExplorationNudgeFactor: CGFloat = 0.03
     
     /// Minimum standard deviation in DOM values required before adaptation signals are calculated
     /// Default: 0.1 (10% of the 0-1 normalized range)
     /// This prevents adaptation decisions based on insufficient exploration of the parameter space
     let minimumDOMVarianceThreshold: CGFloat = 0.1
+    
+    /// Maximum signal magnitude per round to prevent jarring difficulty changes
+    /// Default: 0.15 (15% of normalized range)
+    /// This clamps the PD controller output to ensure smooth difficulty transitions
+    var domMaxSignalPerRound: CGFloat = 0.15
 }

@@ -1580,7 +1580,10 @@ class AdaptiveDifficultyManager {
             let gainModifier = 1.0 / (1.0 + abs(slope) * config.domSlopeDampeningFactor)
             
             // d. Calculate final signal
-            let finalSignal = performanceGap * confidenceAdjustedRate * gainModifier
+            let rawSignal = performanceGap * confidenceAdjustedRate * gainModifier
+            
+            // Apply signal clamping to prevent jarring difficulty changes
+            let finalSignal = max(-config.domMaxSignalPerRound, min(config.domMaxSignalPerRound, rawSignal))
             
             print("[ADM PD Controller] \(domType):")
             print("  ├─ Data points: \(dataPoints.count)")
@@ -1589,7 +1592,8 @@ class AdaptiveDifficultyManager {
             print("  ├─ Performance gap (P): \(String(format: "%.3f", performanceGap))")
             print("  ├─ Slope: \(String(format: "%.3f", slope))")
             print("  ├─ Gain modifier (D): \(String(format: "%.3f", gainModifier))")
-            print("  └─ Final signal: \(String(format: "%.3f", finalSignal))")
+            print("  ├─ Raw signal: \(String(format: "%.3f", rawSignal))")
+            print("  └─ Final signal: \(String(format: "%.3f", finalSignal))\(abs(rawSignal) > config.domMaxSignalPerRound ? " (CLAMPED)" : "")")
             
             // e. Implement forced exploration logic
             let currentConvergenceCount = domConvergenceCounters[domType] ?? 0
