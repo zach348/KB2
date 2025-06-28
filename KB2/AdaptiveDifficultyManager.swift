@@ -1636,12 +1636,25 @@ class AdaptiveDifficultyManager {
             let currentPosition = normalizedPositions[domType] ?? 0.5
             let targetPosition = currentPosition + finalSignal
             
-            let globalConfidence = calculateAdaptationConfidence() // Use for smoothing
+            // Create local confidence structure based on DOM-specific data
+            // Calculate components for local confidence structure
+            let performances = dataPoints.map { $0.performance }
+            let performanceStdDev = calculateStandardDeviation(values: performances)
+            let varianceComponent = max(0, 1.0 - min(performanceStdDev / 0.5, 1.0))
+            let dataPointComponent = min(CGFloat(dataPoints.count) / CGFloat(config.domMinDataPointsForProfiling), 1.0)
+            
+            let localConfidenceStruct = (
+                total: localConfidence,
+                variance: varianceComponent,
+                direction: CGFloat(1.0),  // Could calculate local trend if needed
+                history: dataPointComponent
+            )
+            
             _ = applyModulation(
                 domType: domType,
                 currentPosition: currentPosition,
                 desiredPosition: targetPosition,
-                confidence: globalConfidence,
+                confidence: localConfidenceStruct,
                 bypassSmoothing: true // PD controller bypasses additional smoothing
             )
         }
