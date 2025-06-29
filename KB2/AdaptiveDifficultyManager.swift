@@ -153,12 +153,13 @@ class AdaptiveDifficultyManager {
     init(
         configuration: GameConfiguration,
         initialArousal: CGFloat,
-        sessionDuration: TimeInterval
+        sessionDuration: TimeInterval,
+        userId: String? = nil
     ) {
         self.config = configuration
         self.currentArousalLevel = initialArousal
         self.maxHistorySize = configuration.performanceHistoryWindowSize
-        self.userId = UserIDManager.getUserId()
+        self.userId = userId ?? UserIDManager.getUserId()
 
         // Calculate dynamic phase lengths
         let expectedRounds = SessionAnalytics.estimateExpectedRounds(
@@ -194,10 +195,10 @@ class AdaptiveDifficultyManager {
         self.currentTargetCount = 0
         
         // Initialize normalized positions to middle of range (0.5)
-        // EXCEPT targetCount which starts at easiest (0.0)
+        // All DOMs start at 0.5 (conditional kept for potential future tweaking)
         for domType in [DOMTargetType.discriminatoryLoad, .meanBallSpeed, .ballSpeedSD, .responseTime, .targetCount] {
             if domType == .targetCount {
-                normalizedPositions[domType] = 0.5 // Start at easier end of range
+                normalizedPositions[domType] = 0.5 // Start at midpoint (same as others)
             } else {
                 normalizedPositions[domType] = 0.5 // Others start at midpoint
             }
@@ -220,6 +221,27 @@ class AdaptiveDifficultyManager {
             if let persistedState = ADMPersistenceManager.loadState(for: self.userId) {
                 print("[ADM] ✅ Found persisted state! Loading...")
                 loadState(from: persistedState)
+                
+                // Validate that positions were actually loaded
+                print("[ADM] === VERIFYING LOADED POSITIONS ===")
+                var allPositionsDefault = true
+                for (dom, position) in normalizedPositions {
+                    print("[ADM]   \(dom): \(String(format: "%.3f", position))")
+                    // Check if any position differs from default (0.5)
+                    if abs(position - 0.5) > 0.001 {
+                        allPositionsDefault = false
+                    }
+                }
+                
+                if allPositionsDefault && !persistedState.normalizedPositions.isEmpty {
+                    print("[ADM] ⚠️ WARNING: All positions are at default despite loading state!")
+                    print("[ADM] ⚠️ Persisted positions were:")
+                    for (dom, position) in persistedState.normalizedPositions {
+                        print("[ADM]   \(dom): \(String(format: "%.3f", position))")
+                    }
+                }
+                print("[ADM] === END VERIFICATION ===")
+                
                 didLoadState = true
             } else {
                 print("[ADM] ⚠️ No persisted state found - starting fresh")
@@ -1723,6 +1745,15 @@ class AdaptiveDifficultyManager {
         print("[ADM] Performance history:")
         print("  ├─ Loaded entries: \(state.performanceHistory.count)")
         
+        // Show performance score summary
+        if !state.performanceHistory.isEmpty {
+            let scores = state.performanceHistory.map { $0.overallScore }
+            let avgScore = scores.reduce(0.0, +) / CGFloat(scores.count)
+            print("  ├─ Average performance score: \(String(format: "%.3f", avgScore))")
+            print("  ├─ Min score: \(String(format: "%.3f", scores.min() ?? 0))")
+            print("  └─ Max score: \(String(format: "%.3f", scores.max() ?? 0))")
+        }
+        
         // Trim history to max size if needed
         let originalCount = performanceHistory.count
         if performanceHistory.count > maxHistorySize {
@@ -1755,7 +1786,18 @@ class AdaptiveDifficultyManager {
         print("  └─ Direction stable count: \(directionStableCount)")
         
         // Load normalized positions
+        print("[ADM] BEFORE loading positions:")
+        for (dom, position) in normalizedPositions.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            print("  ├─ \(dom): \(String(format: "%.3f", position))")
+        }
+        
         normalizedPositions = state.normalizedPositions
+        
+        print("[ADM] AFTER loading positions from state:")
+        for (dom, position) in normalizedPositions.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            print("  ├─ \(dom): \(String(format: "%.3f", position))")
+        }
+        
         print("[ADM] Loaded DOM positions (0.0=easiest, 1.0=hardest):")
         
         // Define human-readable labels for each DOM type
