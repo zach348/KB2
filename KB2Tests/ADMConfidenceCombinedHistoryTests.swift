@@ -19,8 +19,12 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
         config = GameConfiguration()
         config.clearPastSessionData = true // Start fresh
         // performanceHistoryWindowSize is already 10 in GameConfiguration, which is enough for our tests
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
-        adm.userId = testUserId
+        adm = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
     }
     
     override func tearDown() {
@@ -51,13 +55,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             oldHistory.append(entry)
         }
         
-        // Get the actual user ID that ADM will use
-        let actualUserId = UserIDManager.getUserId()
-        
-        // Clear any existing state for the actual user ID
-        ADMPersistenceManager.clearState(for: actualUserId)
-        
-        // Save state for the actual user ID that ADM will look for
+        // Save state for the test user ID
         let persistedState = PersistedADMState(
             performanceHistory: oldHistory,
             lastAdaptationDirection: .stable,
@@ -66,11 +64,16 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             domPerformanceProfiles: nil, // Old format compatibility
             version: 1
         )
-        ADMPersistenceManager.saveState(persistedState, for: actualUserId)
+        ADMPersistenceManager.saveState(persistedState, for: testUserId)
         
         // Create a new ADM instance that will load the persisted state
         config.clearPastSessionData = false // Don't clear, we want to load the saved data
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
+        let newADM = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
         
         // Verify old history is loaded by checking confidence metrics
         // We can't access performanceHistory directly as it's private
@@ -157,8 +160,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
     
     func testConfidenceWithVeryOldAndNewData() {
         // GIVEN: Mix of very old and new data using persistence
-        let actualUserId = UserIDManager.getUserId()
-        ADMPersistenceManager.clearState(for: actualUserId)
+        ADMPersistenceManager.clearState(for: testUserId)
         
         let currentTime = CACurrentMediaTime()
         var mixedHistory: [PerformanceHistoryEntry] = []
@@ -196,11 +198,16 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             domPerformanceProfiles: nil, // Old format compatibility
             version: 1
         )
-        ADMPersistenceManager.saveState(persistedState, for: actualUserId)
+        ADMPersistenceManager.saveState(persistedState, for: testUserId)
         
         // Create new ADM that will load this history
         config.clearPastSessionData = false
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
+        adm = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
         
         // WHEN: Calculating confidence
         let confidence = adm.calculateAdaptationConfidence()
@@ -220,8 +227,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
     
     func testTrendCalculationWithCombinedHistory() {
         // GIVEN: Old history with declining trend
-        let actualUserId = UserIDManager.getUserId()
-        ADMPersistenceManager.clearState(for: actualUserId)
+        ADMPersistenceManager.clearState(for: testUserId)
         
         let currentTime = CACurrentMediaTime()
         var decliningHistory: [PerformanceHistoryEntry] = []
@@ -248,11 +254,16 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             domPerformanceProfiles: nil, // Old format compatibility
             version: 1
         )
-        ADMPersistenceManager.saveState(persistedState, for: actualUserId)
+        ADMPersistenceManager.saveState(persistedState, for: testUserId)
         
         // Create new ADM instance that will load the persisted state
         config.clearPastSessionData = false
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
+        let newADM = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
         
         // Get initial metrics
         let (_, initialTrend, _) = newADM.getPerformanceMetrics()
@@ -297,8 +308,7 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
     
     func testDirectionConfidenceWithCombinedHistory() {
         // GIVEN: Old history with stable direction
-        let actualUserId = UserIDManager.getUserId()
-        ADMPersistenceManager.clearState(for: actualUserId)
+        ADMPersistenceManager.clearState(for: testUserId)
         
         let oldTime = CACurrentMediaTime() - 3600
         var oldHistory: [PerformanceHistoryEntry] = []
@@ -325,11 +335,16 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             domPerformanceProfiles: nil, // Old format compatibility
             version: 1
         )
-        ADMPersistenceManager.saveState(persistedState, for: actualUserId)
+        ADMPersistenceManager.saveState(persistedState, for: testUserId)
         
         // Create new ADM instance that will load the persisted state
         config.clearPastSessionData = false
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
+        let newADM = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
         
         // WHEN: Recording performance that continues the trend
         newADM.recordIdentificationPerformance(

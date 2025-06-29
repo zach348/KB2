@@ -100,9 +100,9 @@ class ADMWarmupTests: XCTestCase {
         let adm = AdaptiveDifficultyManager(
             configuration: testConfig,
             initialArousal: 1.0,
-            sessionDuration: 15 * 60
+            sessionDuration: 15 * 60,
+            userId: userId
         )
-        adm.userId = userId
         
         // Manually trigger the load logic
         if let loadedState = ADMPersistenceManager.loadState(for: userId) {
@@ -350,9 +350,9 @@ class ADMWarmupTests: XCTestCase {
         let adm = AdaptiveDifficultyManager(
             configuration: testConfig,
             initialArousal: 1.0,
-            sessionDuration: 15 * 60
+            sessionDuration: 15 * 60,
+            userId: userId
         )
-        adm.userId = userId
         
         // The warmup scaling should not modify the persisted state
         if let loadedState = ADMPersistenceManager.loadState(for: userId) {

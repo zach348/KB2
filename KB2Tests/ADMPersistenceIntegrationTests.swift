@@ -18,9 +18,12 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         super.setUp()
         config = GameConfiguration()
         config.clearPastSessionData = true // Start fresh
-        adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
-        // Override the default user ID with our test user ID
-        adm.userId = testUserId
+        adm = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
     }
     
     override func tearDown() {
@@ -88,13 +91,13 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         
         // Create new ADM instance
         config.clearPastSessionData = false
-        let originalUserId = UserIDManager.getUserId()
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
-        // Load state for our test user ID manually since ADM will use the real user ID
-        if let persistedState = ADMPersistenceManager.loadState(for: testUserId) {
-            newADM.loadState(from: persistedState)
-        }
-        newADM.userId = testUserId
+        config.enableSessionPhases = false // Disable warmup for this test
+        let newADM = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
         
         // THEN: History should be loaded with proper recency weighting
         XCTAssertEqual(newADM.performanceHistory.count, 10, "All history should be loaded")
@@ -148,13 +151,14 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         let saveTime = CFAbsoluteTimeGetCurrent() - startTime
         
         config.clearPastSessionData = false
+        config.enableSessionPhases = false // Disable warmup for this test
         let loadStartTime = CFAbsoluteTimeGetCurrent()
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
-        // Load state for our test user ID manually since ADM will use the real user ID
-        if let persistedState = ADMPersistenceManager.loadState(for: testUserId) {
-            newADM.loadState(from: persistedState)
-        }
-        newADM.userId = testUserId
+        let newADM = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
         let loadTime = CFAbsoluteTimeGetCurrent() - loadStartTime
         
         // THEN: Performance should be acceptable
@@ -261,12 +265,13 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         
         // Verify persistence
         config.clearPastSessionData = false
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
-        // Load state for our test user ID manually since ADM will use the real user ID
-        if let persistedState = ADMPersistenceManager.loadState(for: testUserId) {
-            newADM.loadState(from: persistedState)
-        }
-        newADM.userId = testUserId
+        config.enableSessionPhases = false // Disable warmup for this test
+        let newADM = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
         
         let (newAverage, newTrend, newVariance) = newADM.getPerformanceMetrics()
         XCTAssertEqual(newAverage, average, accuracy: 0.001, "Metrics should be preserved")
@@ -299,12 +304,13 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         
         // Simulate app relaunch
         config.clearPastSessionData = false
-        let newADM = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
-        // Load state for our test user ID manually since ADM will use the real user ID
-        if let persistedState = ADMPersistenceManager.loadState(for: testUserId) {
-            newADM.loadState(from: persistedState)
-        }
-        newADM.userId = testUserId
+        config.enableSessionPhases = false // Disable warmup for this test
+        let newADM = AdaptiveDifficultyManager(
+            configuration: config,
+            initialArousal: 0.5,
+            sessionDuration: 600,
+            userId: testUserId
+        )
         
         XCTAssertEqual(newADM.performanceHistory.count, 3, "History should be restored")
         XCTAssertEqual(Double(newADM.normalizedPositions[.discriminatoryLoad] ?? 0), 0.65, accuracy: 0.001)

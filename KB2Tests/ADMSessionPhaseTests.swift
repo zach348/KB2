@@ -105,27 +105,17 @@ class ADMSessionPhaseTests: XCTestCase {
         let adm = AdaptiveDifficultyManager(
             configuration: mutableConfig,
             initialArousal: 1.0,
-            sessionDuration: 15 * 60
+            sessionDuration: 15 * 60,
+            userId: userId
         )
-        adm.userId = userId // Manually set user ID for test
-
-        // Re-run the initialization logic that depends on the user ID.
-        if !mutableConfig.clearPastSessionData {
-            if let loadedState = ADMPersistenceManager.loadState(for: adm.userId) {
-                adm.loadState(from: loadedState)
-                if mutableConfig.enableSessionPhases {
-                     for (dom, position) in adm.normalizedPositions {
-                        adm.normalizedPositions[dom] = position * mutableConfig.warmupInitialDifficultyMultiplier
-                    }
-                }
-            }
-        }
 
 
         // 3. Assert that the final positions are the persisted ones scaled down
+        // Note: ADM applies a floor of 0.3 to warmup-scaled positions
         let expectedMultiplier = mutableConfig.warmupInitialDifficultyMultiplier
         for (domType, persistedPosition) in persistedPositions {
-            let expectedPosition = persistedPosition * expectedMultiplier
+            let scaledPosition = persistedPosition * expectedMultiplier
+            let expectedPosition = max(scaledPosition, 0.3) // Floor of 0.3 is applied
             XCTAssertEqual(adm.normalizedPositions[domType]!, expectedPosition, accuracy: 0.001)
         }
         
