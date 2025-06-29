@@ -209,7 +209,9 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
         // With exponential decay, 48-hour-old data should have weight ≈ e^(-48/24) = e^(-2) ≈ 0.135
         let expectedOldWeight = exp(-2.0)
         let effectiveHistorySize = 3.0 + expectedOldWeight // 3 recent + weighted old
-        let expectedHistoryConfidence = effectiveHistorySize / CGFloat(config.performanceHistoryWindowSize)
+        // Use the baseline of 10 entries for full confidence instead of window size
+        let historyConfidenceBaseline: CGFloat = 10.0
+        let expectedHistoryConfidence = effectiveHistorySize / historyConfidenceBaseline
         
         // History confidence should reflect the effective weighted size
         XCTAssertLessThan(abs(confidence.history - expectedHistoryConfidence), 0.1,

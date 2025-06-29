@@ -234,17 +234,19 @@ class AdaptiveDifficultyManager {
 
         // Phase 5: Apply warmup difficulty reduction if applicable
         // The warmup phase serves as a recalibration period where:
-        // - Difficulty starts at 85% of normal to ensure a comfortable start
+        // - Difficulty starts at 90% of normal to ensure a comfortable start
+        // - But with a floor of 0.3 to ensure room for easing
         // - Adaptation happens 1.7x faster to quickly find appropriate difficulty
-        // - Performance target is slightly higher (0.60) to avoid over-hardening
+        // - Performance target is slightly higher (0.80) to avoid over-hardening
         if self.currentPhase == .warmup {
             print("[ADM Warm-up] === APPLYING WARMUP DIFFICULTY SCALING ===")
             if didLoadState {
                 print("[ADM Warm-up] Starting from persisted state")
-                // Reduce difficulty from the persisted level for the warm-up
+                // Reduce difficulty from the persisted level for the warm-up, with floor of 0.3
                 for (dom, position) in self.normalizedPositions {
                     let originalPosition = position
-                    self.normalizedPositions[dom] = position * config.warmupInitialDifficultyMultiplier
+                    let scaledPosition = position * config.warmupInitialDifficultyMultiplier
+                    self.normalizedPositions[dom] = max(scaledPosition, 0.3)
                     print("[ADM Warm-up] \(dom): \(String(format: "%.3f", originalPosition)) → \(String(format: "%.3f", self.normalizedPositions[dom] ?? 0))")
                 }
                 DataLogger.shared.logCustomEvent(eventType: "ADM_Warmup_Started_From_Persistence", data: [:])
@@ -253,7 +255,8 @@ class AdaptiveDifficultyManager {
                 // If starting fresh, still apply the multiplier to the default 0.5
                  for (dom, position) in self.normalizedPositions {
                     let originalPosition = position
-                    self.normalizedPositions[dom] = position * config.warmupInitialDifficultyMultiplier
+                    let scaledPosition = position * config.warmupInitialDifficultyMultiplier
+                    self.normalizedPositions[dom] = max(scaledPosition, 0.3)
                     print("[ADM Warm-up] \(dom): \(String(format: "%.3f", originalPosition)) → \(String(format: "%.3f", self.normalizedPositions[dom] ?? 0))")
                 }
                 DataLogger.shared.logCustomEvent(eventType: "ADM_Warmup_Started_Fresh_Session", data: [:])
@@ -313,17 +316,6 @@ class AdaptiveDifficultyManager {
         for (domType, normalizedPosition) in normalizedPositions {
             let absoluteValue = normalizedToAbsoluteValue(normalizedValue: normalizedPosition, for: domType)
             setCurrentValue(for: domType, rawValue: absoluteValue)
-            
-            // Diagnostic logging for target count
-            if domType == .targetCount {
-                let range = currentValidRanges[domType] ?? (min: 0, max: 0)
-                print("[ADM] TargetCount Update:")
-                print("  - Arousal: \(String(format: "%.3f", currentArousalLevel))")
-                print("  - Normalized Position: \(String(format: "%.3f", normalizedPosition))")
-                print("  - Valid Range: [\(String(format: "%.1f", range.min)) - \(String(format: "%.1f", range.max))]")
-                print("  - Absolute Value (pre-round): \(String(format: "%.3f", absoluteValue))")
-                print("  - Final Target Count: \(Int(round(absoluteValue)))")
-            }
         }
     }
     
@@ -885,7 +877,10 @@ class AdaptiveDifficultyManager {
         
         // 3. History Confidence (more data = more confidence, but weighted by recency)
         let effectiveHistorySize = recencyWeightedHistory.reduce(0.0) { $0 + $1.weight }
-        let historyConfidence = min(effectiveHistorySize / CGFloat(config.performanceHistoryWindowSize), 1.0)
+        // Use a reasonable baseline of 10 entries for full confidence instead of the full window size
+        // This allows the system to reach full confidence with reasonable data while still supporting larger history
+        let historyConfidenceBaseline: CGFloat = 10.0
+        let historyConfidence = min(effectiveHistorySize / historyConfidenceBaseline, 1.0)
         
         // Log recency weighting details if significant aging detected
         if !recencyWeightedHistory.isEmpty {
@@ -1662,10 +1657,11 @@ class AdaptiveDifficultyManager {
             let varianceComponent = max(0, 1.0 - min(performanceStdDev / 0.5, 1.0))
             let dataPointComponent = min(CGFloat(dataPoints.count) / CGFloat(config.domMinDataPointsForProfiling), 1.0)
             
+            // For PD controller, we use DOM-specific confidence, not global
             let localConfidenceStruct = (
-                total: localConfidence,
+                total: localConfidence,  // This is the DOM-specific confidence
                 variance: varianceComponent,
-                direction: CGFloat(1.0),  // Could calculate local trend if needed
+                direction: CGFloat(1.0),  // DOM-specific direction confidence (simplified for now)
                 history: dataPointComponent
             )
             

@@ -1227,8 +1227,6 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Update motion settings with ADM values
         self.motionSettings.targetMeanSpeed = meanSpeedFromADM
         self.motionSettings.targetSpeedSD = speedSDFromADM
-        
-        print("GameScene: Updated speeds from ADM - Mean: \(String(format: "%.1f", meanSpeedFromADM)), SD: \(String(format: "%.1f", speedSDFromADM))")
     }
     
     //====================================================================================================

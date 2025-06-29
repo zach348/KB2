@@ -281,7 +281,7 @@ struct GameConfiguration {
     let adaptationSignalDeadZone: CGFloat = 0.035     // Reduced from 0.05 to react to smaller performance changes
     
     // --- Performance History Configuration (NEW) ---
-    var performanceHistoryWindowSize: Int = 10  // Changed to var for testing
+    var performanceHistoryWindowSize: Int = 40  // Increased from 10 to provide better historical context
     
     // --- KPI Weight Interpolation Configuration (Phase 1.5) ---
     let kpiWeightTransitionStart: CGFloat = 0.55
@@ -361,7 +361,7 @@ struct GameConfiguration {
     /// Enables DOM-specific performance profiling and adaptation
     /// When true, the system tracks performance for each difficulty parameter individually
     /// and can adapt them independently based on the player's specific strengths/weaknesses
-    var enableDomSpecificProfiling: Bool = false
+    var enableDomSpecificProfiling: Bool = true
     
     // --- PD Controller Parameters (Phase 5) ---
     

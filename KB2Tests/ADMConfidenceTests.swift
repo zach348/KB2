@@ -75,12 +75,13 @@ class ADMConfidenceTests: XCTestCase {
         adm.performanceHistory = [TestHelpers.createPerformanceHistory(scores: [0.6]).first!]
         
         // WHEN: Confidence is calculated
-        let confidence = adm.calculateAdaptationConfidence().total
+        let confidence = adm.calculateAdaptationConfidence()
         
         // THEN: History component of confidence should be low
-        let historyConfidence = min(CGFloat(adm.performanceHistory.count) / CGFloat(config.performanceHistoryWindowSize), 1.0)
-        XCTAssertEqual(historyConfidence, 0.1, "History confidence should be low with few entries")
-        XCTAssertLessThan(confidence, 0.5, "Overall confidence should be modest with insufficient history")
+        // With the new baseline of 10 entries for full confidence:
+        // 1 entry / 10 baseline = 0.1
+        XCTAssertEqual(confidence.history, 0.1, accuracy: 0.0001, "History confidence should be low with few entries")
+        XCTAssertLessThan(confidence.total, 0.5, "Overall confidence should be modest with insufficient history")
     }
 
     // MARK: - Effective Threshold Tests
@@ -208,7 +209,8 @@ class ADMConfidenceTests: XCTestCase {
         // THEN: The effective history size should be less than the actual count
         // due to older entries having less weight
         // Expected weights: ~1.0, ~0.97, ~0.75, ~0.59, ~0.5 = ~3.81 effective size
-        let expectedEffectiveSize = 3.81 / CGFloat(config.performanceHistoryWindowSize)
+        // With the baseline of 10 entries for full confidence:
+        let expectedEffectiveSize = 3.81 / 10.0  // Using baseline instead of window size
         XCTAssertLessThan(confidence.history, expectedEffectiveSize + 0.1, "Mixed age data should have reduced effective history size")
         XCTAssertGreaterThan(confidence.history, expectedEffectiveSize - 0.1, "Mixed age data should have predictable effective history size")
     }

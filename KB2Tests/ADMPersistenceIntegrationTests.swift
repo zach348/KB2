@@ -201,7 +201,9 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         
         // The effective history size should be close to 1 (just the recent entry)
         let effectiveSize = 1.0 + expectedOldWeight
-        let expectedHistoryConfidence = effectiveSize / CGFloat(config.performanceHistoryWindowSize)
+        // Use the baseline of 10 entries for full confidence instead of window size
+        let historyConfidenceBaseline: CGFloat = 10.0
+        let expectedHistoryConfidence = effectiveSize / historyConfidenceBaseline
         XCTAssertLessThan(abs(confidence.history - expectedHistoryConfidence), 0.05, 
                          "History confidence should reflect minimal contribution from old data")
     }

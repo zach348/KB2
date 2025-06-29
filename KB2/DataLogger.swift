@@ -805,7 +805,6 @@ class DataLogger {
         dataProcessingQueue.async { [weak self] in
             self?.events.append(event)
         }
-        print("DATA_LOG: Custom event - \(eventType): \(description)")
     }
     
     /// Print a summary of collected data
