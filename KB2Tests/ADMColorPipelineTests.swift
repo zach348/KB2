@@ -186,12 +186,17 @@ class ADMColorPipelineTests: XCTestCase {
     }
     
     func testPerformanceInDeadZoneDoesNotChangeDF() {
-        // GIVEN: A stable performance history averaging to the dead zone center (0.75)
-        let scoreInDeadZone: CGFloat = 0.75
-        for _ in 0..<gameConfig.minimumHistoryForTrend {
+        // GIVEN: A stable performance history that will result in adaptive scoring within dead zone
+        // Since adaptive scoring uses 75% current + 25% history + trend adjustments,
+        // we need to be more careful about our setup
+        
+        // First, seed with a very stable history right at the target
+        let stableScore: CGFloat = 0.75
+        for i in 0..<(gameConfig.minimumHistoryForTrend + 2) {
+            // Add a slight time delay between entries to avoid trend effects
             let entry = PerformanceHistoryEntry(
-                timestamp: CACurrentMediaTime(),
-                overallScore: scoreInDeadZone,
+                timestamp: CACurrentMediaTime() - Double(gameConfig.minimumHistoryForTrend + 2 - i),
+                overallScore: stableScore,
                 normalizedKPIs: [:],
                 arousalLevel: 0.5,
                 currentDOMValues: [:],
@@ -207,59 +212,33 @@ class ADMColorPipelineTests: XCTestCase {
         for (domType, position) in initialPositions {
             print("  \(domType): \(position)")
         }
-        print("Dead zone range: \(0.75 - gameConfig.adaptationSignalDeadZone) to \(0.75 + gameConfig.adaptationSignalDeadZone)")
+        print("Performance target: \(gameConfig.globalPerformanceTarget)")
+        print("Dead zone range: \(gameConfig.globalPerformanceTarget - gameConfig.adaptationSignalDeadZone) to \(gameConfig.globalPerformanceTarget + gameConfig.adaptationSignalDeadZone)")
         
-        // WHEN: Calculate what performance score these values will produce
-        // First, let's manually calculate the expected score to verify it's in dead zone
+        // WHEN: Engineer a performance that will result in an adaptive score in the dead zone
+        // With stable history at 0.75 and no trend, we need current performance to also be 0.75
         let weights = adm.getInterpolatedKPIWeights(arousal: 0.5)
         
-        // Task success: true = 1.0
-        let taskSuccessContribution = 1.0 * weights.taskSuccess
+        print("\nKPI weights at arousal 0.5:")
+        print("  taskSuccess: \(weights.taskSuccess)")
+        print("  tfTtfRatio: \(weights.tfTtfRatio)")
+        print("  reactionTime: \(weights.reactionTime)")
+        print("  responseDuration: \(weights.responseDuration)")
+        print("  tapAccuracy: \(weights.tapAccuracy)")
         
-        // TF/TTF ratio: 0.5
-        let tfTtfContribution = 0.5 * weights.tfTtfRatio
-        
-        // Reaction time normalization (lower is better)
-        let rtNorm = 1.0 - max(0.0, min(1.0, (2.0 - gameConfig.reactionTime_BestExpected) / 
-                     (gameConfig.reactionTime_WorstExpected - gameConfig.reactionTime_BestExpected)))
-        let rtContribution = rtNorm * weights.reactionTime
-        
-        // Response duration normalization (lower is better, scaled by target count)
-        let rdPerTarget = 10.0 / 3.0  // ~3.33s per target
-        let rdBest = gameConfig.responseDuration_PerTarget_BestExpected
-        let rdWorst = gameConfig.responseDuration_PerTarget_WorstExpected
-        let rdNorm = 1.0 - max(0.0, min(1.0, (rdPerTarget - rdBest) / (rdWorst - rdBest)))
-        let rdContribution = rdNorm * weights.responseDuration
-        
-        // Tap accuracy normalization (lower is better)
-        let accNorm = 1.0 - max(0.0, min(1.0, (500.0 - gameConfig.tapAccuracy_BestExpected_Points) /
-                      (gameConfig.tapAccuracy_WorstExpected_Points - gameConfig.tapAccuracy_BestExpected_Points)))
-        let accContribution = accNorm * weights.tapAccuracy
-        
-        let expectedRawScore = taskSuccessContribution + tfTtfContribution + rtContribution + 
-                              rdContribution + accContribution
-        
-        print("\nExpected performance calculation:")
-        print("  Task Success: 1.0 * \(weights.taskSuccess) = \(taskSuccessContribution)")
-        print("  TF/TTF: 0.5 * \(weights.tfTtfRatio) = \(tfTtfContribution)")
-        print("  Reaction Time: \(rtNorm) * \(weights.reactionTime) = \(rtContribution)")
-        print("  Response Duration: \(rdNorm) * \(weights.responseDuration) = \(rdContribution)")
-        print("  Tap Accuracy: \(accNorm) * \(weights.tapAccuracy) = \(accContribution)")
-        print("  Expected Raw Score: \(expectedRawScore)")
-        
-        // Record a performance that should score exactly 0.75
-        // To achieve 0.75 with weights: Success=0.5, TF/TTF=0.2, RT=0.1, RD=0.1, Acc=0.1
-        // We need: taskSuccess=true (1.0), tfTtfRatio=0.5, and good scores for the rest
-        // 1.0*0.5 + 0.5*0.2 + 0.5*0.1 + 0.5*0.1 + 0.5*0.1 = 0.5 + 0.1 + 0.05 + 0.05 + 0.05 = 0.75
+        // Calculate a performance that scores exactly at target (0.75)
+        // Since taskSuccess alone gives us 0.75, we'll add a tiny bit from other KPIs
+        // to ensure we're not exactly at 0.75 but still within dead zone
         adm.recordIdentificationPerformance(
-            taskSuccess: true,             // 1.0 * 0.50 = 0.50
-            tfTtfRatio: 0.5,              // 0.5 * 0.20 = 0.10
-            reactionTime: 0.975,          // Mid-range -> ~0.5 * 0.10 = 0.05
-            responseDuration: 1.5,        // 0.5s per target -> ~0.5 * 0.10 = 0.05
-            averageTapAccuracy: 112.5,    // Mid-range -> ~0.5 * 0.10 = 0.05
+            taskSuccess: true,             // 1.0 * 0.75 = 0.75
+            tfTtfRatio: 0.0,              // 0.0 * 0.075 = 0.0
+            reactionTime: 1.7,            // Slightly better than worst -> small positive contribution
+            responseDuration: 2.9,        // Slightly better than worst -> small positive contribution  
+            averageTapAccuracy: 220.0,    // Slightly better than worst -> small positive contribution
             actualTargetsToFindInRound: 3
         )
-        // Total expected: 0.50 + 0.10 + 0.05 + 0.05 + 0.05 = 0.75
+        // This should give us a raw score very close to 0.75, and with stable history,
+        // the adaptive score should remain within the dead zone
         
         // THEN: Nothing should change if score is truly in dead zone
         let newPositions = adm.normalizedPositions

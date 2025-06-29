@@ -226,19 +226,19 @@ struct GameConfiguration {
     // --- KPI Weights ---
     // High Arousal (>= 0.7)
     let kpiWeights_HighArousal = KPIWeights(
-        taskSuccess: 0.30,
-        tfTtfRatio: 0.15,
-        reactionTime: 0.30,
-        responseDuration: 0.20,
+        taskSuccess: 0.7,
+        tfTtfRatio: 0.05,
+        reactionTime: 0.10,
+        responseDuration: 0.10,
         tapAccuracy: 0.05
     )
     
     // Low/Mid Arousal (0.35 < arousal < 0.7)
     let kpiWeights_LowMidArousal = KPIWeights(
-        taskSuccess: 0.50,
-        tfTtfRatio: 0.2,
-        reactionTime: 0.10,
-        responseDuration: 0.10,
+        taskSuccess: 0.75,
+        tfTtfRatio: 0.075,
+        reactionTime: 0.025,
+        responseDuration: 0.05,
         tapAccuracy: 0.10
     )
     
