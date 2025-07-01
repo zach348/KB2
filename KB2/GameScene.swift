@@ -1196,9 +1196,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             to: baseMaxDistinctDistractorColor,
             t: dfFromADM
         )
-        
-        print("GameScene: Updated colors - DF: \(String(format: "%.3f", dfFromADM))")
-        
+                
         // 6. Update ball appearances if in tracking state
         if currentState == .tracking { 
             for ball in balls { 
@@ -2421,11 +2419,6 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             guard let self = self, self.currentState == .tracking, !self.balls.isEmpty else { return }
             
             let stats = MotionController.calculateStats(balls: self.balls)
-            if Int(CACurrentMediaTime() * 60) % 60 == 0 {
-                print(String(format: "Motion Stats - Mean: %.1f (Tgt: %.1f) | SD: %.1f (Tgt: %.1f)",
-                             stats.meanSpeed, self.motionSettings.targetMeanSpeed,
-                             stats.speedSD, self.motionSettings.targetSpeedSD))
-            }
             MotionController.applyCorrections(balls: self.balls, settings: self.motionSettings, scene: self)
         }
         
