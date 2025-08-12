@@ -157,7 +157,8 @@ class ADMAdaptationGapTests: XCTestCase {
             let dataCountAfter = adm.domPerformanceProfiles[.discriminatoryLoad]?.performanceByValue.count ?? 0
             
             // Determine which adaptation method was likely used
-            if dataCountAfter < config.domMinDataPointsForProfiling {
+            let pdControllerRan = adm.modulateDOMsWithProfiling()
+            if !pdControllerRan {
                 roundsUsingGlobalAdaptation += 1
             } else {
                 if roundsUsingGlobalAdaptation > 0 && roundsUsingPDController == 0 {

@@ -30,9 +30,9 @@ class ADMWarmupTests: XCTestCase {
             initialArousal: 1.0
         )
         
-        // Warmup should be 25% of expected rounds
+        // Warmup should be 20% of expected rounds
         let expectedWarmupRounds = Int(CGFloat(expectedRounds) * config.warmupPhaseProportion)
-        XCTAssertEqual(config.warmupPhaseProportion, 0.25, "Warmup proportion should be 25%")
+        XCTAssertEqual(config.warmupPhaseProportion, 0.2, "Warmup proportion should be 20%")
         XCTAssertGreaterThan(expectedWarmupRounds, 0, "Should have at least 1 warmup round")
         XCTAssertLessThan(expectedWarmupRounds, expectedRounds, "Warmup should be less than total rounds")
     }
@@ -138,10 +138,10 @@ class ADMWarmupTests: XCTestCase {
         )
         
         // Verify warmup configuration
-        XCTAssertEqual(testConfig.warmupAdaptationRateMultiplier, 1.7,
-                      "Warmup adaptation rate should be 1.7x")
-        XCTAssertEqual(testConfig.warmupPerformanceTarget, 0.8,
-                      "Warmup performance target should be 0.60")
+        XCTAssertEqual(testConfig.warmupAdaptationRateMultiplier, 1.5,
+                      "Warmup adaptation rate should be 1.5x")
+        XCTAssertEqual(testConfig.warmupPerformanceTarget, 0.7,
+                      "Warmup performance target should be 0.70")
     }
     
     func testWarmupPerformanceBasedAdaptation_GoodPerformance() {
@@ -371,14 +371,14 @@ class ADMWarmupTests: XCTestCase {
     func testWarmupConfigurationValues() {
         let config = GameConfiguration()
         
-        XCTAssertEqual(config.warmupPhaseProportion, 0.25,
-                      "Warmup should be 25% of session")
+        XCTAssertEqual(config.warmupPhaseProportion, 0.2,
+                      "Warmup should be 20% of session")
         XCTAssertEqual(config.warmupInitialDifficultyMultiplier, 0.9,
-                      "Initial difficulty should be 85%")
-        XCTAssertEqual(config.warmupPerformanceTarget, 0.8,
-                      "Performance target should be 0.60")
-        XCTAssertEqual(config.warmupAdaptationRateMultiplier, 1.7,
-                      "Adaptation rate should be 1.7x")
+                      "Initial difficulty should be 90%")
+        XCTAssertEqual(config.warmupPerformanceTarget, 0.7,
+                      "Performance target should be 0.70")
+        XCTAssertEqual(config.warmupAdaptationRateMultiplier, 1.5,
+                      "Adaptation rate should be 1.5x")
         XCTAssertTrue(config.enableSessionPhases,
                      "Session phases should be enabled by default")
     }

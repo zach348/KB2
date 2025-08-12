@@ -202,9 +202,9 @@ struct GameConfiguration {
     
     // Mean Ball Speed (lower is easier)
     let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 25.0
-    let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 125.0
+    let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 75.0
     let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 700.0
-    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1100.0
+    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1000.0
     
     // Ball Speed Standard Deviation (lower is easier)
     let ballSpeedSD_MinArousal_EasiestSetting: CGFloat = 0.0
@@ -267,21 +267,21 @@ struct GameConfiguration {
     // For easing (making the game easier - higher values for faster response to poor performance)
     let domEasingSmoothingFactors: [DOMTargetType: CGFloat] = [
         .discriminatoryLoad: 0.5,  // 2x hardening factor
-        .meanBallSpeed: 0.4,       // 2x hardening factor
-        .ballSpeedSD: 0.3,         // 2x hardening factor
-        .responseTime: 0.2,        // 2x hardening factor
-        .targetCount: 0.2          // 2x hardening factor
+        .meanBallSpeed: 0.3,       // 2x hardening factor
+        .ballSpeedSD: 0.2,         // 2x hardening factor
+        .responseTime: 0.15,        // 2x hardening factor
+        .targetCount: 0.15          // 2x hardening factor
     ]
     
     // Keeping this for backward compatibility, now maps to hardening factors
     var domSmoothingFactors: [DOMTargetType: CGFloat] {
         return domHardeningSmoothingFactors
     }
-    let adaptationSignalSensitivity: CGFloat = 2.25  // Increased from 1.0 to amplify performance responses
-    let adaptationSignalDeadZone: CGFloat = 0.035     // Reduced from 0.05 to react to smaller performance changes
+    let adaptationSignalSensitivity: CGFloat = 1.5  // Increased from 1.0 to amplify performance responses
+    let adaptationSignalDeadZone: CGFloat = 0.02     // Reduced from 0.05 to react to smaller performance changes
     
     // --- Performance History Configuration (NEW) ---
-    var performanceHistoryWindowSize: Int = 40  // Increased from 10 to provide better historical context
+    var performanceHistoryWindowSize: Int = 20  // Increased from 10 to provide better historical context
     
     // --- KPI Weight Interpolation Configuration (Phase 1.5) ---
     let kpiWeightTransitionStart: CGFloat = 0.55
@@ -289,31 +289,31 @@ struct GameConfiguration {
     var useKPIWeightInterpolation: Bool = true
 
     // --- Trend-Based Adaptation Configuration (Phase 2) ---
-    let currentPerformanceWeight: CGFloat = 0.75 // Emphasize the most recent performance
-    let historyInfluenceWeight: CGFloat = 0.25   // Stabilize with a small historical influence
-    let trendInfluenceWeight: CGFloat = 0.15     // Nudge based on trajectory
-    let minimumHistoryForTrend: Int = 3
+    let currentPerformanceWeight: CGFloat = 0.85 // Emphasize the most recent performance
+    let historyInfluenceWeight: CGFloat = 0.15   // Stabilize with a small historical influence
+    let trendInfluenceWeight: CGFloat = 0.1     // Nudge based on trajectory
+    let minimumHistoryForTrend: Int = 4
 
     // --- DOM Adaptation Rates (Phase 5) ---
     // These now act as base adaptation rates, not budget shares
     let domAdaptationRates_LowMidArousal: [DOMTargetType: CGFloat] = [
-        .targetCount: 5.0,
+        .targetCount: 7.0,
         .responseTime: 3.0,
         .discriminatoryLoad: 3.0,
-        .meanBallSpeed: 2.0,
-        .ballSpeedSD: 1.0
+        .meanBallSpeed: 3.0,
+        .ballSpeedSD: 2.0
     ]
     
     let domAdaptationRates_HighArousal: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 5.0,
-        .meanBallSpeed: 4.0,
+        .discriminatoryLoad: 8.0,
+        .meanBallSpeed: 3.0,
         .ballSpeedSD: 3.0,
         .responseTime: 2.0,
         .targetCount: 1.0
     ]
     
     // --- Global Performance Target ---
-    let globalPerformanceTarget: CGFloat = 0.75
+    let globalPerformanceTarget: CGFloat = 0.6
     
     // --- Hysteresis Configuration (Phase 3) ---
     let adaptationIncreaseThreshold: CGFloat = 0.8    // Must exceed to increase difficulty
@@ -339,7 +339,7 @@ struct GameConfiguration {
     /// Proportion of the session dedicated to warmup phase (0.0-1.0)
     /// Default: 0.25 (25% of expected rounds)
     /// The warmup phase serves as a recalibration period to find appropriate difficulty
-    var warmupPhaseProportion: CGFloat = 0.25
+    var warmupPhaseProportion: CGFloat = 0.2
     
     /// Initial difficulty multiplier applied during warmup phase
     /// Default: 0.85 (85% of normal difficulty)
@@ -349,12 +349,12 @@ struct GameConfiguration {
     /// Performance target during warmup phase (0.0-1.0)
     /// Default: 0.60 (vs 0.50 in standard phase)
     /// Higher target prevents over-hardening while finding appropriate difficulty
-    let warmupPerformanceTarget: CGFloat = 0.8
+    let warmupPerformanceTarget: CGFloat = 0.7
     
     /// Adaptation rate multiplier during warmup phase
     /// Default: 1.7 (1.7x faster than normal)
     /// Faster adaptation helps quickly find the player's current appropriate difficulty
-    let warmupAdaptationRateMultiplier: CGFloat = 1.7
+    let warmupAdaptationRateMultiplier: CGFloat = 1.5
     
     // --- DOM-Specific Performance Profiling (Phase 5.2) ---
     
@@ -368,12 +368,12 @@ struct GameConfiguration {
     /// Target performance level for DOM-specific adaptation (0.0-1.0)
     /// Default: 0.75 (75% performance target)
     /// The PD controller will try to maintain this performance level for each DOM
-    let domProfilingPerformanceTarget: CGFloat = 0.75
+    let domProfilingPerformanceTarget: CGFloat = 0.6
     
     /// Dampening factor for the derivative term in the PD controller
     /// Default: 10.0
     /// Higher values reduce the impact of performance trend slope on adaptation
-    let domSlopeDampeningFactor: CGFloat = 10.0
+    let domSlopeDampeningFactor: CGFloat = 20.0
     
     /// Minimum number of data points required before DOM-specific adaptation begins
     /// Default: 15
@@ -383,14 +383,14 @@ struct GameConfiguration {
     // --- Forced Exploration Parameters (Phase 5) ---
     
     /// Signal magnitude threshold below which a DOM is considered stable/converged
-    /// Default: 0.01 (1% of normalized range)
+    /// Default: 0.0175 (1.75% of normalized range)
     /// When adaptation signals fall below this threshold, the DOM has reached equilibrium
-    let domConvergenceThreshold: CGFloat = 0.04
+    let domConvergenceThreshold: CGFloat = 0.0175
     
     /// Number of consecutive rounds a DOM must be stable to be considered converged
     /// Default: 5 rounds
     /// Prevents premature convergence detection due to temporary stability
-    var domConvergenceDuration: Int = 5
+    var domConvergenceDuration: Int = 4
     
     /// Controlled nudge factor applied to converged DOMs to stimulate learning
     /// Default: 0.03 (3% of normalized range)
@@ -398,9 +398,9 @@ struct GameConfiguration {
     var domExplorationNudgeFactor: CGFloat = 0.03
     
     /// Minimum standard deviation in DOM values required before adaptation signals are calculated
-    /// Default: 0.1 (10% of the 0-1 normalized range)
+    /// Default: 0.05 (05% of the 0-1 normalized range)
     /// This prevents adaptation decisions based on insufficient exploration of the parameter space
-    let minimumDOMVarianceThreshold: CGFloat = 0.1
+    let minimumDOMVarianceThreshold: CGFloat = 0.05
     
     /// Maximum signal magnitude per round to prevent jarring difficulty changes
     /// Default: 0.15 (15% of normalized range)
@@ -415,7 +415,7 @@ struct GameConfiguration {
     let domEasingRateMultiplier: CGFloat = 1.0
     
     /// Rate multiplier applied when hardening (making the game harder)
-    /// Default: 0.6 (60% adaptation speed when increasing difficulty)
+    /// Default: 0.75  (75% adaptation speed when increasing difficulty)
     /// This provides a more cautious approach to difficulty increases
-    let domHardeningRateMultiplier: CGFloat = 0.6
+    let domHardeningRateMultiplier: CGFloat = 0.85
 }

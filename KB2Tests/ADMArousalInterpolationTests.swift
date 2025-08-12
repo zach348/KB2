@@ -126,11 +126,11 @@ class ADMArousalInterpolationTests: XCTestCase {
             
             // Verify it's actually between the two rates
             if lowRate < highRate {
-                XCTAssertGreaterThan(rate, lowRate, "Interpolated rate should be above low rate")
-                XCTAssertLessThan(rate, highRate, "Interpolated rate should be below high rate")
+                XCTAssertGreaterThanOrEqual(rate, lowRate, "Interpolated rate should be GTE low rate for \(domType)")
+                XCTAssertLessThanOrEqual(rate, highRate, "Interpolated rate should be LTE high rate for \(domType)")
             } else {
-                XCTAssertLessThan(rate, lowRate, "Interpolated rate should be below low rate")
-                XCTAssertGreaterThan(rate, highRate, "Interpolated rate should be above high rate")
+                XCTAssertLessThanOrEqual(rate, lowRate, "Interpolated rate should be LTE low rate for \(domType)")
+                XCTAssertGreaterThanOrEqual(rate, highRate, "Interpolated rate should be GTE high rate for \(domType)")
             }
         }
     }
