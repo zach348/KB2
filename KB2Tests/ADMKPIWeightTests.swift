@@ -65,31 +65,75 @@ class ADMKPIWeightTests: XCTestCase {
         let arousal = (config.kpiWeightTransitionStart + config.kpiWeightTransitionEnd) / 2.0
         adm.updateArousalLevel(arousal)
 
-        // Get the interpolated weights directly
-        let interpolatedWeights = adm.getInterpolatedKPIWeights(arousal: arousal)
+        let w = adm.getInterpolatedKPIWeights(arousal: arousal)
+        let low = config.kpiWeights_LowMidArousal
+        let high = config.kpiWeights_HighArousal
 
-        let lowWeights = config.kpiWeights_LowMidArousal
-        let highWeights = config.kpiWeights_HighArousal
+        // taskSuccess
+        if low.taskSuccess == high.taskSuccess {
+            XCTAssertEqual(w.taskSuccess, low.taskSuccess, accuracy: 0.0001)
+        } else {
+            // Expect interpolation to be strictly between low and high
+            if low.taskSuccess < high.taskSuccess {
+                XCTAssertGreaterThan(w.taskSuccess, low.taskSuccess)
+                XCTAssertLessThan(w.taskSuccess, high.taskSuccess)
+            } else {
+                XCTAssertLessThan(w.taskSuccess, low.taskSuccess)
+                XCTAssertGreaterThan(w.taskSuccess, high.taskSuccess)
+            }
+        }
 
-        // Test taskSuccess (Low: 0.5 -> High: 0.3) - should decrease
-        XCTAssertLessThan(interpolatedWeights.taskSuccess, lowWeights.taskSuccess)
-        XCTAssertGreaterThan(interpolatedWeights.taskSuccess, highWeights.taskSuccess)
+        // tfTtfRatio
+        if low.tfTtfRatio == high.tfTtfRatio {
+            XCTAssertEqual(w.tfTtfRatio, low.tfTtfRatio, accuracy: 0.0001)
+        } else {
+            if low.tfTtfRatio < high.tfTtfRatio {
+                XCTAssertGreaterThan(w.tfTtfRatio, low.tfTtfRatio)
+                XCTAssertLessThan(w.tfTtfRatio, high.tfTtfRatio)
+            } else {
+                XCTAssertLessThan(w.tfTtfRatio, low.tfTtfRatio)
+                XCTAssertGreaterThan(w.tfTtfRatio, high.tfTtfRatio)
+            }
+        }
 
-        // Test tfTtfRatio (Low: 0.2 -> High: 0.15) - should decrease
-        XCTAssertLessThan(interpolatedWeights.tfTtfRatio, lowWeights.tfTtfRatio)
-        XCTAssertGreaterThan(interpolatedWeights.tfTtfRatio, highWeights.tfTtfRatio)
+        // reactionTime
+        if low.reactionTime == high.reactionTime {
+            XCTAssertEqual(w.reactionTime, low.reactionTime, accuracy: 0.0001)
+        } else {
+            if low.reactionTime < high.reactionTime {
+                XCTAssertGreaterThan(w.reactionTime, low.reactionTime)
+                XCTAssertLessThan(w.reactionTime, high.reactionTime)
+            } else {
+                XCTAssertLessThan(w.reactionTime, low.reactionTime)
+                XCTAssertGreaterThan(w.reactionTime, high.reactionTime)
+            }
+        }
 
-        // Test reactionTime (Low: 0.1 -> High: 0.3) - should increase
-        XCTAssertGreaterThan(interpolatedWeights.reactionTime, lowWeights.reactionTime)
-        XCTAssertLessThan(interpolatedWeights.reactionTime, highWeights.reactionTime)
+        // responseDuration
+        if low.responseDuration == high.responseDuration {
+            XCTAssertEqual(w.responseDuration, low.responseDuration, accuracy: 0.0001)
+        } else {
+            if low.responseDuration < high.responseDuration {
+                XCTAssertGreaterThan(w.responseDuration, low.responseDuration)
+                XCTAssertLessThan(w.responseDuration, high.responseDuration)
+            } else {
+                XCTAssertLessThan(w.responseDuration, low.responseDuration)
+                XCTAssertGreaterThan(w.responseDuration, high.responseDuration)
+            }
+        }
 
-        // Test responseDuration (Low: 0.1 -> High: 0.2) - should increase
-        XCTAssertGreaterThan(interpolatedWeights.responseDuration, lowWeights.responseDuration)
-        XCTAssertLessThan(interpolatedWeights.responseDuration, highWeights.responseDuration)
-
-        // Test tapAccuracy (Low: 0.1 -> High: 0.05) - should decrease
-        XCTAssertLessThan(interpolatedWeights.tapAccuracy, lowWeights.tapAccuracy)
-        XCTAssertGreaterThan(interpolatedWeights.tapAccuracy, highWeights.tapAccuracy)
+        // tapAccuracy
+        if low.tapAccuracy == high.tapAccuracy {
+            XCTAssertEqual(w.tapAccuracy, low.tapAccuracy, accuracy: 0.0001)
+        } else {
+            if low.tapAccuracy < high.tapAccuracy {
+                XCTAssertGreaterThan(w.tapAccuracy, low.tapAccuracy)
+                XCTAssertLessThan(w.tapAccuracy, high.tapAccuracy)
+            } else {
+                XCTAssertLessThan(w.tapAccuracy, low.tapAccuracy)
+                XCTAssertGreaterThan(w.tapAccuracy, high.tapAccuracy)
+            }
+        }
     }
 
     func testKPIWeightsWithInterpolationDisabled() {

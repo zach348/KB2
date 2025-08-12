@@ -2,14 +2,9 @@ import XCTest
 @testable import KB2
 
 class ADMAdaptationGapTests: XCTestCase {
-    var config: GameConfiguration!
-    
-    override func setUp() {
-        super.setUp()
-        config = GameConfiguration()
-    }
     
     func testAdaptationGap_WhenPDControllerIsNotReady_SystemUsesGlobalAdaptation() throws {
+        var config = GameConfiguration()
         // Configure short warmup and high data requirements
         config.enableSessionPhases = true
         config.warmupPhaseProportion = 0.1  // Very short warmup (10%)
@@ -68,6 +63,7 @@ class ADMAdaptationGapTests: XCTestCase {
     }
     
     func testAdaptationGap_WhenPDControllerHasSufficientData_UsesPDControl() throws {
+        var config = GameConfiguration()
         // Configure to allow PD controller to run
         config.enableSessionPhases = true
         config.warmupPhaseProportion = 0.1
@@ -112,6 +108,7 @@ class ADMAdaptationGapTests: XCTestCase {
     }
     
     func testAdaptationGap_TransitionFromGlobalToPDControl() throws {
+        var config = GameConfiguration()
         // Test the transition when PD controller gains sufficient data
         config.enableSessionPhases = true
         config.warmupPhaseProportion = 0.1

@@ -226,17 +226,17 @@ struct GameConfiguration {
     // --- KPI Weights ---
     // High Arousal (>= 0.7)
     let kpiWeights_HighArousal = KPIWeights(
-        taskSuccess: 0.7,
-        tfTtfRatio: 0.05,
-        reactionTime: 0.10,
+        taskSuccess: 0.6,
+        tfTtfRatio: 0.1,
+        reactionTime: 0.15,
         responseDuration: 0.10,
         tapAccuracy: 0.05
     )
     
     // Low/Mid Arousal (0.35 < arousal < 0.7)
     let kpiWeights_LowMidArousal = KPIWeights(
-        taskSuccess: 0.75,
-        tfTtfRatio: 0.075,
+        taskSuccess: 0.6,
+        tfTtfRatio: 0.225,
         reactionTime: 0.025,
         responseDuration: 0.05,
         tapAccuracy: 0.10
@@ -378,24 +378,27 @@ struct GameConfiguration {
     /// Minimum number of data points required before DOM-specific adaptation begins
     /// Default: 15
     /// Ensures statistical stability before making adaptation decisions
-    var domMinDataPointsForProfiling: Int = 15
+    var domMinDataPointsForProfiling: Int = 12
     
     // --- Forced Exploration Parameters (Phase 5) ---
     
     /// Signal magnitude threshold below which a DOM is considered stable/converged
     /// Default: 0.0175 (1.75% of normalized range)
     /// When adaptation signals fall below this threshold, the DOM has reached equilibrium
-    let domConvergenceThreshold: CGFloat = 0.0175
+    let domConvergenceThreshold: CGFloat = 0.015
     
     /// Number of consecutive rounds a DOM must be stable to be considered converged
     /// Default: 5 rounds
     /// Prevents premature convergence detection due to temporary stability
-    var domConvergenceDuration: Int = 4
+    var domConvergenceDuration: Int = 3
     
     /// Controlled nudge factor applied to converged DOMs to stimulate learning
     /// Default: 0.03 (3% of normalized range)
     /// This deterministic exploration replaces the previous random jitter approach
     var domExplorationNudgeFactor: CGFloat = 0.03
+    /// Additional nudge magnitude specifically for boundary saturation (positions at 0.0 or 1.0)
+    /// Used when the PD signal would push outward but is clamped by bounds to re-initiate exploration
+    var domBoundaryNudgeFactor: CGFloat = 0.05
     
     /// Minimum standard deviation in DOM values required before adaptation signals are calculated
     /// Default: 0.05 (05% of the 0-1 normalized range)
@@ -418,4 +421,15 @@ struct GameConfiguration {
     /// Default: 0.75  (75% adaptation speed when increasing difficulty)
     /// This provides a more cautious approach to difficulty increases
     let domHardeningRateMultiplier: CGFloat = 0.85
+
+    // Optional per-DOM overrides for direction multipliers (fallback to globals if absent)
+    // Example: [.meanBallSpeed: 0.6, .ballSpeedSD: 0.6] to make hardening more conservative for speed DOMs
+    var domEasingRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
+        .meanBallSpeed: 0.8,
+        .ballSpeedSD: 0.8
+    ]
+    var domHardeningRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
+        .meanBallSpeed: 0.5,
+        .ballSpeedSD: 0.5
+    ]
 }

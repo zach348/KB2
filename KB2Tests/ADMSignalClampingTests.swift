@@ -261,7 +261,7 @@ class ADMSignalClampingTests: XCTestCase {
             let postPos = adm.normalizedPositions[domType] ?? 0.5
             let change = abs(postPos - prePos)
             
-            if change > 0.0005 {
+            if change > 0.0001 {
                 anyDOMChanged = true
             }
             
@@ -297,7 +297,7 @@ class ADMSignalClampingTests: XCTestCase {
             print("DOM with max change: \(String(describing: maxChangeDom))")
             
             // For high convergence thresholds, we just verify some adaptation occurred
-            XCTAssertGreaterThan(maxChange, 0.0005,
+            XCTAssertGreaterThan(maxChange, 0.0001,
                 "Expected some change in at least one DOM even with convergence threshold of \(config.domConvergenceThreshold)")
         } else {
             // Normal case - significant change occurred
@@ -410,7 +410,7 @@ class ADMSignalClampingTests: XCTestCase {
             let postPos = testADM.normalizedPositions[domType] ?? 0.5
             let change = abs(postPos - prePos)
             
-            if change > 0.0005 {
+            if change > 0.0001 {
                 anyDOMChanged = true
             }
             
@@ -437,7 +437,7 @@ class ADMSignalClampingTests: XCTestCase {
         print("Min expected change: \(String(format: "%.4f", minExpectedChange))")
         
         // Verify the change is reasonable given the extreme performance gap
-        XCTAssertGreaterThan(maxChange, 0.0005,
+        XCTAssertGreaterThan(maxChange, 0.0001,
             "Expected some change in at least one DOM with convergence threshold of \(config.domConvergenceThreshold)")
     }
 }

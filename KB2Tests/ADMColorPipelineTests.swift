@@ -22,7 +22,7 @@ class ADMColorPipelineTests: XCTestCase {
         gameConfig.enableSessionPhases = true  // START with it enabled to reflect production
         gameConfig.enableDomSpecificProfiling = false  // Disable DOM profiling to avoid jitter
         
-        // THEN disable it for the specific test that needs it
+        // THEN disable features for the specific dead-zone test to align expectations with non-hysteresis logic
         if self.name == "testPerformanceInDeadZoneDoesNotChangeDF()" {
             gameConfig.enableSessionPhases = false
         }
@@ -196,7 +196,8 @@ class ADMColorPipelineTests: XCTestCase {
         // we need to be more careful about our setup
         
         // First, seed with a very stable history right at the target
-        let stableScore: CGFloat = 0.75
+        // Seed history at the center of the hysteresis neutral zone to avoid adaptation
+        let stableScore: CGFloat = (gameConfig.adaptationDecreaseThreshold + gameConfig.adaptationIncreaseThreshold) / 2.0
         for i in 0..<(gameConfig.minimumHistoryForTrend + 2) {
             // Add a slight time delay between entries to avoid trend effects
             let entry = PerformanceHistoryEntry(
@@ -234,12 +235,15 @@ class ADMColorPipelineTests: XCTestCase {
         // Calculate a performance that scores exactly at target (0.75)
         // Since taskSuccess alone gives us 0.75, we'll add a tiny bit from other KPIs
         // to ensure we're not exactly at 0.75 but still within dead zone
+        // Craft a current performance that also lands in the neutral zone:
+        // taskSuccess (1.0) contributes 0.6 at arousal 0.5.
+        // tfTtfRatio of 2/3 contributes ~0.15 (0.225 * 0.6667) -> total ~0.75 (midpoint of 0.7-0.8).
         adm.recordIdentificationPerformance(
-            taskSuccess: true,             // 1.0 * 0.75 = 0.75
-            tfTtfRatio: 0.0,              // 0.0 * 0.075 = 0.0
-            reactionTime: 1.7,            // Slightly better than worst -> small positive contribution
-            responseDuration: 2.9,        // Slightly better than worst -> small positive contribution  
-            averageTapAccuracy: 220.0,    // Slightly better than worst -> small positive contribution
+            taskSuccess: true,
+            tfTtfRatio: 2.0/3.0,
+            reactionTime: gameConfig.reactionTime_WorstExpected,
+            responseDuration: gameConfig.responseDuration_PerTarget_WorstExpected * 3.0,
+            averageTapAccuracy: gameConfig.tapAccuracy_WorstExpected_Points,
             actualTargetsToFindInRound: 3
         )
         // This should give us a raw score very close to 0.75, and with stable history,

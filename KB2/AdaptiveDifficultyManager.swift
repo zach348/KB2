@@ -1616,8 +1616,14 @@ class AdaptiveDifficultyManager {
             // c. Apply direction-specific rate multiplier
             // When performance > target, we need to harden (make harder)
             // When performance < target, we need to ease (make easier)
-            let directionMultiplier = (performanceGap > 0) ? config.domHardeningRateMultiplier : config.domEasingRateMultiplier
+            // Prefer per-DOM overrides when provided, else fall back to global multipliers
+            let baseDirMultiplier = (performanceGap > 0) ? config.domHardeningRateMultiplier : config.domEasingRateMultiplier
+            let perDomDirMultiplier: CGFloat? = (performanceGap > 0)
+                ? (config.domHardeningRateMultiplierByDOM[domType])
+                : (config.domEasingRateMultiplierByDOM[domType])
+            let directionMultiplier = perDomDirMultiplier ?? baseDirMultiplier
             let directionAdjustedRate = confidenceAdjustedRate * directionMultiplier
+            print("[ADM PD Controller]   ├─ Direction multipliers -> base: \(String(format: "%.3f", baseDirMultiplier)), perDOM: \(perDomDirMultiplier != nil ? String(format: "%.3f", perDomDirMultiplier!) : "nil"), chosen: \(String(format: "%.3f", directionMultiplier))")
             
             // d. Calculate slope-based gain modifier (D-term)
             let slope = calculateWeightedSlope(data: dataPoints, weights: weights)
@@ -1639,26 +1645,33 @@ class AdaptiveDifficultyManager {
             print("  ├─ Raw signal: \(String(format: "%.3f", rawSignal))")
             print("  └─ Final signal: \(String(format: "%.3f", finalSignal))\(abs(rawSignal) > config.domMaxSignalPerRound ? " (CLAMPED)" : "")")
             
-            // e. Implement forced exploration logic
+            // e. Implement forced exploration logic (effective movement-aware + boundary-aware)
             let currentConvergenceCount = domConvergenceCounters[domType] ?? 0
+            let currentPosition = normalizedPositions[domType] ?? 0.5
+            let potentialTarget = max(0.0, min(1.0, currentPosition + finalSignal))
+            let potentialChange = potentialTarget - currentPosition
+            // Treat saturation at bounds pushing outward as convergence (no effective movement possible)
+            let saturatedOutward = (currentPosition <= 0.0 && finalSignal < 0) || (currentPosition >= 1.0 && finalSignal > 0)
             
-            if abs(finalSignal) < config.domConvergenceThreshold {
-                // DOM is stable/converged
+            if abs(potentialChange) < config.domConvergenceThreshold || saturatedOutward {
+                // DOM is effectively stable/converged
                 domConvergenceCounters[domType] = currentConvergenceCount + 1
-                print("[ADM PD Controller]   └─ Convergence count: \(currentConvergenceCount + 1)/\(config.domConvergenceDuration)")
+                print("[ADM PD Controller]   └─ Convergence (effective) count: \(currentConvergenceCount + 1)/\(config.domConvergenceDuration) (Δ=\(String(format: "%.4f", potentialChange))\(saturatedOutward ? ", SATURATED" : ""))")
                 
                 // Check if ready for exploration nudge
                 if domConvergenceCounters[domType]! >= config.domConvergenceDuration {
-                    // Apply exploration nudge
-                    let currentPosition = normalizedPositions[domType] ?? 0.5
-                    let nudgeDirection: CGFloat = (currentPosition < 0.5) ? 1.0 : -1.0 // Nudge away from current position
-                    let nudgedPosition = currentPosition + (nudgeDirection * config.domExplorationNudgeFactor)
+                    // Apply exploration nudge away from current position (boundary-tunable if saturated)
+                    let nudgeDirection: CGFloat = (currentPosition < 0.5) ? 1.0 : -1.0
+                    let nudgeMagnitude: CGFloat = saturatedOutward
+                        ? max(config.domExplorationNudgeFactor, config.domBoundaryNudgeFactor)
+                        : config.domExplorationNudgeFactor
+                    let nudgedPosition = currentPosition + (nudgeDirection * nudgeMagnitude)
                     let clampedPosition = max(0.0, min(1.0, nudgedPosition))
                     
                     normalizedPositions[domType] = clampedPosition
                     domConvergenceCounters[domType] = 0 // Reset counter
                     
-                    print("[ADM PD Controller]   └─ EXPLORATION NUDGE applied: \(String(format: "%.3f", currentPosition)) → \(String(format: "%.3f", clampedPosition))")
+                    print("[ADM PD Controller]   └─ EXPLORATION NUDGE applied: \(String(format: "%.3f", currentPosition)) → \(String(format: "%.3f", clampedPosition))\(saturatedOutward ? " [boundary]" : "")")
                     
                     // Skip regular modulation for this DOM this round
                     continue
@@ -1669,7 +1682,6 @@ class AdaptiveDifficultyManager {
             }
             
             // f. Apply modulation (standard adaptation)
-            let currentPosition = normalizedPositions[domType] ?? 0.5
             let targetPosition = currentPosition + finalSignal
             
             // Create local confidence structure based on DOM-specific data

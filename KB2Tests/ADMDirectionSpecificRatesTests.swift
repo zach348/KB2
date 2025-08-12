@@ -271,4 +271,134 @@ class ADMDirectionSpecificRatesTests: XCTestCase {
         // The PD controller sets bypassSmoothing = true to maintain precision
         XCTAssertTrue(true, "PD controller should bypass smoothing as documented")
     }
+    
+    // MARK: - New Tests: Per-DOM Direction Multipliers
+    
+    func testPerDOMHardeningOverridesAreApplied() {
+        // Configure per-DOM hardening multipliers BEFORE creating ADM
+        var localConfig = GameConfiguration()
+        localConfig.enableDomSpecificProfiling = true
+        localConfig.domMinDataPointsForProfiling = 5
+        localConfig.domConvergenceDuration = 3
+        localConfig.domMaxSignalPerRound = 1.0
+        // Make meanBallSpeed harden more conservatively than responseTime
+        localConfig.domHardeningRateMultiplierByDOM[.meanBallSpeed] = 0.5
+        localConfig.domHardeningRateMultiplierByDOM[.responseTime] = 1.0
+        
+        let sessionDuration: TimeInterval = 600
+        let localADM = AdaptiveDifficultyManager(
+            configuration: localConfig,
+            initialArousal: 0.5,
+            sessionDuration: sessionDuration
+        )
+        
+        // Skip warmup: simulate warmup rounds to transition to standard phase
+        let expectedRounds = SessionAnalytics.estimateExpectedRounds(
+            forSessionDuration: sessionDuration,
+            config: localConfig,
+            initialArousal: 0.5
+        )
+        let warmupLength = Int(CGFloat(expectedRounds) * localConfig.warmupPhaseProportion)
+        for _ in 0..<warmupLength {
+            localADM.recordIdentificationPerformance(
+                taskSuccess: true,
+                tfTtfRatio: 0.7,
+                reactionTime: 0.5,
+                responseDuration: 2.0,
+                averageTapAccuracy: 50,
+                actualTargetsToFindInRound: 3
+            )
+        }
+        
+        // Populate identical "excellent" performance profiles for both DOMs to isolate multiplier effect
+        let excellentPerformance = localConfig.domProfilingPerformanceTarget + 0.15
+        for i in 0..<20 {
+            let domVal = 0.5 + CGFloat(i) * 0.01
+            localADM.domPerformanceProfiles[.meanBallSpeed]?.recordPerformance(domValue: domVal, performance: excellentPerformance)
+            localADM.domPerformanceProfiles[.responseTime]?.recordPerformance(domValue: domVal, performance: excellentPerformance)
+        }
+        
+        // Capture old positions
+        let oldMean = localADM.normalizedPositions[.meanBallSpeed] ?? 0.5
+        let oldRT = localADM.normalizedPositions[.responseTime] ?? 0.5
+        
+        // Run PD controller
+        let didModulate = localADM.modulateDOMsWithProfiling()
+        XCTAssertTrue(didModulate, "PD controller should run with sufficient data")
+        
+        // Compare deltas
+        let newMean = localADM.normalizedPositions[.meanBallSpeed] ?? oldMean
+        let newRT = localADM.normalizedPositions[.responseTime] ?? oldRT
+        let deltaMean = newMean - oldMean
+        let deltaRT = newRT - oldRT
+        
+        // Both should be hardening (positive) and meanBallSpeed should harden less due to lower per-DOM multiplier
+        XCTAssertGreaterThan(deltaMean, 0, "meanBallSpeed should harden with excellent performance")
+        XCTAssertGreaterThan(deltaRT, 0, "responseTime should harden with excellent performance")
+        XCTAssertLessThan(deltaMean, deltaRT, "Per-DOM hardening override should reduce meanBallSpeed hardening relative to responseTime")
+    }
+    
+    func testPerDOMEasingOverridesAreApplied() {
+        // Configure per-DOM easing multipliers BEFORE creating ADM
+        var localConfig = GameConfiguration()
+        localConfig.enableDomSpecificProfiling = true
+        localConfig.domMinDataPointsForProfiling = 5
+        localConfig.domConvergenceDuration = 3
+        localConfig.domMaxSignalPerRound = 1.0
+        // Make meanBallSpeed ease faster than responseTime
+        localConfig.domEasingRateMultiplierByDOM[.meanBallSpeed] = 1.2
+        localConfig.domEasingRateMultiplierByDOM[.responseTime] = 1.0
+        
+        let sessionDuration: TimeInterval = 600
+        let localADM = AdaptiveDifficultyManager(
+            configuration: localConfig,
+            initialArousal: 0.5,
+            sessionDuration: sessionDuration
+        )
+        
+        // Skip warmup: simulate warmup rounds to transition to standard phase
+        let expectedRounds = SessionAnalytics.estimateExpectedRounds(
+            forSessionDuration: sessionDuration,
+            config: localConfig,
+            initialArousal: 0.5
+        )
+        let warmupLength = Int(CGFloat(expectedRounds) * localConfig.warmupPhaseProportion)
+        for _ in 0..<warmupLength {
+            localADM.recordIdentificationPerformance(
+                taskSuccess: true,
+                tfTtfRatio: 0.7,
+                reactionTime: 0.5,
+                responseDuration: 2.0,
+                averageTapAccuracy: 50,
+                actualTargetsToFindInRound: 3
+            )
+        }
+        
+        // Populate identical "poor" performance profiles for both DOMs to isolate multiplier effect
+        let poorPerformance = localConfig.domProfilingPerformanceTarget - 0.20
+        for i in 0..<20 {
+            let domVal = 0.5 + CGFloat(i) * 0.01
+            localADM.domPerformanceProfiles[.meanBallSpeed]?.recordPerformance(domValue: domVal, performance: poorPerformance)
+            localADM.domPerformanceProfiles[.responseTime]?.recordPerformance(domValue: domVal, performance: poorPerformance)
+        }
+        
+        // Capture old positions
+        let oldMean = localADM.normalizedPositions[.meanBallSpeed] ?? 0.5
+        let oldRT = localADM.normalizedPositions[.responseTime] ?? 0.5
+        
+        // Run PD controller
+        let didModulate = localADM.modulateDOMsWithProfiling()
+        XCTAssertTrue(didModulate, "PD controller should run with sufficient data")
+        
+        // Compare deltas (easing -> negative deltas)
+        let newMean = localADM.normalizedPositions[.meanBallSpeed] ?? oldMean
+        let newRT = localADM.normalizedPositions[.responseTime] ?? oldRT
+        let deltaMean = newMean - oldMean
+        let deltaRT = newRT - oldRT
+        
+        XCTAssertLessThan(deltaMean, 0, "meanBallSpeed should ease with poor performance")
+        XCTAssertLessThan(deltaRT, 0, "responseTime should ease with poor performance")
+        // meanBallSpeed should ease more (more negative) due to higher per-DOM easing multiplier
+        XCTAssertLessThan(deltaMean, deltaRT, "Per-DOM easing override should increase easing magnitude for meanBallSpeed relative to responseTime")
+    }
 }
