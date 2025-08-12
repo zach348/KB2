@@ -6,6 +6,9 @@ import GameplayKit // Can likely remove this import if not using GameplayKit fea
 
 class GameViewController: UIViewController {
 
+    // Stores the pre-session EMA response for later visualization
+    var preSessionEMA: EMAResponse?
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -49,6 +52,9 @@ class GameViewController: UIViewController {
         DataLogger.shared.startSession(sessionDuration: sessionDuration) // <-- Pass sessionDuration
 
         let emaView = EMAView(emaType: .preSession) { [weak self] emaResponse in
+            // Capture pre-session EMA for later visualization
+            self?.preSessionEMA = emaResponse
+
             // Log the EMA response
             self?.logPreSessionEMAResponse(emaResponse)
 

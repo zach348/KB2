@@ -106,6 +106,9 @@ private var adaptiveDifficultyManager: AdaptiveDifficultyManager! // ADDED for A
 // --- Game Session Tracking ---
 private var hasLoggedSessionStart = false
 private var isSessionCompleted = false // Added to prevent multiple completions
+
+    // Store post-session EMA for visualization
+    var postSessionEMA: EMAResponse?
     
     // --- ADDED: Throttling properties for arousal updates ---
     private var lastArousalUpdateTime: TimeInterval = 0
@@ -2774,6 +2777,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Log the EMA response
             self.logPostSessionEMAResponse(response)
 
+            // Capture post-session EMA for later visualization
+            self.postSessionEMA = response
+
             // End the session and trigger the cloud upload.
             // This is the final data collection point for the session.
             DataLogger.shared.endSession()
@@ -2848,14 +2854,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 // Open survey URL and dismiss the modal
                 self?.openSurveyURL()
                 rootViewController?.dismiss(animated: true) {
-                    self?.transitionToStartScreenAfterEMA()
+                    self?.presentEMAScoreVisualization()
                 }
             },
             onDecline: { [weak self, weak rootViewController] in
                 // User tapped "No thanks"
                 // Dismiss the modal and go back to start screen
                 rootViewController?.dismiss(animated: true) {
-                    self?.transitionToStartScreenAfterEMA()
+                    self?.presentEMAScoreVisualization()
                 }
             }
         )
@@ -2874,6 +2880,55 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         }
     }
     
+    // Present EMA/Score Visualization SwiftUI view
+    private func presentEMAScoreVisualization() {
+        print("Presenting EMA/Score Visualization")
+        guard let view = self.view, let rootViewController = view.window?.rootViewController else {
+            print("ERROR: Could not get rootViewController to present EMA/Score Visualization.")
+            transitionToStartScreenAfterEMA()
+            return
+        }
+
+        // Build session summary
+        let totalRounds = self.totalIterations
+        let correctRounds = self.score
+        let accuracy = totalRounds > 0 ? Double(correctRounds) / Double(totalRounds) : 0.0
+        let summary = SessionSummary(
+            totalRounds: totalRounds,
+            correctRounds: correctRounds,
+            accuracy: accuracy,
+            avgReactionTime: nil
+        )
+
+        // Retrieve pre/post EMA
+        let preEMA = (rootViewController as? GameViewController)?.preSessionEMA
+        let postEMA = self.postSessionEMA
+
+        let vizView = EMAScoreVisualizationView(
+            preEMA: preEMA,
+            postEMA: postEMA,
+            summary: summary,
+            onDone: { [weak self, weak rootViewController] in
+                // Dismiss and return to start
+                rootViewController?.dismiss(animated: true) {
+                    self?.transitionToStartScreenAfterEMA()
+                }
+            }
+        )
+
+        let hostingController = UIHostingController(rootView: vizView)
+        hostingController.modalPresentationStyle = .fullScreen
+        hostingController.view.backgroundColor = .clear
+
+        if Thread.isMainThread {
+            rootViewController.present(hostingController, animated: true, completion: nil)
+        } else {
+            DispatchQueue.main.async {
+                rootViewController.present(hostingController, animated: true, completion: nil)
+            }
+        }
+    }
+
     private func openSurveyURL() {
         let surveyURLString = "https://www.surveymonkey.com/r/HXFLWWG"
         if let url = URL(string: surveyURLString) {
