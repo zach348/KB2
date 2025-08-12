@@ -140,4 +140,142 @@ class ADMPersistenceLoadingDebugTest: XCTestCase {
         // Clean up
         ADMPersistenceManager.clearState(for: testUserId)
     }
+    
+    // MARK: - Migration Tests
+    
+    func test_migrationFromV1AddsProfilesAndSetsVersion() throws {
+        let userId = "TEST_MIGRATE_V1_\(UUID().uuidString)"
+        
+        // Craft a legacy v1 JSON (no "version", no "domPerformanceProfiles")
+        let v1Dict: [String: Any] = [
+            "performanceHistory": [],
+            "lastAdaptationDirection": "stable",
+            "directionStableCount": 0,
+            "normalizedPositions": [
+                "discriminatoryLoad": 0.5,
+                "meanBallSpeed": 0.5,
+                "ballSpeedSD": 0.5,
+                "responseTime": 0.5,
+                "targetCount": 0.5
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: v1Dict, options: [.prettyPrinted])
+        
+        // Write to expected path
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let dir = docs.appendingPathComponent("ADMState")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        let fileURL = dir.appendingPathComponent("adm_state_\(userId).json")
+        try data.write(to: fileURL)
+        
+        // Load via manager (should migrate and persist)
+        guard let state = ADMPersistenceManager.loadState(for: userId) else {
+            XCTFail("Failed to load legacy v1 state")
+            return
+        }
+        
+        // Verify migration effected
+        XCTAssertEqual(state.version, 2, "Schema version should be migrated to 2")
+        XCTAssertNotNil(state.domPerformanceProfiles, "domPerformanceProfiles should be initialized on migration")
+        if let profiles = state.domPerformanceProfiles {
+            XCTAssertEqual(profiles.keys.count, DOMTargetType.allCases.count, "All DOMs should have profiles after migration")
+            for dom in DOMTargetType.allCases {
+                XCTAssertNotNil(profiles[dom], "Missing profile for \(dom)")
+                // Buffer starts empty; correctness is that it exists
+            }
+        }
+        
+        // Verify persisted file now contains "version": 2
+        let persisted = try Data(contentsOf: fileURL)
+        let obj = try JSONSerialization.jsonObject(with: persisted, options: [])
+        let dict = obj as? [String: Any]
+        let fileVersion = dict?["version"] as? Int
+        XCTAssertEqual(fileVersion, 2, "Migrated file should persist schema version 2")
+        
+        // Cleanup
+        ADMPersistenceManager.clearState(for: userId)
+    }
+    
+    func test_unknownFutureVersionLoadsWithoutDowngrade() throws {
+        let userId = "TEST_MIGRATE_FUTURE_\(UUID().uuidString)"
+        
+        // Craft a future version JSON (e.g., 99). Omit domPerformanceProfiles (optional) to simulate unknown layout.
+        let futureDict: [String: Any] = [
+            "version": 99,
+            "performanceHistory": [],
+            "lastAdaptationDirection": "stable",
+            "directionStableCount": 0,
+            "normalizedPositions": [
+                "discriminatoryLoad": 0.4,
+                "meanBallSpeed": 0.6,
+                "ballSpeedSD": 0.5,
+                "responseTime": 0.5,
+                "targetCount": 0.5
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: futureDict, options: [.prettyPrinted])
+        
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let dir = docs.appendingPathComponent("ADMState")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        let fileURL = dir.appendingPathComponent("adm_state_\(userId).json")
+        try data.write(to: fileURL)
+        
+        // Load via manager (should warn and proceed without downgrading)
+        guard let state = ADMPersistenceManager.loadState(for: userId) else {
+            XCTFail("Failed to load future-version state")
+            return
+        }
+        XCTAssertEqual(state.version, 99, "Future version should not be downgraded by migration")
+        
+        ADMPersistenceManager.clearState(for: userId)
+    }
+    
+    func test_idempotentMigration() throws {
+        let userId = "TEST_MIGRATE_IDEMPOTENT_\(UUID().uuidString)"
+        
+        // Write legacy v1 JSON
+        let v1Dict: [String: Any] = [
+            "performanceHistory": [],
+            "lastAdaptationDirection": "stable",
+            "directionStableCount": 0,
+            "normalizedPositions": [
+                "discriminatoryLoad": 0.5,
+                "meanBallSpeed": 0.5,
+                "ballSpeedSD": 0.5,
+                "responseTime": 0.5,
+                "targetCount": 0.5
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: v1Dict, options: [.prettyPrinted])
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let dir = docs.appendingPathComponent("ADMState")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        let fileURL = dir.appendingPathComponent("adm_state_\(userId).json")
+        try data.write(to: fileURL)
+        
+        // First load => triggers migration
+        guard let state1 = ADMPersistenceManager.loadState(for: userId) else {
+            XCTFail("First load failed")
+            return
+        }
+        XCTAssertEqual(state1.version, 2)
+        XCTAssertNotNil(state1.domPerformanceProfiles)
+        
+        // Capture file size after first migration persist
+        let sizeAfterFirst = (try? Data(contentsOf: fileURL).count) ?? -1
+        
+        // Second load => should not re-migrate / should be stable
+        guard let state2 = ADMPersistenceManager.loadState(for: userId) else {
+            XCTFail("Second load failed")
+            return
+        }
+        XCTAssertEqual(state2.version, 2)
+        XCTAssertNotNil(state2.domPerformanceProfiles)
+        
+        let sizeAfterSecond = (try? Data(contentsOf: fileURL).count) ?? -1
+        XCTAssertEqual(sizeAfterFirst, sizeAfterSecond, "Repeated loads should be idempotent on-disk")
+        
+        ADMPersistenceManager.clearState(for: userId)
+    }
 }
