@@ -48,6 +48,11 @@ struct GameConfiguration {
     // --- General ---
     let numberOfBalls: Int = 12
 
+    // --- Debug/QA ---
+    /// When true, onboarding will be shown on every app launch regardless of completion state.
+    /// Use for refining copy and interaction. Default: false.
+    var forceShowOnboarding: Bool = false
+
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0

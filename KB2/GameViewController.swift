@@ -8,6 +8,8 @@ class GameViewController: UIViewController {
 
     // Stores the pre-session EMA response for later visualization
     var preSessionEMA: EMAResponse?
+    
+    private var didCheckEntryFlow = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -42,8 +44,34 @@ class GameViewController: UIViewController {
 //            }
 //        }
 
-        // MODIFIED: Present StartScreen directly. Pre-session EMA will be triggered from StartScreen.
-        presentStartScreen()
+        // Entry gating occurs in viewDidAppear based on onboarding state
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Gate entry: present onboarding on first run, otherwise go straight to StartScreen
+        guard !didCheckEntryFlow else { return }
+        didCheckEntryFlow = true
+
+        let config = GameConfiguration()
+        let shouldForceOnboarding = config.forceShowOnboarding
+        
+        if FirstRunManager.shared.hasCompletedOnboarding && !shouldForceOnboarding {
+            presentStartScreen()
+        } else {
+            let onboarding = OnboardingView {
+                [weak self] in
+                // Persist completion; force flag simply overrides gating on launch.
+                FirstRunManager.shared.hasCompletedOnboarding = true
+                self?.dismiss(animated: true, completion: {
+                    self?.presentStartScreen()
+                })
+            }
+            let hosting = UIHostingController(rootView: onboarding)
+            hosting.modalPresentationStyle = .fullScreen
+            hosting.overrideUserInterfaceStyle = .dark
+            self.present(hosting, animated: true, completion: nil)
+        }
     }
 
     // This method will be called by StartScreen
