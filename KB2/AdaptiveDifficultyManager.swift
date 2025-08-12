@@ -1466,8 +1466,9 @@ class AdaptiveDifficultyManager {
         // Lower variance = higher confidence (capped at 0.5 variance)
         let varianceConfidence = max(0, 1.0 - min(performanceVariance / 0.5, 1.0))
         
-        // More data points = higher confidence (saturates at domMinDataPointsForProfiling)
-        let dataPointConfidence = min(CGFloat(dataPoints.count) / CGFloat(config.domMinDataPointsForProfiling), 1.0)
+        // More data points = higher confidence (tunable via config.domMinDataPointsForProfiling)
+        let baselineForData = CGFloat(config.domMinDataPointsForProfiling)
+        let dataPointConfidence = min(CGFloat(dataPoints.count) / baselineForData, 1.0)
         
         // Calculate DOM value diversity (are we exploring the parameter space?)
         let domValues = dataPoints.map { $0.value }
@@ -1741,7 +1742,7 @@ class AdaptiveDifficultyManager {
             lastAdaptationDirection: lastAdaptationDirection,
             directionStableCount: directionStableCount,
             normalizedPositions: normalizedPositions,
-            domPerformanceProfiles: domPerformanceProfiles
+            domPerformanceProfiles: config.persistDomPerformanceProfilesInState ? domPerformanceProfiles : nil
         )
         
         ADMPersistenceManager.saveState(state, for: self.userId)

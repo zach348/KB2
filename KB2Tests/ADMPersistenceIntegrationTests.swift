@@ -18,6 +18,7 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         super.setUp()
         config = GameConfiguration()
         config.clearPastSessionData = true // Start fresh
+        config.persistDomPerformanceProfilesInState = false // Speed-oriented: exclude large DOM profiles for these perf-focused tests
         adm = AdaptiveDifficultyManager(
             configuration: config,
             initialArousal: 0.5,

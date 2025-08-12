@@ -233,7 +233,7 @@ class ADMLocalConfidenceTests: XCTestCase {
         let expectedVarianceComponent = max(0, 1.0 - min(stdDev / 0.5, 1.0))
         
         // Calculate expected data point component
-        // Note: domMinDataPointsForProfiling is 15, and we only have 8 performances
+        // Note: domMinDataPointsForProfiling is 12 (tunable), and we only have 8 performances
         let expectedDataComponent = min(CGFloat(performances.count) / CGFloat(testConfig.domMinDataPointsForProfiling), 1.0)
         
         // Run PD controller - it will use these components internally
@@ -242,6 +242,6 @@ class ADMLocalConfidenceTests: XCTestCase {
         // We can't directly test the components since they're internal to modulateDOMsWithProfiling
         // But we verify the calculation logic is correct
         XCTAssertGreaterThan(expectedVarianceComponent, 0.5, "Variance component should be high for consistent data")
-        XCTAssertEqual(expectedDataComponent, 8.0/15.0, accuracy: 0.01, "Data component should be 8/15 with 8 points and min requirement of 15")
+        XCTAssertEqual(expectedDataComponent, 8.0/12.0, accuracy: 0.01, "Data component should be 8/12 with 8 points and min requirement of 12")
     }
 }

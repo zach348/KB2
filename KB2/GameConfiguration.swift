@@ -291,8 +291,8 @@ struct GameConfiguration {
     // --- Trend-Based Adaptation Configuration (Phase 2) ---
     let currentPerformanceWeight: CGFloat = 0.85 // Emphasize the most recent performance
     let historyInfluenceWeight: CGFloat = 0.15   // Stabilize with a small historical influence
-    let trendInfluenceWeight: CGFloat = 0.1     // Nudge based on trajectory
-    let minimumHistoryForTrend: Int = 4
+    let trendInfluenceWeight: CGFloat = 0.15     // Nudge based on trajectory
+    let minimumHistoryForTrend: Int = 3
 
     // --- DOM Adaptation Rates (Phase 5) ---
     // These now act as base adaptation rates, not budget shares
@@ -305,7 +305,7 @@ struct GameConfiguration {
     ]
     
     let domAdaptationRates_HighArousal: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 8.0,
+        .discriminatoryLoad: 6.0,
         .meanBallSpeed: 3.0,
         .ballSpeedSD: 3.0,
         .responseTime: 2.0,
@@ -317,7 +317,7 @@ struct GameConfiguration {
     
     // --- Hysteresis Configuration (Phase 3) ---
     let adaptationIncreaseThreshold: CGFloat = 0.8    // Must exceed to increase difficulty
-    let adaptationDecreaseThreshold: CGFloat = 0.7    // Must fall below to decrease
+    let adaptationDecreaseThreshold: CGFloat = 0.75    // Must fall below to decrease
     let enableHysteresis: Bool = true
     let minStableRoundsBeforeDirectionChange: Int = 2
     let hysteresisDeadZone: CGFloat = 0.02            // Additional dead zone when in neutral
@@ -329,6 +329,9 @@ struct GameConfiguration {
     
     // --- Cross-Session Persistence (Phase 4.5) ---
     var clearPastSessionData: Bool = false  // Set to true to clear previous session data on startup
+    /// Whether to include DOM performance profiles in persisted state (large payload).
+    /// Set to false to improve save performance; set to true only when debugging PD profiles across sessions.
+    var persistDomPerformanceProfilesInState: Bool = true
 
     // --- Session-Aware Adaptation (Phase 5) ---
     
@@ -426,10 +429,12 @@ struct GameConfiguration {
     // Example: [.meanBallSpeed: 0.6, .ballSpeedSD: 0.6] to make hardening more conservative for speed DOMs
     var domEasingRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 0.8,
-        .ballSpeedSD: 0.8
+        .ballSpeedSD: 0.8,
+        .discriminatoryLoad: 1.25
     ]
     var domHardeningRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 0.5,
-        .ballSpeedSD: 0.5
+        .ballSpeedSD: 0.5,
+        .discriminatoryLoad: 1.1
     ]
 }

@@ -121,7 +121,7 @@ class ADMAdaptationGapTests: XCTestCase {
             sessionDuration: 600
         )
         
-        // Skip warmup
+        // Skip warmup: simulate warmup rounds to enter standard phase
         for _ in 0..<2 {
             adm.recordIdentificationPerformance(
                 taskSuccess: true,

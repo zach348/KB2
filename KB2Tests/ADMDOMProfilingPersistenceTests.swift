@@ -38,6 +38,7 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         var config1 = GameConfiguration()
         config1.clearPastSessionData = true
         config1.enableSessionPhases = false
+        config1.persistDomPerformanceProfilesInState = true
         
         let adm1 = AdaptiveDifficultyManager(
             configuration: config1,
@@ -79,6 +80,7 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         var config2 = GameConfiguration()
         config2.clearPastSessionData = false
         config2.enableSessionPhases = false
+        config2.persistDomPerformanceProfilesInState = true
         
         let adm2 = AdaptiveDifficultyManager(
             configuration: config2,
@@ -164,6 +166,7 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         var config1 = GameConfiguration()
         config1.clearPastSessionData = true
         config1.enableSessionPhases = false
+        config1.persistDomPerformanceProfilesInState = true
         
         let adm1 = AdaptiveDifficultyManager(
             configuration: config1,
@@ -197,6 +200,7 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         var config2 = GameConfiguration()
         config2.clearPastSessionData = false
         config2.enableSessionPhases = false
+        config2.persistDomPerformanceProfilesInState = true
         
         let adm2 = AdaptiveDifficultyManager(
             configuration: config2,
@@ -223,6 +227,7 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         var config1 = GameConfiguration()
         config1.clearPastSessionData = true
         config1.enableSessionPhases = false
+        config1.persistDomPerformanceProfilesInState = true
         
         let adm1 = AdaptiveDifficultyManager(
             configuration: config1,
@@ -249,6 +254,7 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         var config2 = GameConfiguration()
         config2.clearPastSessionData = false
         config2.enableSessionPhases = false
+        config2.persistDomPerformanceProfilesInState = true
         
         let adm2 = AdaptiveDifficultyManager(
             configuration: config2,
