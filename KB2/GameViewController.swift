@@ -76,6 +76,14 @@ class GameViewController: UIViewController {
 
     // This method will be called by StartScreen
     func presentPreSessionEMAAndStartGame(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalFromStartScreen: CGFloat) {
+        let config = GameConfiguration()
+        let shouldForceTutorial = config.forceShowTutorial
+        let shouldShowTutorial = shouldForceTutorial || !FirstRunManager.shared.hasCompletedTutorial
+
+        if shouldShowTutorial {
+            presentTutorial()
+            return
+        }
         // Start a new data logging session BEFORE presenting the pre-session EMA
         DataLogger.shared.startSession(sessionDuration: sessionDuration) // <-- Pass sessionDuration
 
@@ -161,7 +169,7 @@ class GameViewController: UIViewController {
         print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Agitation=\(Int(response.calmAgitationLevel)), Energy=\(Int(response.energyLevel))")
     }
 
-    private func presentStartScreen() {
+    func presentStartScreen() {
         if let view = self.view as? SKView { // Ensure it's an SKView
             // Clear any existing scene first to avoid overlap issues
             view.presentScene(nil)
@@ -179,6 +187,21 @@ class GameViewController: UIViewController {
             print("Error: GameViewController's view is not an SKView. Cannot present StartScreen.")
             // Handle this error appropriately, perhaps by showing an alert or logging.
         }
+    }
+
+    func presentTutorial() {
+        guard let view = self.view as? SKView else {
+            print("Error: GameViewController's view is not an SKView. Cannot present Tutorial.")
+            return
+        }
+        view.presentScene(nil)
+        let tutorialScene = GameScene(size: view.bounds.size)
+        tutorialScene.tutorialMode = true
+        tutorialScene.scaleMode = .aspectFill
+        view.presentScene(tutorialScene, transition: SKTransition.fade(withDuration: 0.5))
+        view.ignoresSiblingOrder = true
+        view.showsFPS = true
+        view.showsNodeCount = true
     }
 
     private func presentGameScene(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalForEstimator: CGFloat, systemInitialArousal: CGFloat) {

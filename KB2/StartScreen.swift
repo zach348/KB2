@@ -91,6 +91,16 @@ class StartScreen: SKScene {
         startButtonLabel.verticalAlignmentMode = .center
         startButtonLabel.name = "startButton"
         addChild(startButtonLabel)
+
+        if FirstRunManager.shared.hasCompletedTutorial {
+            let repeatTutorialButton = SKLabelNode(fontNamed: "HelveticaNeue-Light")
+            repeatTutorialButton.text = "Repeat Tutorial"
+            repeatTutorialButton.fontSize = 18
+            repeatTutorialButton.fontColor = .white
+            repeatTutorialButton.position = CGPoint(x: frame.midX, y: startButton.position.y - 80)
+            repeatTutorialButton.name = "repeatTutorialButton"
+            addChild(repeatTutorialButton)
+        }
     }
     
     private func setupSlider(in view: SKView) {
@@ -133,6 +143,9 @@ class StartScreen: SKScene {
             if node.name == "startButton" {
                 handleStartButtonTap()
                 break
+            } else if node.name == "repeatTutorialButton" {
+                handleRepeatTutorialTap()
+                break
             }
         }
     }
@@ -163,6 +176,15 @@ class StartScreen: SKScene {
                     sessionProfile: .fluctuating, // Hardcode to dynamic profile
                     initialArousalFromStartScreen: self?.defaultArousalLevel ?? 0.7 // Placeholder, will be overwritten by EMA
                 )
+            }
+        }
+    }
+
+    private func handleRepeatTutorialTap() {
+        DispatchQueue.main.async { [weak self] in
+            self?.slider?.removeFromSuperview()
+            if let gameVC = self?.view?.window?.rootViewController as? GameViewController {
+                gameVC.presentTutorial()
             }
         }
     }

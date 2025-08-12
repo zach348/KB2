@@ -53,6 +53,10 @@ struct GameConfiguration {
     /// Use for refining copy and interaction. Default: false.
     var forceShowOnboarding: Bool = false
 
+    /// When true, the tutorial will be shown regardless of completion state.
+    /// Use for refining copy and interaction. Default: false.
+    var forceShowTutorial: Bool = false
+
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0

@@ -89,8 +89,10 @@ internal let gameConfiguration = GameConfiguration()
 private var audioManager: AudioManager! // ADDED
 private var lastUploadedProgressIncrement: Int = 0 // ADDED for partial uploads
 private var isPartialUploadInProgress: Bool = false // ADDED to prevent rapid partial uploads
+private var tutorialManager: TutorialManager?
 
 // --- Session Management Properties ---
+var tutorialMode: Bool = false
 var sessionMode: Bool = false
 var sessionDuration: TimeInterval = 0
 var sessionStartTime: TimeInterval = 0
@@ -382,6 +384,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             name: Notification.Name("SaveADMState"),
             object: nil
         )
+        
+        if tutorialMode {
+            tutorialManager = TutorialManager()
+            tutorialManager?.start(in: self)
+        }
         
         print("--- GameScene: didMove(to:) Finished ---")
     }
@@ -783,16 +790,20 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
     }
     
-    private func startIdentificationTimeout() {
+    func startIdentificationTimeout(duration: TimeInterval) {
         stopIdentificationTimeout()
-        var remainingTime = currentIdentificationDuration
+        var remainingTime = duration
         guard remainingTime > 0 else { endIdentificationPhase(success: false); return }
         countdownLabel.text = String(format: "Time: %.1f", remainingTime); countdownLabel.isHidden = false
         let wait = SKAction.wait(forDuration: 0.1); let update = SKAction.run { [weak self] in guard let self = self, self.currentState == .identifying else { self?.stopIdentificationTimeout(); return }; remainingTime -= 0.1; self.countdownLabel.text = String(format: "Time: %.1f", max(0, remainingTime)) }
-        let repeatCount = Int(currentIdentificationDuration / 0.1)
+        let repeatCount = Int(duration / 0.1)
         let countdownAction = SKAction.repeat(.sequence([wait, update]), count: repeatCount)
         let timeoutAction = SKAction.run { [weak self] in print("--- Identification Timeout! ---"); self?.endIdentificationPhase(success: false) }
         self.run(.sequence([countdownAction, timeoutAction]), withKey: identificationTimeoutActionKey)
+    }
+    
+    private func startIdentificationTimeout() {
+        startIdentificationTimeout(duration: currentIdentificationDuration)
     }
     
     private func stopIdentificationTimeout() {
@@ -965,6 +976,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     //====================================================================================================
     // --- Touch Handling ---
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if tutorialMode {
+            if let touch = touches.first {
+                tutorialManager?.handleTap(at: touch.location(in: self))
+            }
+            return
+        }
         print("DEBUG: touchesBegan - Count: \(touches.count), State: \(currentState)") // DEBUG
         
         // Handle two-finger taps based on screen position
@@ -1067,6 +1084,16 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     }
     
     internal func handleBallTap(_ ball: Ball) {
+        if tutorialMode {
+            if ball.isTarget {
+                targetsFoundThisRound += 1
+                ball.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor)
+                if targetsFoundThisRound >= targetsToFind {
+                    tutorialManager?.advanceStep()
+                }
+            }
+            return
+        }
         guard currentState == .identifying else {
             return
         }
@@ -2984,6 +3011,22 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         print("[GameScene] === END ADM STATE SAVE ===")
     }
     // --- END ADDED ---
+    
+    func pauseBalls() {
+        physicsWorld.speed = 0
+    }
+    
+    func resumeBalls() {
+        physicsWorld.speed = 1
+    }
+
+    func maskTargets() {
+        for ball in balls {
+            if ball.isTarget {
+                ball.hideIdentity(hiddenColor: activeDistractorColor)
+            }
+        }
+    }
 
 } // Final closing brace for GameScene Class
 
