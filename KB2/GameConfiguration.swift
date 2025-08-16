@@ -212,8 +212,8 @@ struct GameConfiguration {
     // Mean Ball Speed (lower is easier)
     let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 25.0
     let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 75.0
-    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 700.0
-    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1000.0
+    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 650.0
+    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 950.0
     
     // Ball Speed Standard Deviation (lower is easier)
     let ballSpeedSD_MinArousal_EasiestSetting: CGFloat = 0.0
@@ -266,8 +266,8 @@ struct GameConfiguration {
     // Direction-specific smoothing factors
     // For hardening (making the game harder)
     let domHardeningSmoothingFactors: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 0.3,  // Original value
-        .meanBallSpeed: 0.2,       // Original value
+        .discriminatoryLoad: 0.2,  // Original value
+        .meanBallSpeed: 0.1,       // Original value
         .ballSpeedSD: 0.1,         // Original value
         .responseTime: 0.1,       // Original value
         .targetCount: 0.3          // Original value
@@ -275,9 +275,9 @@ struct GameConfiguration {
     
     // For easing (making the game easier - higher values for faster response to poor performance)
     let domEasingSmoothingFactors: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 0.5,  // 2x hardening factor
-        .meanBallSpeed: 0.3,       // 2x hardening factor
-        .ballSpeedSD: 0.2,         // 2x hardening factor
+        .discriminatoryLoad: 0.3,  // 2x hardening factor
+        .meanBallSpeed: 0.1,       // 2x hardening factor
+        .ballSpeedSD: 0.1,         // 2x hardening factor
         .responseTime: 0.15,        // 2x hardening factor
         .targetCount: 0.15          // 2x hardening factor
     ]
@@ -286,11 +286,11 @@ struct GameConfiguration {
     var domSmoothingFactors: [DOMTargetType: CGFloat] {
         return domHardeningSmoothingFactors
     }
-    let adaptationSignalSensitivity: CGFloat = 1.5  // Increased from 1.0 to amplify performance responses
+    let adaptationSignalSensitivity: CGFloat = 1.0  // Increased from 1.0 to amplify performance responses
     let adaptationSignalDeadZone: CGFloat = 0.02     // Reduced from 0.05 to react to smaller performance changes
     
     // --- Performance History Configuration (NEW) ---
-    var performanceHistoryWindowSize: Int = 20  // Increased from 10 to provide better historical context
+    var performanceHistoryWindowSize: Int = 15  // Increased from 10 to provide better historical context
     
     // --- KPI Weight Interpolation Configuration (Phase 1.5) ---
     let kpiWeightTransitionStart: CGFloat = 0.55
@@ -306,10 +306,10 @@ struct GameConfiguration {
     // --- DOM Adaptation Rates (Phase 5) ---
     // These now act as base adaptation rates, not budget shares
     let domAdaptationRates_LowMidArousal: [DOMTargetType: CGFloat] = [
-        .targetCount: 7.0,
-        .responseTime: 3.0,
-        .discriminatoryLoad: 3.0,
-        .meanBallSpeed: 3.0,
+        .targetCount: 4.0,
+        .responseTime: 2.0,
+        .discriminatoryLoad: 5.0,
+        .meanBallSpeed: 2.0,
         .ballSpeedSD: 2.0
     ]
     
@@ -318,7 +318,7 @@ struct GameConfiguration {
         .meanBallSpeed: 3.0,
         .ballSpeedSD: 3.0,
         .responseTime: 2.0,
-        .targetCount: 1.0
+        .targetCount: 2.0
     ]
     
     // --- Global Performance Target ---
@@ -437,13 +437,14 @@ struct GameConfiguration {
     // Optional per-DOM overrides for direction multipliers (fallback to globals if absent)
     // Example: [.meanBallSpeed: 0.6, .ballSpeedSD: 0.6] to make hardening more conservative for speed DOMs
     var domEasingRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
-        .meanBallSpeed: 0.8,
-        .ballSpeedSD: 0.8,
+        .meanBallSpeed: 0.4,
+        .ballSpeedSD: 0.4,
         .discriminatoryLoad: 1.25
     ]
     var domHardeningRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
-        .meanBallSpeed: 0.5,
-        .ballSpeedSD: 0.5,
-        .discriminatoryLoad: 1.1
+        .meanBallSpeed: 0.4,
+        .ballSpeedSD: 0.4,
+        .discriminatoryLoad: 1.1,
+        .targetCount: 0.5
     ]
 }
