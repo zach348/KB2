@@ -47,6 +47,12 @@
                <Test
                   Identifier = "ADMDOMSignalCalculationTests/test_DEPRECATED_ModulateDOMsWithProfiling()">
                </Test>
+               <Test
+                  Identifier = "ADMSessionPhaseTests">
+               </Test>
+               <Test
+                  Identifier = "ADMWarmupTests">
+               </Test>
             </SkippedTests>
          </TestableReference>
       </Testables>

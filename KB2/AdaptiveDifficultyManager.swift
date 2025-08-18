@@ -575,13 +575,17 @@ class AdaptiveDifficultyManager {
             } else {
                 // PD controller couldn't run - fall back to global adaptation
                 print("[ADM] PD Controller not ready (insufficient data), falling back to global adaptation")
-                dataLogger.logCustomEvent(
-                    eventType: "ADM_PD_Controller_Fallback",
-                    data: [
-                        "reason": "insufficient_data",
-                        "phase": "standard"
-                    ]
-                )
+                let currentTime = Date().timeIntervalSince1970
+                if currentTime - lastLogTime >= logThrottleInterval {
+                    dataLogger.logCustomEvent(
+                        eventType: "ADM_PD_Controller_Fallback",
+                        data: [
+                            "reason": "insufficient_data",
+                            "phase": "standard"
+                        ]
+                    )
+                    lastLogTime = currentTime
+                }
                 // Continue with global adaptation below
             }
         }

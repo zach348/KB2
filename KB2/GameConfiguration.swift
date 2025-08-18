@@ -306,7 +306,7 @@ struct GameConfiguration {
     // --- DOM Adaptation Rates (Phase 5) ---
     // These now act as base adaptation rates, not budget shares
     let domAdaptationRates_LowMidArousal: [DOMTargetType: CGFloat] = [
-        .targetCount: 4.0,
+        .targetCount: 5.0,
         .responseTime: 2.0,
         .discriminatoryLoad: 5.0,
         .meanBallSpeed: 2.0,
@@ -314,7 +314,7 @@ struct GameConfiguration {
     ]
     
     let domAdaptationRates_HighArousal: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 6.0,
+        .discriminatoryLoad: 7.0,
         .meanBallSpeed: 3.0,
         .ballSpeedSD: 3.0,
         .responseTime: 2.0,
@@ -346,7 +346,7 @@ struct GameConfiguration {
     
     /// Enables session phase management (warmup, standard)
     /// When true, sessions start with a warmup phase for recalibration
-    var enableSessionPhases: Bool = true
+    var enableSessionPhases: Bool = false
     
     /// Proportion of the session dedicated to warmup phase (0.0-1.0)
     /// Default: 0.25 (25% of expected rounds)
@@ -397,12 +397,12 @@ struct GameConfiguration {
     /// Signal magnitude threshold below which a DOM is considered stable/converged
     /// Default: 0.0175 (1.75% of normalized range)
     /// When adaptation signals fall below this threshold, the DOM has reached equilibrium
-    let domConvergenceThreshold: CGFloat = 0.015
+    let domConvergenceThreshold: CGFloat = 0.01
     
     /// Number of consecutive rounds a DOM must be stable to be considered converged
     /// Default: 5 rounds
     /// Prevents premature convergence detection due to temporary stability
-    var domConvergenceDuration: Int = 3
+    var domConvergenceDuration: Int = 4
     
     /// Controlled nudge factor applied to converged DOMs to stimulate learning
     /// Default: 0.03 (3% of normalized range)
@@ -420,7 +420,7 @@ struct GameConfiguration {
     /// Maximum signal magnitude per round to prevent jarring difficulty changes
     /// Default: 0.15 (15% of normalized range)
     /// This clamps the PD controller output to ensure smooth difficulty transitions
-    var domMaxSignalPerRound: CGFloat = 0.15
+    var domMaxSignalPerRound: CGFloat = 0.08
     
     // --- Direction-Specific Adaptation Rates (Phase 5 - bypassSmoothing resolution) ---
     
@@ -437,14 +437,14 @@ struct GameConfiguration {
     // Optional per-DOM overrides for direction multipliers (fallback to globals if absent)
     // Example: [.meanBallSpeed: 0.6, .ballSpeedSD: 0.6] to make hardening more conservative for speed DOMs
     var domEasingRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
-        .meanBallSpeed: 0.4,
-        .ballSpeedSD: 0.4,
-        .discriminatoryLoad: 1.25
+        .meanBallSpeed: 1.25,
+        .ballSpeedSD: 1.25,
+        .discriminatoryLoad: 2.0
     ]
     var domHardeningRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
-        .meanBallSpeed: 0.4,
-        .ballSpeedSD: 0.4,
-        .discriminatoryLoad: 1.1,
-        .targetCount: 0.5
+        .meanBallSpeed: 1.0,
+        .ballSpeedSD: 1.0,
+        .discriminatoryLoad: 3.0,
+        .targetCount: 2.5
     ]
 }
