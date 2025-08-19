@@ -1623,6 +1623,92 @@ class DataLogger {
         }
     }
 
+    // MARK: - Historical Data Retrieval
+    
+    /// Retrieve historical EMA data from all saved session files
+    func getHistoricalEMAData(completion: @escaping ([HistoricalSessionData]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            var historicalSessions: [HistoricalSessionData] = []
+            
+            do {
+                let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsPath, includingPropertiesForKeys: nil)
+                let sessionFiles = fileURLs.filter { $0.pathExtension == "json" && $0.lastPathComponent.hasPrefix("kb2_session_") }
+                
+                for fileURL in sessionFiles {
+                    if let sessionData = self.parseSessionFile(fileURL: fileURL) {
+                        historicalSessions.append(sessionData)
+                    }
+                }
+                
+                // Sort by session date (most recent first)
+                historicalSessions.sort { $0.sessionDate > $1.sessionDate }
+                
+                DispatchQueue.main.async {
+                    completion(historicalSessions)
+                }
+                
+            } catch {
+                print("DATA_LOG: Error reading historical session files: \(error)")
+                DispatchQueue.main.async {
+                    completion([])
+                }
+            }
+        }
+    }
+    
+    /// Parse a single session file and extract EMA data
+    private func parseSessionFile(fileURL: URL) -> HistoricalSessionData? {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                  let events = json["events"] as? [[String: Any]] else {
+                print("DATA_LOG: Invalid session file format: \(fileURL.lastPathComponent)")
+                return nil
+            }
+            
+            var sessionStartTime: Date?
+            var preSessionEMA: [String: Any] = [:]
+            var postSessionEMA: [String: Any] = [:]
+            
+            // Parse events to find session start and EMA responses
+            for event in events {
+                guard let eventType = event["type"] as? String,
+                      let timestamp = event["timestamp"] as? TimeInterval else { continue }
+                
+                if eventType == "session_start" {
+                    sessionStartTime = Date(timeIntervalSince1970: timestamp)
+                }
+                else if eventType == "ema_response" {
+                    guard let questionId = event["question_id"] as? String,
+                          let response = event["response"],
+                          let context = event["context"] as? String else { continue }
+                    
+                    if context == "pre_session" {
+                        preSessionEMA[questionId] = response
+                    } else if context == "post_session" {
+                        postSessionEMA[questionId] = response
+                    }
+                }
+            }
+            
+            guard let sessionDate = sessionStartTime else {
+                print("DATA_LOG: No session start found in: \(fileURL.lastPathComponent)")
+                return nil
+            }
+            
+            return HistoricalSessionData(
+                sessionDate: sessionDate,
+                preSessionEMA: preSessionEMA,
+                postSessionEMA: postSessionEMA
+            )
+            
+        } catch {
+            print("DATA_LOG: Error parsing session file \(fileURL.lastPathComponent): \(error)")
+            return nil
+        }
+    }
+
     // MARK: - Adaptive Difficulty Logging
     func logAdaptiveDifficultyStep(
         arousalLevel: CGFloat,
@@ -1654,4 +1740,13 @@ class DataLogger {
         print("DATA_LOG: Adaptive Difficulty Step - Arousal: \(String(format: "%.2f", arousalLevel)), PerfScore: \(String(format: "%.2f", performanceScore))")
         // Consider logging more details if needed, e.g., specific DOM values
     }
+}
+
+// MARK: - Historical Data Models
+
+/// Structure for historical session data extracted from saved files
+struct HistoricalSessionData {
+    let sessionDate: Date
+    let preSessionEMA: [String: Any]
+    let postSessionEMA: [String: Any]
 }

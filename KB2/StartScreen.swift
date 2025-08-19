@@ -62,6 +62,15 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         settingsButton.name = "settingsButton"
         addChild(settingsButton)
         
+        // Progress button (top-left corner)
+        let progressButton = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
+        progressButton.text = "Progress"
+        progressButton.fontSize = 18
+        progressButton.fontColor = SKColor(cgColor: secondaryColor.cgColor)
+        progressButton.position = CGPoint(x: 80, y: frame.maxY - 60)
+        progressButton.name = "progressButton"
+        addChild(progressButton)
+        
         // Title (moved down to give settings button breathing room)
         titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
         titleLabel.text = "Kalibrate"
@@ -199,6 +208,9 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
                 break
             } else if node.name == "settingsButton" {
                 handleSettingsButtonTap()
+                break
+            } else if node.name == "progressButton" {
+                handleProgressButtonTap()
                 break
             }
         }
@@ -342,6 +354,24 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
             let settingsVC = SettingsViewController()
             settingsVC.modalPresentationStyle = .pageSheet
             rootVC.present(settingsVC, animated: true)
+        }
+    }
+    
+    private func handleProgressButtonTap() {
+        // Find the progress button for visual feedback
+        if let progressButton = self.children.first(where: { $0.name == "progressButton" }) as? SKLabelNode {
+            let fadeOut = SKAction.fadeAlpha(to: 0.5, duration: 0.1)
+            let fadeIn = SKAction.fadeAlpha(to: 1.0, duration: 0.1)
+            let sequence = SKAction.sequence([fadeOut, fadeIn])
+            progressButton.run(sequence)
+        }
+        
+        // Present progress screen
+        DispatchQueue.main.async { [weak self] in
+            guard let rootVC = self?.view?.window?.rootViewController else { return }
+            let progressVC = ProgressViewController()
+            progressVC.modalPresentationStyle = .pageSheet
+            rootVC.present(progressVC, animated: true)
         }
     }
     
