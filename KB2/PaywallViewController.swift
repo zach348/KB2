@@ -104,14 +104,14 @@ class PaywallViewController: UIViewController {
         annualButton.addTarget(self, action: #selector(annualButtonTapped), for: .touchUpInside)
         contentView.addSubview(annualButton)
         
-        // Trial info - dynamic based on trial status
+        // Trial info - dynamic based on trial status with enhanced compliance
         if isWithinTrial {
-            trialInfoLabel.text = "Your 7-day free trial is active. You won't be charged until it expires. Cancel anytime."
+            trialInfoLabel.text = "🎁 7-DAY FREE TRIAL ACTIVE\n\nYou won't be charged until your trial expires. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. Cancel anytime in Settings."
         } else {
-            trialInfoLabel.text = "Your 7-day free trial has ended. Subscribe now to regain access to unlimited cognitive training sessions. Cancel anytime."
+            trialInfoLabel.text = "⏰ YOUR 7-DAY FREE TRIAL HAS ENDED\n\nSubscribe now to regain access to unlimited cognitive training sessions. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. Cancel anytime in Settings."
         }
         
-        trialInfoLabel.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        trialInfoLabel.font = UIFont.systemFont(ofSize: 15, weight: .medium)
         trialInfoLabel.textColor = secondaryColor
         trialInfoLabel.textAlignment = .center
         trialInfoLabel.numberOfLines = 0

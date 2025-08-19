@@ -169,11 +169,23 @@ class SessionConfigViewController: UIViewController {
     }
     
     @objc private func startButtonTapped() {
+        // Entitlement gate (prevent bypassing subscription)
+        if EntitlementManager.shared.entitlementGateEnabled && !EntitlementManager.shared.isEntitled {
+            presentEntitlementGate()
+            return
+        }
+        
         // Calculate session duration in seconds
         let durationInMinutes = sessionDurationSlider.value
         let durationInSeconds = TimeInterval(durationInMinutes * 60)
         
         startSession(duration: durationInSeconds)
+    }
+    
+    private func presentEntitlementGate() {
+        let paywallVC = PaywallViewController()
+        paywallVC.modalPresentationStyle = .fullScreen
+        present(paywallVC, animated: true)
     }
     
     private func startSession(duration: TimeInterval) {
