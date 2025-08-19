@@ -16,6 +16,11 @@ struct EMAScoreVisualizationView: View {
 
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.sizeCategory) private var sizeCategory
+    
+    // Brand Colors (matching other views)
+    private let primaryColor = Color(red: 0x77/255.0, green: 0xFD/255.0, blue: 0xC7/255.0) // #77FDC7
+    private let secondaryColor = Color(red: 0xA0/255.0, green: 0x9E/255.0, blue: 0xA1/255.0) // #A09EA1
+    private let darkColor = Color(red: 0x24/255.0, green: 0x24/255.0, blue: 0x24/255.0) // #242424
 
     // Dynamic spacing that adapts for compact vs regular width and large text sizes
     private var sectionSpacing: CGFloat {
@@ -25,7 +30,7 @@ struct EMAScoreVisualizationView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            darkColor.ignoresSafeArea()
 
             VStack(spacing: sectionSpacing) {
                 // Title
@@ -110,10 +115,10 @@ struct EMAScoreVisualizationView: View {
                 Text("Done")
                     .font(.title2)
                     .fontWeight(.bold)
-                    .foregroundColor(.white)
+                    .foregroundColor(darkColor)
                     .frame(maxWidth: .infinity)
                     .frame(height: 55)
-                    .background(Color.blue)
+                    .background(primaryColor)
                     .cornerRadius(15)
             }
             .padding(.horizontal, 20)

@@ -5,6 +5,11 @@ class TutorialManager {
     private weak var scene: GameScene?
     private var tutorialStep = 0
     
+    // Brand Colors (matching other views)
+    private let primaryColor = UIColor(red: 0x77/255.0, green: 0xFD/255.0, blue: 0xC7/255.0, alpha: 1.0) // #77FDC7
+    private let secondaryColor = UIColor(red: 0xA0/255.0, green: 0x9E/255.0, blue: 0xA1/255.0, alpha: 1.0) // #A09EA1
+    private let darkColor = UIColor(red: 0x24/255.0, green: 0x24/255.0, blue: 0x24/255.0, alpha: 1.0) // #242424
+    
     // UI Elements
     private var overlay: SKShapeNode?
     private var calloutLabel: SKLabelNode?
@@ -21,7 +26,7 @@ class TutorialManager {
         guard let scene = scene else { return }
         
         overlay = SKShapeNode(rect: scene.frame)
-        overlay?.fillColor = SKColor.black.withAlphaComponent(0.5)
+        overlay?.fillColor = SKColor(cgColor: darkColor.cgColor).withAlphaComponent(0.3)
         overlay?.zPosition = 200
         overlay?.name = "tutorialOverlay"
         scene.addChild(overlay!)
@@ -37,16 +42,16 @@ class TutorialManager {
         let buttonWidth: CGFloat = 150
         let buttonHeight: CGFloat = 50
         nextButton = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 10)
-        nextButton?.fillColor = .systemBlue
-        nextButton?.strokeColor = .white
-        nextButton?.lineWidth = 1
+        nextButton?.fillColor = SKColor(cgColor: primaryColor.cgColor)
+        nextButton?.strokeColor = .clear
+        nextButton?.lineWidth = 0
         nextButton?.zPosition = 201
         nextButton?.name = "tutorialNextButton"
         overlay?.addChild(nextButton!)
         
         nextButtonLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
         nextButtonLabel?.fontSize = 20
-        nextButtonLabel?.fontColor = .white
+        nextButtonLabel?.fontColor = SKColor(cgColor: darkColor.cgColor)
         nextButtonLabel?.verticalAlignmentMode = .center
         nextButtonLabel?.zPosition = 202
         nextButtonLabel?.name = "tutorialNextButton"

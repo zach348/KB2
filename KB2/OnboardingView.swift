@@ -7,6 +7,11 @@ struct OnboardingView: View {
     
     @State private var index: Int = 0
     
+    // Brand Colors (matching PaywallViewController and StartScreen)
+    private let primaryColor = Color(red: 0x77/255.0, green: 0xFD/255.0, blue: 0xC7/255.0) // #77FDC7
+    private let secondaryColor = Color(red: 0xA0/255.0, green: 0x9E/255.0, blue: 0xA1/255.0) // #A09EA1
+    private let darkColor = Color(red: 0x24/255.0, green: 0x24/255.0, blue: 0x24/255.0) // #242424
+    
     private let pages: [String] = [
         "Welcome to Kalibrate. Quick spoiler: what you do affects how you feel — and how you feel affects what you’re ready to do.",
         "Kalibrate captures a stressed or anxious mind and guides it toward a calmer, more focused state.",
@@ -32,7 +37,7 @@ struct OnboardingView: View {
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            darkColor.ignoresSafeArea()
             
             VStack(alignment: .leading, spacing: 24) {
                 // Top bar: progress
@@ -40,7 +45,7 @@ struct OnboardingView: View {
                     Spacer()
                     Text("\(index + 1) / \(pages.count)")
                         .font(.footnote.weight(.semibold))
-                        .foregroundColor(.gray)
+                        .foregroundColor(secondaryColor)
                         .monospacedDigit()
                 }
                 .padding(.top, 16)
@@ -57,14 +62,14 @@ struct OnboardingView: View {
                         .animation(.easeInOut(duration: 0.2), value: index)
                 }
                 
-                // Primary action
+                // Primary action using brand colors
                 Button(action: advance) {
                     Text(index == pages.count - 1 ? "Start" : "Next")
                         .font(.headline.weight(.bold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
+                        .background(primaryColor)
+                        .foregroundColor(darkColor)
                         .cornerRadius(14)
                 }
                 .accessibilityIdentifier("onboarding_primary_button")

@@ -33,131 +33,179 @@ struct EMAView: View {
     @State private var energyLevel: Double = 50
     @State private var startTime: Date = Date()
     
+    // Brand Colors (matching PaywallViewController and other views)
+    private let primaryColor = Color(red: 0x77/255.0, green: 0xFD/255.0, blue: 0xC7/255.0) // #77FDC7
+    private let secondaryColor = Color(red: 0xA0/255.0, green: 0x9E/255.0, blue: 0xA1/255.0) // #A09EA1
+    private let darkColor = Color(red: 0x24/255.0, green: 0x24/255.0, blue: 0x24/255.0) // #242424
+    
+    // Responsive design properties
+    private var isSmallScreen: Bool {
+        UIScreen.main.bounds.height < 700 // iPhone SE and similar
+    }
+    
+    private var titleFontSize: Font {
+        isSmallScreen ? .title2 : .title
+    }
+    
+    private var headlineFontSize: Font {
+        isSmallScreen ? .body : .headline
+    }
+    
+    private var sectionSpacing: CGFloat {
+        isSmallScreen ? 15 : 30
+    }
+    
+    private var innerSpacing: CGFloat {
+        isSmallScreen ? 8 : 15
+    }
+    
+    private var horizontalPadding: CGFloat {
+        isSmallScreen ? 16 : 20
+    }
+    
     var body: some View {
         ZStack {
-            // Dark background to match the app theme
-            Color.black.edgesIgnoringSafeArea(.all)
+            // Dark background using brand color
+            darkColor.edgesIgnoringSafeArea(.all)
             
-            VStack(spacing: 30) {
-                // Title
-                VStack {
-                    Text(emaType.title)
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true) // Allow text to wrap
-                    
-                    Text("(Your responses are anonymous)")
-                        .font(.footnote)
-                        .foregroundColor(.gray)
-                }
-                .padding(.top, 20)
-                
-                Spacer()
-                
-                // Stress Level VAS
-                VStack(spacing: 15) {
-                    Text("How stressed do you feel right now?")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                    
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: sectionSpacing) {
+                    // Title
                     VStack(spacing: 8) {
-                        Slider(value: $stressLevel, in: 0...100, step: 1)
-                            .accentColor(.blue)
+                        Text(emaType.title)
+                            .font(titleFontSize)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(nil)
                         
-                        HStack {
-                            Text("Not Stressed at All")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Spacer()
-                            Text("Extremely Stressed")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
+                        Text("(Your responses are anonymous)")
+                            .font(.footnote)
+                            .foregroundColor(.gray)
                     }
+                    .padding(.top, isSmallScreen ? 10 : 20)
                     
-                    Text("\(Int(stressLevel))")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 20)
-                
-                // Calm/Agitation Level VAS
-                VStack(spacing: 15) {
-                    Text("How calm or agitated do you feel right now?")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                    
-                    VStack(spacing: 8) {
-                        Slider(value: $calmAgitationLevel, in: 0...100, step: 1)
-                            .accentColor(.green)
+                    // Stress Level VAS
+                    VStack(spacing: innerSpacing) {
+                        Text("How stressed do you feel right now?")
+                            .font(headlineFontSize)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                         
-                        HStack {
-                            Text("Very Calm")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Spacer()
-                            Text("Very Agitated")
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                        VStack(spacing: 8) {
+                            Slider(value: $stressLevel, in: 0...100, step: 1)
+                                .accentColor(primaryColor)
+                            
+                            HStack {
+                                Text("Not Stressed at All")
+                                    .font(isSmallScreen ? .caption2 : .caption)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Text("Extremely Stressed")
+                                    .font(isSmallScreen ? .caption2 : .caption)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.trailing)
+                            }
                         }
-                    }
-                    
-                    Text("\(Int(calmAgitationLevel))")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 20)
-                
-                // Energy Level VAS
-                VStack(spacing: 15) {
-                    Text("How energetic or drained do you feel right now?")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                    
-                    VStack(spacing: 8) {
-                        Slider(value: $energyLevel, in: 0...100, step: 1)
-                            .accentColor(.orange)
                         
-                        HStack {
-                            Text("Drained / Lethargic")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Spacer()
-                            Text("Full of Energy / Vigorous")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
+                        Text("\(Int(stressLevel))")
+                            .font(isSmallScreen ? .title3 : .title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
                     }
+                    .padding(.horizontal, horizontalPadding)
                     
-                    Text("\(Int(energyLevel))")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                    // Calm/Agitation Level VAS
+                    VStack(spacing: innerSpacing) {
+                        Text("How calm or agitated do you feel right now?")
+                            .font(headlineFontSize)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                        
+                        VStack(spacing: 8) {
+                            Slider(value: $calmAgitationLevel, in: 0...100, step: 1)
+                                .accentColor(primaryColor)
+                            
+                            HStack {
+                                Text("Very Calm")
+                                    .font(isSmallScreen ? .caption2 : .caption)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Text("Very Agitated")
+                                    .font(isSmallScreen ? .caption2 : .caption)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                        
+                        Text("\(Int(calmAgitationLevel))")
+                            .font(isSmallScreen ? .title3 : .title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, horizontalPadding)
+                    
+                    // Energy Level VAS
+                    VStack(spacing: innerSpacing) {
+                        Text("How energetic or drained do you feel right now?")
+                            .font(headlineFontSize)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                        
+                        VStack(spacing: 8) {
+                            Slider(value: $energyLevel, in: 0...100, step: 1)
+                                .accentColor(primaryColor)
+                            
+                            HStack {
+                                Text("Drained / Lethargic")
+                                    .font(isSmallScreen ? .caption2 : .caption)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Text("Full of Energy / Vigorous")
+                                    .font(isSmallScreen ? .caption2 : .caption)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                        
+                        Text("\(Int(energyLevel))")
+                            .font(isSmallScreen ? .title3 : .title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, horizontalPadding)
+                    
+                    // Submit Button using brand colors
+                    Button(action: submitEMA) {
+                        Text(emaType.buttonText)
+                            .font(isSmallScreen ? .title3 : .title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(darkColor)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: isSmallScreen ? 50 : 55)
+                            .background(primaryColor)
+                            .cornerRadius(15)
+                    }
+                    .padding(.horizontal, isSmallScreen ? 30 : 40)
+                    .padding(.bottom, isSmallScreen ? 20 : 30)
                 }
-                .padding(.horizontal, 20)
-                
-                Spacer()
-                
-                // Submit Button
-                Button(action: submitEMA) {
-                    Text(emaType.buttonText)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 55)
-                        .background(Color.blue)
-                        .cornerRadius(15)
-                }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 30)
+                .padding(.bottom, 20) // Extra bottom padding for scroll view
             }
         }
         .onAppear {

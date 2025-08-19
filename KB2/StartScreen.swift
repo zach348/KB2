@@ -9,6 +9,12 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
     private let initialSessionMinutes: Double = 15.0
     private let defaultArousalLevel: CGFloat = 1.0
     
+    // Brand Colors (matching PaywallViewController)
+    private let primaryColor = UIColor(red: 0x77/255.0, green: 0xFD/255.0, blue: 0xC7/255.0, alpha: 1.0) // #77FDC7
+    private let secondaryColor = UIColor(red: 0xA0/255.0, green: 0x9E/255.0, blue: 0xA1/255.0, alpha: 1.0) // #A09EA1
+    private let darkColor = UIColor(red: 0x24/255.0, green: 0x24/255.0, blue: 0x24/255.0, alpha: 1.0) // #242424
+    private let whiteColor = UIColor.white // #FFFFFF
+    
     // UI Elements
     private var titleLabel: SKLabelNode!
     private var durationLabel: SKLabelNode!
@@ -25,7 +31,8 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
     // userReportedArousal is no longer needed here as it will be captured by EMAView
     
     override func didMove(to view: SKView) {
-        backgroundColor = .darkGray
+        // Use brand dark color for background
+        backgroundColor = SKColor(cgColor: darkColor.cgColor)
         
         setupUI()
         
@@ -49,7 +56,7 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
         titleLabel.text = "Kalibrate"
         titleLabel.fontSize = 36
-        titleLabel.fontColor = .white
+        titleLabel.fontColor = SKColor(cgColor: whiteColor.cgColor)
         titleLabel.position = CGPoint(x: frame.midX, y: frame.maxY - 100)
         addChild(titleLabel)
         
@@ -57,48 +64,53 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         let subtitleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
         subtitleLabel.text = "(Don't forget your headphones...)"
         subtitleLabel.fontSize = 20
-        subtitleLabel.fontColor = .lightGray
+        subtitleLabel.fontColor = SKColor(cgColor: secondaryColor.cgColor)
         subtitleLabel.position = CGPoint(x: frame.midX, y: titleLabel.position.y - 40)
         addChild(subtitleLabel)
         
-        // Duration selection label - moved up
+        // Calculate responsive positions based on screen height
+        let screenHeight = frame.height
+        let isSmallScreen = screenHeight < 700 // iPhone SE and similar
+        
+        // Duration selection label - position below subtitle with proper spacing
         durationLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
         durationLabel.text = "Session Duration: \(Int(initialSessionMinutes)) minutes"
-        durationLabel.fontSize = 24
-        durationLabel.fontColor = .white
-        durationLabel.position = CGPoint(x: frame.midX, y: frame.midY + 160) // Moved up
+        durationLabel.fontSize = isSmallScreen ? 20 : 24
+        durationLabel.fontColor = SKColor(cgColor: whiteColor.cgColor)
+        // Position with adequate spacing from subtitle
+        durationLabel.position = CGPoint(x: frame.midX, y: subtitleLabel.position.y - (isSmallScreen ? 60 : 80))
         addChild(durationLabel)
         
         // Duration explanation text
         let explanationLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
         explanationLabel.text = "Select your session duration"
-        explanationLabel.fontSize = 18
-        explanationLabel.fontColor = .lightGray
-        explanationLabel.position = CGPoint(x: frame.midX, y: durationLabel.position.y - 40)
+        explanationLabel.fontSize = isSmallScreen ? 16 : 18
+        explanationLabel.fontColor = SKColor(cgColor: secondaryColor.cgColor)
+        explanationLabel.position = CGPoint(x: frame.midX, y: durationLabel.position.y - (isSmallScreen ? 30 : 35))
         addChild(explanationLabel)
         
-        // Start button background - moved further down, adjusted due to removal of arousal slider
+        // Start button background - positioned with proper spacing below slider
         startButton = SKSpriteNode(color: .systemBlue, size: CGSize(width: 200, height: 60))
-        startButton.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - 120) // Adjusted position after removing arousal slider
+        startButton.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - (isSmallScreen ? 90 : 120))
         startButton.zPosition = 10
         startButton.name = "startButton"
         
-        // Apply rounded corners with a shape node
+        // Apply rounded corners with a shape node using brand primary color
         let roundedPath = CGPath(roundedRect: CGRect(x: -100, y: -30, width: 200, height: 60), 
                                cornerWidth: 15, cornerHeight: 15, transform: nil)
         let roundedShape = SKShapeNode(path: roundedPath)
-        roundedShape.fillColor = .systemBlue
+        roundedShape.fillColor = SKColor(cgColor: primaryColor.cgColor)
         roundedShape.strokeColor = .clear
         roundedShape.name = "startButton"
         roundedShape.position = startButton.position
         roundedShape.zPosition = startButton.zPosition
         addChild(roundedShape)
         
-        // Start button label
+        // Start button label - use dark color for contrast against primary background
         startButtonLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
         startButtonLabel.text = "Begin Session"
         startButtonLabel.fontSize = 24
-        startButtonLabel.fontColor = .white
+        startButtonLabel.fontColor = SKColor(cgColor: darkColor.cgColor)
         startButtonLabel.position = roundedShape.position
         startButtonLabel.zPosition = roundedShape.zPosition + 1
         startButtonLabel.verticalAlignmentMode = .center
@@ -109,7 +121,7 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
             let repeatTutorialButton = SKLabelNode(fontNamed: "HelveticaNeue-Light")
             repeatTutorialButton.text = "Repeat Tutorial"
             repeatTutorialButton.fontSize = 18
-            repeatTutorialButton.fontColor = .white
+            repeatTutorialButton.fontColor = SKColor(cgColor: secondaryColor.cgColor)
             repeatTutorialButton.position = CGPoint(x: frame.midX, y: startButton.position.y - 80)
             repeatTutorialButton.name = "repeatTutorialButton"
             addChild(repeatTutorialButton)
@@ -117,18 +129,34 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
     }
     
     private func setupSlider(in view: SKView) {
-        // Create the slider - moved up
+        // Calculate responsive position based on screen size to match setupUI
+        let screenHeight = view.bounds.height
+        let isSmallScreen = screenHeight < 700 // iPhone SE and similar
+        
+        // Calculate the actual positions as they are set in setupUI
+        let titleY = screenHeight - 100.0  // frame.maxY - 100
+        let subtitleY = titleY - 40.0      // titleLabel.position.y - 40
+        let durationLabelY = subtitleY - (isSmallScreen ? 60.0 : 80.0) // subtitleLabel.position.y - spacing
+        let explanationLabelY = durationLabelY - (isSmallScreen ? 30.0 : 35.0) // durationLabel.position.y - spacing
+        
+        // Position slider between explanation label and start button with proper spacing
+        let spacingBelowExplanation: CGFloat = isSmallScreen ? 40.0 : 50.0 // Reduced spacing for small screens
+        let sliderYInSKCoords = explanationLabelY - spacingBelowExplanation
+        
+        // Convert from SKScene coordinates to UIKit coordinates
+        let sliderYInUIKit = screenHeight - sliderYInSKCoords
+        
         slider = UISlider(frame: CGRect(x: view.bounds.width * 0.15, 
-                                        y: view.bounds.height * 0.35, // Moved up
+                                        y: sliderYInUIKit,
                                         width: view.bounds.width * 0.7, 
                                         height: 30))
         slider.minimumValue = Float(minSessionMinutes)
         slider.maximumValue = Float(maxSessionMinutes)
         slider.value = Float(initialSessionMinutes)
         
-        // Set up appearance
-        slider.minimumTrackTintColor = .systemBlue
-        slider.maximumTrackTintColor = .darkGray
+        // Set up appearance using brand colors
+        slider.minimumTrackTintColor = primaryColor
+        slider.maximumTrackTintColor = UIColor(cgColor: secondaryColor.cgColor)
         
         // Add action for value change
         slider.addTarget(self, action: #selector(sliderValueChanged(_:)), for: .valueChanged)
