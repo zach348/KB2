@@ -32,6 +32,8 @@ class PaywallViewController: UIViewController {
     private let trialInfoLabel = UILabel()
     private let privacyButton = UIButton(type: .system)
     private let termsButton = UIButton(type: .system)
+    private let manageSubscriptionButton = UIButton(type: .system)
+    private let legalStackView = UIStackView()
     private let closeButton = UIButton(type: .system)
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     
@@ -104,12 +106,12 @@ class PaywallViewController: UIViewController {
         
         // Trial info - dynamic based on trial status
         if isWithinTrial {
-            trialInfoLabel.text = "Your free trial is active. You won't be charged until it expires. Cancel anytime."
+            trialInfoLabel.text = "Your 7-day free trial is active. You won't be charged until it expires. Cancel anytime."
         } else {
-            trialInfoLabel.text = "Subscribe now to regain access to unlimited cognitive training sessions. Cancel anytime."
+            trialInfoLabel.text = "Your 7-day free trial has ended. Subscribe now to regain access to unlimited cognitive training sessions. Cancel anytime."
         }
         
-        trialInfoLabel.font = UIFont.systemFont(ofSize: 16, weight: .regular)
+        trialInfoLabel.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         trialInfoLabel.textColor = secondaryColor
         trialInfoLabel.textAlignment = .center
         trialInfoLabel.numberOfLines = 0
@@ -122,14 +124,9 @@ class PaywallViewController: UIViewController {
         restoreButton.addTarget(self, action: #selector(restoreButtonTapped), for: .touchUpInside)
         contentView.addSubview(restoreButton)
         
-        // Legal links
-        setupLegalButton(privacyButton, title: "Privacy Policy")
-        privacyButton.addTarget(self, action: #selector(privacyButtonTapped), for: .touchUpInside)
-        contentView.addSubview(privacyButton)
-        
-        setupLegalButton(termsButton, title: "Terms of Use")
-        termsButton.addTarget(self, action: #selector(termsButtonTapped), for: .touchUpInside)
-        contentView.addSubview(termsButton)
+        // Legal and Subscription Management Stack View
+        setupLegalStackView()
+        contentView.addSubview(legalStackView)
         
         // Loading indicator
         loadingIndicator.color = primaryColor
@@ -137,9 +134,38 @@ class PaywallViewController: UIViewController {
         view.addSubview(loadingIndicator)
         
         // Set constraints for all elements
-        [titleLabel, subtitleLabel, monthlyButton, annualButton, trialInfoLabel, restoreButton, privacyButton, termsButton, loadingIndicator].forEach {
+        [titleLabel, subtitleLabel, monthlyButton, annualButton, trialInfoLabel, legalStackView, loadingIndicator].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
+    }
+    
+    private func setupLegalStackView() {
+        legalStackView.axis = .vertical
+        legalStackView.spacing = 16
+        legalStackView.alignment = .center
+        
+        // Restore button
+        restoreButton.setTitle("Restore Purchases", for: .normal)
+        restoreButton.setTitleColor(secondaryColor, for: .normal)
+        restoreButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        restoreButton.addTarget(self, action: #selector(restoreButtonTapped), for: .touchUpInside)
+        
+        // Manage subscription button
+        setupLegalButton(manageSubscriptionButton, title: "Manage Subscription")
+        manageSubscriptionButton.addTarget(self, action: #selector(manageSubscriptionButtonTapped), for: .touchUpInside)
+        
+        // Privacy button
+        setupLegalButton(privacyButton, title: "Privacy Policy")
+        privacyButton.addTarget(self, action: #selector(privacyButtonTapped), for: .touchUpInside)
+        
+        // Terms button
+        setupLegalButton(termsButton, title: "Terms of Use")
+        termsButton.addTarget(self, action: #selector(termsButtonTapped), for: .touchUpInside)
+        
+        legalStackView.addArrangedSubview(restoreButton)
+        legalStackView.addArrangedSubview(manageSubscriptionButton)
+        legalStackView.addArrangedSubview(privacyButton)
+        legalStackView.addArrangedSubview(termsButton)
     }
     
     private func setupSubscriptionButton(_ button: UIButton, title: String, price: String, isRecommended: Bool) {
@@ -211,21 +237,11 @@ class PaywallViewController: UIViewController {
             trialInfoLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
             trialInfoLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
             
-            // Restore button
-            restoreButton.topAnchor.constraint(equalTo: trialInfoLabel.bottomAnchor, constant: 32),
-            restoreButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            restoreButton.heightAnchor.constraint(equalToConstant: 44),
-            
-            // Privacy button
-            privacyButton.topAnchor.constraint(equalTo: restoreButton.bottomAnchor, constant: 24),
-            privacyButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            privacyButton.heightAnchor.constraint(equalToConstant: 32),
-            
-            // Terms button
-            termsButton.topAnchor.constraint(equalTo: restoreButton.bottomAnchor, constant: 24),
-            termsButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            termsButton.heightAnchor.constraint(equalToConstant: 32),
-            termsButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32),
+            // Legal and Subscription Management Stack View
+            legalStackView.topAnchor.constraint(equalTo: trialInfoLabel.bottomAnchor, constant: 32),
+            legalStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
+            legalStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            legalStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32),
             
             // Loading indicator
             loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -251,16 +267,21 @@ class PaywallViewController: UIViewController {
     }
     
     @objc private func privacyButtonTapped() {
-        // TODO: Replace with actual Privacy Policy URL
-        let urlString = "https://example.com/privacy"
+        let urlString = "https://kalibrate.me/privacy-policy"
         if let url = URL(string: urlString) {
             UIApplication.shared.open(url)
         }
     }
     
     @objc private func termsButtonTapped() {
-        // TODO: Replace with actual Terms of Use URL
-        let urlString = "https://example.com/terms"
+        let urlString = "https://kalibrate.me/terms-of-use"
+        if let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
+    }
+    
+    @objc private func manageSubscriptionButtonTapped() {
+        let urlString = "itms-apps://apps.apple.com/account/subscriptions"
         if let url = URL(string: urlString) {
             UIApplication.shared.open(url)
         }

@@ -20,6 +20,7 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
     private var durationLabel: SKLabelNode!
     private var startButton: SKSpriteNode!
     private var startButtonLabel: SKLabelNode!
+    private var settingsButton: SKLabelNode!
     private var slider: UISlider!
     private var sliderValue: Double = 15.0
     #if DEBUG
@@ -52,12 +53,21 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
     }
     
     private func setupUI() {
-        // Title
+        // Settings button (top-right corner)
+        settingsButton = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
+        settingsButton.text = "Settings"
+        settingsButton.fontSize = 18
+        settingsButton.fontColor = SKColor(cgColor: secondaryColor.cgColor)
+        settingsButton.position = CGPoint(x: frame.maxX - 80, y: frame.maxY - 60)
+        settingsButton.name = "settingsButton"
+        addChild(settingsButton)
+        
+        // Title (moved down to give settings button breathing room)
         titleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
         titleLabel.text = "Kalibrate"
         titleLabel.fontSize = 36
         titleLabel.fontColor = SKColor(cgColor: whiteColor.cgColor)
-        titleLabel.position = CGPoint(x: frame.midX, y: frame.maxY - 100)
+        titleLabel.position = CGPoint(x: frame.midX, y: frame.maxY - 120)
         addChild(titleLabel)
         
         // Subtitle
@@ -134,7 +144,7 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         let isSmallScreen = screenHeight < 700 // iPhone SE and similar
         
         // Calculate the actual positions as they are set in setupUI
-        let titleY = screenHeight - 100.0  // frame.maxY - 100
+        let titleY = screenHeight - 120.0  // frame.maxY - 120 (updated position)
         let subtitleY = titleY - 40.0      // titleLabel.position.y - 40
         let durationLabelY = subtitleY - (isSmallScreen ? 60.0 : 80.0) // subtitleLabel.position.y - spacing
         let explanationLabelY = durationLabelY - (isSmallScreen ? 30.0 : 35.0) // durationLabel.position.y - spacing
@@ -186,6 +196,9 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
                 break
             } else if node.name == "repeatTutorialButton" {
                 handleRepeatTutorialTap()
+                break
+            } else if node.name == "settingsButton" {
+                handleSettingsButtonTap()
                 break
             }
         }
@@ -313,6 +326,22 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
             if let gameVC = self?.view?.window?.rootViewController as? GameViewController {
                 gameVC.presentTutorial()
             }
+        }
+    }
+    
+    private func handleSettingsButtonTap() {
+        // Visual feedback
+        let fadeOut = SKAction.fadeAlpha(to: 0.5, duration: 0.1)
+        let fadeIn = SKAction.fadeAlpha(to: 1.0, duration: 0.1)
+        let sequence = SKAction.sequence([fadeOut, fadeIn])
+        settingsButton.run(sequence)
+        
+        // Present settings screen
+        DispatchQueue.main.async { [weak self] in
+            guard let rootVC = self?.view?.window?.rootViewController else { return }
+            let settingsVC = SettingsViewController()
+            settingsVC.modalPresentationStyle = .pageSheet
+            rootVC.present(settingsVC, animated: true)
         }
     }
     
