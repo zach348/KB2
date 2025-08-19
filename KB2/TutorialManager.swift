@@ -75,7 +75,7 @@ class TutorialManager {
             }
             scene.run(SKAction.sequence([wait, startIdentification]))
         case 2:
-            calloutLabel?.text = "Tap the targets before time runs out."
+            calloutLabel?.text = "While balls are frozen, tap the targets before time runs out."
             calloutLabel?.isHidden = false
             nextButton?.isHidden = true
             scene.startIdentificationTimeout(duration: 7.0)
@@ -96,7 +96,7 @@ class TutorialManager {
             }
             scene.run(SKAction.sequence([wait2, startIdentification2]))
         case 5:
-            calloutLabel?.text = "Tap the tracked balls one more time."
+            calloutLabel?.text = "While balls are frozen, tap the tracked balls one more time."
             calloutLabel?.isHidden = false
             nextButton?.isHidden = true
             scene.startIdentificationTimeout(duration: 7.0)

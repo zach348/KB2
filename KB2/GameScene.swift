@@ -752,6 +752,13 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         isEndingIdentification = false
         totalIterations += 1
         currentState = .identifying; updateUI()
+        
+        // TUTORIAL FIX: Stop any ongoing flash animations to prevent race condition
+        // where flash completion could reveal targets after they've been hidden
+        for ball in balls {
+            ball.removeAction(forKey: "flash")
+        }
+        
         physicsWorld.speed = 0; balls.forEach { ball in ball.storedVelocity = ball.physicsBody?.velocity; ball.physicsBody?.velocity = .zero; ball.physicsBody?.isDynamic = false }
         
         // Record identification task start time for performance tracking

@@ -25,6 +25,17 @@ final class FirstRunManager {
             UserDefaults.standard.set(newValue, forKey: hasCompletedTutorialKey)
         }
     }
+    
+    // Tracks whether we've shown the non-blocking subscription offer during trial
+    private let hasShownSubscriptionOfferKey = "hasShownSubscriptionOffer"
+    var hasShownSubscriptionOffer: Bool {
+        get {
+            UserDefaults.standard.bool(forKey: hasShownSubscriptionOfferKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: hasShownSubscriptionOfferKey)
+        }
+    }
 
     #if DEBUG
     func resetForDebug() {

@@ -1,7 +1,7 @@
 import SpriteKit
 import UIKit
 
-class StartScreen: SKScene {
+class StartScreen: SKScene, PaywallViewControllerDelegate {
     
     // Constants
     private let minSessionMinutes: Double = 7.0
@@ -16,6 +16,9 @@ class StartScreen: SKScene {
     private var startButtonLabel: SKLabelNode!
     private var slider: UISlider!
     private var sliderValue: Double = 15.0
+    #if DEBUG
+    private var debugTapGR: UITapGestureRecognizer?
+    #endif
     
     // Selected session parameters
     private var sessionDuration: TimeInterval = 15 * 60
@@ -29,6 +32,16 @@ class StartScreen: SKScene {
         // Add the UISlider as a subview of the SKView
         setupSlider(in: view)
         // setupArousalSlider(in: view) // Removed arousal slider setup
+
+        #if DEBUG
+        let gr = UITapGestureRecognizer(target: self, action: #selector(handleDebugTap(_:)))
+        gr.numberOfTapsRequired = 3
+        view.addGestureRecognizer(gr)
+        self.debugTapGR = gr
+        #endif
+        
+        // Non-blocking subscription offer during trial (first run only)
+        presentTrialOfferIfNeeded()
     }
     
     private func setupUI() {
@@ -152,33 +165,119 @@ class StartScreen: SKScene {
     
     private func handleStartButtonTap() {
         // Visual feedback
-        let scaleDown = SKAction.scale(to: 0.95, duration: 0.1) // This is an animation scale, not related to arousal
+        let scaleDown = SKAction.scale(to: 0.95, duration: 0.1)
         let scaleUp = SKAction.scale(to: 1.0, duration: 0.1)
         let sequence = SKAction.sequence([scaleDown, scaleUp])
         
         let buttonNodes = self.children.filter { $0.name == "startButton" }
         buttonNodes.forEach { $0.run(sequence) }
         
-        // Remove UIKit elements
+        // Entitlement gate (Phase 1, feature-flagged)
+        if EntitlementManager.shared.entitlementGateEnabled && !EntitlementManager.shared.isEntitled {
+            presentEntitlementGate()
+            return
+        }
+        
+        // Proceed to session
+        startSessionFlow()
+    }
+    
+    private func startSessionFlow() {
+        // Remove UIKit elements and start session via GameViewController
         DispatchQueue.main.async { [weak self] in
-            self?.slider?.removeFromSuperview()
-
-            // Call GameViewController to present pre-session EMA and then start game
-            if let gameVC = self?.view?.window?.rootViewController as? GameViewController {
-                // Pass selected parameters to GameViewController
-                // The userReportedArousal will be captured by the EMAView itself.
-                // We pass a default or placeholder here if needed by GameScene init,
-                // but GameScene should ideally get it from the EMA response.
-                // For now, we'll pass the defaultArousalLevel from StartScreen,
-                // GameScene will use the EMA response value once available.
+            guard let self = self else { return }
+            self.slider?.removeFromSuperview()
+            if let gameVC = self.view?.window?.rootViewController as? GameViewController {
                 gameVC.presentPreSessionEMAAndStartGame(
-                    sessionDuration: self?.sessionDuration ?? (15 * 60),
-                    sessionProfile: .fluctuating, // Hardcode to dynamic profile
-                    initialArousalFromStartScreen: self?.defaultArousalLevel ?? 0.7 // Placeholder, will be overwritten by EMA
+                    sessionDuration: self.sessionDuration,
+                    sessionProfile: .fluctuating,
+                    initialArousalFromStartScreen: self.defaultArousalLevel
                 )
             }
         }
     }
+    
+    // Offer sheet shown during trial to disclose 7‑day trial and pricing (non-blocking)
+    private func presentTrialOfferIfNeeded() {
+        // Skip when bypass is enabled (dev)
+        if EntitlementManager.shared.entitlementBypassEnabled { return }
+        
+        // Only show once and only if within trial window
+        if FirstRunManager.shared.hasShownSubscriptionOffer { return }
+        if !EntitlementManager.shared.isWithinTrialWindow() { return }
+        
+        // Mark as shown and present our PaywallViewController
+        FirstRunManager.shared.hasShownSubscriptionOffer = true
+        presentEntitlementGate()
+    }
+    
+    private func presentEntitlementGate() {
+        guard let vc = self.view?.window?.rootViewController else { return }
+        
+        let paywallVC = PaywallViewController()
+        paywallVC.delegate = self
+        paywallVC.modalPresentationStyle = .fullScreen
+        
+        vc.present(paywallVC, animated: true)
+    }
+
+    #if DEBUG
+    @objc private func handleDebugTap(_ sender: UITapGestureRecognizer) {
+        presentDebugSheet()
+    }
+
+    private func presentDebugSheet() {
+        guard let vc = self.view?.window?.rootViewController else { return }
+        let entitled = EntitlementManager.shared.isEntitled
+        let bypass = EntitlementManager.shared.entitlementBypassEnabled
+        let forced = EntitlementManager.shared.forceNonEntitledOverride
+        let trialActive = EntitlementManager.shared.isWithinTrialWindow()
+        let msg = "Entitled: \(entitled)\nBypass: \(bypass)\nForce Non‑Entitled: \(forced)\nTrial Active: \(trialActive)"
+        let alert = UIAlertController(title: "Debug – Entitlements", message: msg, preferredStyle: .actionSheet)
+
+        alert.addAction(UIAlertAction(title: forced ? "Force Non‑Entitled: ON → OFF" : "Force Non‑Entitled: OFF → ON", style: .default, handler: { _ in
+            EntitlementManager.shared.forceNonEntitledOverride.toggle()
+            self.presentDebugSheet()
+        }))
+
+        alert.addAction(UIAlertAction(title: bypass ? "Bypass Entitlements: ON → OFF" : "Bypass Entitlements: OFF → ON", style: .default, handler: { _ in
+            EntitlementManager.shared.entitlementBypassEnabled.toggle()
+            self.presentDebugSheet()
+        }))
+
+        alert.addAction(UIAlertAction(title: "Simulate Trial Expired Now", style: .default, handler: { _ in
+            let expired = Date().addingTimeInterval(-60 * 60 * 24 * 8)
+            _ = KeychainManager.shared.setDate(expired, forKey: "trial_start_date")
+            FirstRunManager.shared.hasShownSubscriptionOffer = false
+            EntitlementManager.shared.start()
+            Task { await StoreManager.shared.refreshEntitlements() }
+        }))
+
+        alert.addAction(UIAlertAction(title: "Reset Trial Date (Fresh)", style: .default, handler: { _ in
+            let now = Date()
+            _ = KeychainManager.shared.setDate(now, forKey: "trial_start_date")
+            FirstRunManager.shared.hasShownSubscriptionOffer = false
+            EntitlementManager.shared.start()
+            Task { await StoreManager.shared.refreshEntitlements() }
+        }))
+
+        alert.addAction(UIAlertAction(title: "Refresh Entitlements", style: .default, handler: { _ in
+            Task { await StoreManager.shared.refreshEntitlements() }
+        }))
+
+        alert.addAction(UIAlertAction(title: "Re‑show Trial Offer", style: .default, handler: { _ in
+            FirstRunManager.shared.hasShownSubscriptionOffer = false
+            self.presentTrialOfferIfNeeded()
+        }))
+
+        alert.addAction(UIAlertAction(title: "Show Paywall Now", style: .destructive, handler: { _ in
+            self.presentEntitlementGate()
+        }))
+
+        alert.addAction(UIAlertAction(title: "Close", style: .cancel))
+        vc.present(alert, animated: true)
+    }
+    #endif
 
     private func handleRepeatTutorialTap() {
         DispatchQueue.main.async { [weak self] in
@@ -194,7 +293,27 @@ class StartScreen: SKScene {
 
     override func willMove(from view: SKView) {
         // Clean up UIKit elements when the scene is removed
+        #if DEBUG
+        if let gr = debugTapGR {
+            view.removeGestureRecognizer(gr)
+        }
+        debugTapGR = nil
+        #endif
         slider?.removeFromSuperview()
         slider = nil
+    }
+    
+    // MARK: - PaywallViewControllerDelegate
+    func paywallViewController(_ controller: PaywallViewController, didCompleteWith result: PaywallResult) {
+        controller.dismiss(animated: true) { [weak self] in
+            switch result {
+            case .purchased, .restored:
+                // User successfully purchased or restored, start the session
+                self?.startSessionFlow()
+            case .cancelled:
+                // User cancelled, do nothing
+                break
+            }
+        }
     }
 }

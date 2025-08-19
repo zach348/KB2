@@ -31,6 +31,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             print("APP: Network stack pre-warming \(success ? "completed" : "failed")")
         }
         
+        // --- Store / Entitlement bootstrap (Phase 1) ---
+        if #available(iOS 15.0, *) {
+            Task {
+                await StoreManager.shared.loadProducts()
+                await StoreManager.shared.refreshEntitlements()
+                StoreManager.shared.startTransactionListener()
+            }
+        }
+        // Wire QA bypass flag from GameConfiguration -> EntitlementManager
+        let config = GameConfiguration()
+        EntitlementManager.shared.entitlementBypassEnabled = config.entitlementBypassEnabled
+        // Optional QA: force non‑entitled override (useful to see paywall even with an active StoreKit subscription)
+        EntitlementManager.shared.forceNonEntitledOverride = config.forceNonEntitledOnLaunch
+
+        // Optional QA: clear entitlement keychain (simulates fresh install)
+        if config.clearEntitlementKeychainOnLaunch {
+            _ = KeychainManager.shared.delete(forKey: "trial_start_date")
+            print("[App] Cleared entitlement Keychain (trial_start_date)")
+        }
+        // Optional QA: simulate expired trial
+        if config.simulateTrialExpiredOnLaunch {
+            let expired = Date().addingTimeInterval(-60 * 60 * 24 * 8) // 8 days ago
+            _ = KeychainManager.shared.setDate(expired, forKey: "trial_start_date")
+            print("[App] Simulated trial expired by setting trial_start_date to \(expired)")
+        }
+        
+        EntitlementManager.shared.start()
+        EntitlementManager.shared.startTrialIfNeededOnFirstLaunch()
+        
         return true
     }
 

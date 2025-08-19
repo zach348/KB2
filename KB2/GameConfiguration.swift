@@ -57,6 +57,23 @@ struct GameConfiguration {
     /// Use for refining copy and interaction. Default: false.
     var forceShowTutorial: Bool = false
 
+    /// QA override: when true, the entitlement system is bypassed and users are always treated as entitled.
+    /// Use ONLY for local development and manual QA. Default: false.
+    var entitlementBypassEnabled: Bool = false
+
+    /// QA override: when true, clears entitlement-related Keychain items on launch (simulates a fresh install).
+    /// Use ONLY for local development and manual QA. Default: false.
+    var clearEntitlementKeychainOnLaunch: Bool = false
+
+    /// QA override: when true, simulate an expired trial window (forces trial to be treated as expired).
+    /// Use ONLY for local development and manual QA. Default: false.
+    var simulateTrialExpiredOnLaunch: Bool = false
+    
+    /// QA override: force the app to treat the user as NOT entitled regardless of StoreKit entitlements or trial state.
+    /// This is useful after you complete a test purchase and want to see the paywall again without resetting StoreKit transactions.
+    /// Use ONLY for local development and manual QA. Default: false.
+    var forceNonEntitledOnLaunch: Bool = false
+
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
