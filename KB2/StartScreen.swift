@@ -23,9 +23,7 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
     private var settingsButton: SKLabelNode!
     private var slider: UISlider!
     private var sliderValue: Double = 15.0
-    #if DEBUG
     private var debugTapGR: UITapGestureRecognizer?
-    #endif
     
     // Selected session parameters
     private var sessionDuration: TimeInterval = 15 * 60
@@ -41,12 +39,13 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         setupSlider(in: view)
         // setupArousalSlider(in: view) // Removed arousal slider setup
 
-        #if DEBUG
-        let gr = UITapGestureRecognizer(target: self, action: #selector(handleDebugTap(_:)))
-        gr.numberOfTapsRequired = 3
-        view.addGestureRecognizer(gr)
-        self.debugTapGR = gr
-        #endif
+        // Enable debug features in TestFlight builds (but not App Store)
+        if isTestFlightOrDebugBuild() {
+            let gr = UITapGestureRecognizer(target: self, action: #selector(handleDebugTap(_:)))
+            gr.numberOfTapsRequired = 3
+            view.addGestureRecognizer(gr)
+            self.debugTapGR = gr
+        }
         
         // Non-blocking subscription offer during trial (first run only)
         presentTrialOfferIfNeeded()
@@ -274,12 +273,30 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         vc.present(paywallVC, animated: true)
     }
 
-    #if DEBUG
+    // MARK: - TestFlight Detection and Debug Features
+    
+    /// Detects if app is running in DEBUG mode OR TestFlight (but not App Store)
+    private func isTestFlightOrDebugBuild() -> Bool {
+        #if DEBUG
+        return true
+        #else
+        // Check for TestFlight receipt
+        guard let receiptURL = Bundle.main.appStoreReceiptURL else { return false }
+        return receiptURL.path.contains("sandboxReceipt")
+        #endif
+    }
+    
     @objc private func handleDebugTap(_ sender: UITapGestureRecognizer) {
-        presentDebugSheet()
+        // Only respond if we're in a TestFlight or Debug build
+        if isTestFlightOrDebugBuild() {
+            presentDebugSheet()
+        }
     }
 
     private func presentDebugSheet() {
+        // Only show if we're in a TestFlight or Debug build
+        guard isTestFlightOrDebugBuild() else { return }
+        
         guard let vc = self.view?.window?.rootViewController else { return }
         let entitled = EntitlementManager.shared.isEntitled
         let bypass = EntitlementManager.shared.entitlementBypassEnabled
@@ -326,11 +343,23 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         alert.addAction(UIAlertAction(title: "Show Paywall Now", style: .destructive, handler: { _ in
             self.presentEntitlementGate()
         }))
+        
+        // TestFlight reset available in both DEBUG and RELEASE for testing
+        alert.addAction(UIAlertAction(title: "🧪 Reset for TestFlight", style: .destructive, handler: { _ in
+            let confirmAlert = UIAlertController(title: "Reset App State", message: "This will reset all onboarding progress and start a fresh trial. Use this for TestFlight testing only.", preferredStyle: .alert)
+            confirmAlert.addAction(UIAlertAction(title: "Reset", style: .destructive, handler: { _ in
+                FirstRunManager.shared.resetForTestFlight()
+                EntitlementManager.shared.start()
+                // Exit app to force fresh launch
+                exit(0)
+            }))
+            confirmAlert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            vc.present(confirmAlert, animated: true)
+        }))
 
         alert.addAction(UIAlertAction(title: "Close", style: .cancel))
         vc.present(alert, animated: true)
     }
-    #endif
 
     private func handleRepeatTutorialTap() {
         DispatchQueue.main.async { [weak self] in
@@ -380,12 +409,10 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
 
     override func willMove(from view: SKView) {
         // Clean up UIKit elements when the scene is removed
-        #if DEBUG
         if let gr = debugTapGR {
             view.removeGestureRecognizer(gr)
         }
         debugTapGR = nil
-        #endif
         slider?.removeFromSuperview()
         slider = nil
     }

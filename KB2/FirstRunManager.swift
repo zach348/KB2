@@ -41,10 +41,41 @@ final class FirstRunManager {
     func resetForDebug() {
         UserDefaults.standard.removeObject(forKey: hasCompletedOnboardingKey)
         UserDefaults.standard.removeObject(forKey: hasCompletedTutorialKey)
+        UserDefaults.standard.removeObject(forKey: hasShownSubscriptionOfferKey)
     }
 
     func resetTutorialForDebug() {
         UserDefaults.standard.removeObject(forKey: hasCompletedTutorialKey)
     }
     #endif
+    
+    // TestFlight reset - allows fresh experience testing
+    func resetForTestFlight() {
+        // Only allow in TestFlight or DEBUG builds (not App Store releases)
+        guard isTestFlightOrDebugBuild() else {
+            print("[FirstRunManager] resetForTestFlight() not available in App Store builds")
+            return
+        }
+        
+        UserDefaults.standard.removeObject(forKey: hasCompletedOnboardingKey)
+        UserDefaults.standard.removeObject(forKey: hasCompletedTutorialKey)
+        UserDefaults.standard.removeObject(forKey: hasShownSubscriptionOfferKey)
+        
+        // Reset trial date for fresh TestFlight experience
+        let now = Date()
+        _ = KeychainManager.shared.setDate(now, forKey: "trial_start_date")
+        
+        print("[FirstRunManager] Reset all onboarding state for TestFlight testing")
+    }
+    
+    /// Detects if app is running in DEBUG mode OR TestFlight (but not App Store)
+    private func isTestFlightOrDebugBuild() -> Bool {
+        #if DEBUG
+        return true
+        #else
+        // Check for TestFlight receipt
+        guard let receiptURL = Bundle.main.appStoreReceiptURL else { return false }
+        return receiptURL.path.contains("sandboxReceipt")
+        #endif
+    }
 }
