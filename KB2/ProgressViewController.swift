@@ -634,15 +634,15 @@ class LineChartView: UIView {
             height: chartBounds.height - 2 * margin
         )
         
-        // Calculate data ranges
+        // Calculate data ranges - use fixed 0-100 scale to match EMA input range
         let allValues = preData + postData
         guard !allValues.isEmpty else { 
             print("CHART: No values to draw")
             return 
         }
         
-        let minValue = allValues.min() ?? 0
-        let maxValue = allValues.max() ?? 10
+        let minValue = 0.0  // Fixed minimum value
+        let maxValue = 100.0  // Fixed maximum value to match EMA slider range (0-100)
         let valueRange = maxValue - minValue
         
         print("CHART: Drawing with \(preData.count) points, range: \(minValue) - \(maxValue)")
@@ -778,10 +778,9 @@ class LineChartView: UIView {
             height: chartBounds.height - 2 * margin
         )
         
-        // Add Y-axis labels using CATextLayer instead of UILabel subviews
-        let allValues = preData + postData
-        let minValue = allValues.min() ?? 0
-        let maxValue = allValues.max() ?? 100
+        // Add Y-axis labels using fixed 0-100 scale to match EMA input range
+        let minValue = 0.0  // Fixed minimum value
+        let maxValue = 100.0  // Fixed maximum value to match EMA slider range (0-100)
         
         for i in 0...4 {
             let value = minValue + (maxValue - minValue) * Double(i) / 4.0
