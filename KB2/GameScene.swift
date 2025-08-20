@@ -494,9 +494,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func updateUI() {
         scoreLabel.text = "Score: \(score)/\(totalIterations)"
         
-        // Display both system and user arousal if estimator is available
+        // Display both system and user arousal if estimator is available - remove for release build
 //        if let estimator = arousalEstimator {
-//            arousalLabel.text = "System: \(String(format: "%.2f", currentArousalLevel))"
+//            arousalLabel.text = "SysArsl: \(String(format: "%.2f", currentArousalLevel))"
 //        } else {
 //            arousalLabel.text = "Arousal: \(String(format: "%.2f", currentArousalLevel))"
 //        }
