@@ -802,8 +802,22 @@ class LineChartView: UIView {
             chartContainerView.layer.addSublayer(textLayer)
         }
         
-        // Add X-axis labels using CATextLayer based on granularity
+        // Add X-axis labels with dynamic skipping to prevent overcrowding
+        let labelWidth: CGFloat = 50  // Estimated width needed per label including spacing
+        let maxLabels = max(2, Int(drawingRect.width / labelWidth))  // Minimum 2 labels (start and end)
+        let totalDataPoints = dates.count
+        
+        // Calculate stride for label skipping
+        let stride = totalDataPoints <= maxLabels ? 1 : totalDataPoints / maxLabels
+        
+        print("CHART: Label skipping - Total points: \(totalDataPoints), Max labels: \(maxLabels), Stride: \(stride)")
+        
         for (index, date) in dates.enumerated() {
+            // Show label if it's at a stride interval, or if it's the first/last point
+            let shouldShowLabel = (index % stride == 0) || (index == 0) || (index == totalDataPoints - 1)
+            
+            guard shouldShowLabel else { continue }
+            
             let x: CGFloat
             if dates.count == 1 {
                 x = drawingRect.minX + drawingRect.width / 2
