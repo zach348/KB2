@@ -495,11 +495,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         scoreLabel.text = "Score: \(score)/\(totalIterations)"
         
         // Display both system and user arousal if estimator is available - remove for release build
-//        if let estimator = arousalEstimator {
-//            arousalLabel.text = "SysArsl: \(String(format: "%.2f", currentArousalLevel))"
-//        } else {
-//            arousalLabel.text = "Arousal: \(String(format: "%.2f", currentArousalLevel))"
-//        }
+        if let estimator = arousalEstimator {
+            arousalLabel.text = "SysArsl: \(String(format: "%.2f", currentArousalLevel))"
+        } else {
+            arousalLabel.text = "Arousal: \(String(format: "%.2f", currentArousalLevel))"
+        }
         switch currentState {
         case .tracking: stateLabel.text = "Tracking"; stateLabel.fontColor = .yellow; countdownLabel.isHidden = true; breathingCueLabel.isHidden = true
         case .identifying: stateLabel.text = "Identify!"; stateLabel.fontColor = .red; countdownLabel.isHidden = false; breathingCueLabel.isHidden = true
