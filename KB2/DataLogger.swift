@@ -1661,52 +1661,63 @@ class DataLogger {
     private func parseSessionFile(fileURL: URL) -> HistoricalSessionData? {
         do {
             let data = try Data(contentsOf: fileURL)
-            guard let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                  let events = json["events"] as? [[String: Any]] else {
-                print("DATA_LOG: Invalid session file format: \(fileURL.lastPathComponent)")
-                return nil
+            
+            // First, try to parse as the current format (events array directly)
+            if let events = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
+                return extractSessionDataFromEvents(events: events, fileURL: fileURL)
             }
             
-            var sessionStartTime: Date?
-            var preSessionEMA: [String: Any] = [:]
-            var postSessionEMA: [String: Any] = [:]
-            
-            // Parse events to find session start and EMA responses
-            for event in events {
-                guard let eventType = event["type"] as? String,
-                      let timestamp = event["timestamp"] as? TimeInterval else { continue }
-                
-                if eventType == "session_start" {
-                    sessionStartTime = Date(timeIntervalSince1970: timestamp)
-                }
-                else if eventType == "ema_response" {
-                    guard let questionId = event["question_id"] as? String,
-                          let response = event["response"],
-                          let context = event["context"] as? String else { continue }
-                    
-                    if context == "pre_session" {
-                        preSessionEMA[questionId] = response
-                    } else if context == "post_session" {
-                        postSessionEMA[questionId] = response
-                    }
-                }
+            // Fallback: try to parse as the expected format (dictionary with "events" key)
+            if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+               let events = json["events"] as? [[String: Any]] {
+                return extractSessionDataFromEvents(events: events, fileURL: fileURL)
             }
             
-            guard let sessionDate = sessionStartTime else {
-                print("DATA_LOG: No session start found in: \(fileURL.lastPathComponent)")
-                return nil
-            }
-            
-            return HistoricalSessionData(
-                sessionDate: sessionDate,
-                preSessionEMA: preSessionEMA,
-                postSessionEMA: postSessionEMA
-            )
-            
+            print("DATA_LOG: Invalid session file format: \(fileURL.lastPathComponent)")
+            return nil
         } catch {
             print("DATA_LOG: Error parsing session file \(fileURL.lastPathComponent): \(error)")
             return nil
         }
+    }
+    
+    /// Extract session data from events array
+    private func extractSessionDataFromEvents(events: [[String: Any]], fileURL: URL) -> HistoricalSessionData? {
+        var sessionStartTime: Date?
+        var preSessionEMA: [String: Any] = [:]
+        var postSessionEMA: [String: Any] = [:]
+        
+        // Parse events to find session start and EMA responses
+        for event in events {
+            guard let eventType = event["type"] as? String,
+                  let timestamp = event["timestamp"] as? TimeInterval else { continue }
+            
+            if eventType == "session_start" {
+                sessionStartTime = Date(timeIntervalSince1970: timestamp)
+            }
+            else if eventType == "ema_response" {
+                guard let questionId = event["question_id"] as? String,
+                      let response = event["response"],
+                      let context = event["context"] as? String else { continue }
+                
+                if context == "pre_session" {
+                    preSessionEMA[questionId] = response
+                } else if context == "post_session" {
+                    postSessionEMA[questionId] = response
+                }
+            }
+        }
+        
+        guard let sessionDate = sessionStartTime else {
+            print("DATA_LOG: No session start found in: \(fileURL.lastPathComponent)")
+            return nil
+        }
+        
+        return HistoricalSessionData(
+            sessionDate: sessionDate,
+            preSessionEMA: preSessionEMA,
+            postSessionEMA: postSessionEMA
+        )
     }
 
     // MARK: - Adaptive Difficulty Logging

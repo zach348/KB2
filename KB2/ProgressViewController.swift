@@ -56,7 +56,13 @@ class ProgressViewController: UIViewController {
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
+        print("PROGRESS_VIEW: viewDidLoad called")
         setupUI()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        print("PROGRESS_VIEW: viewWillAppear called - loading fresh data")
         loadProgressData()
     }
     
@@ -105,8 +111,8 @@ class ProgressViewController: UIViewController {
         
         // Chart setup
         setupChartView(stressChartView, title: "Stress Level", metric: "Lower is better")
-        setupChartView(calmChartView, title: "Calm Level", metric: "Higher is better") 
-        setupChartView(energyChartView, title: "Energy Level", metric: "Track your vitality")
+        setupChartView(calmChartView, title: "Calm / Restlessness", metric: "Lower is better") 
+        setupChartView(energyChartView, title: "Energy Level", metric: "Higher is better")
         
         // No data label (initially hidden)
         noDataLabel.text = "Complete a few sessions to see your progress trends.\n\nYour pre and post-session assessments will be tracked here to show your improvement over time."
@@ -214,13 +220,20 @@ class ProgressViewController: UIViewController {
     
     // MARK: - Data Loading
     private func loadProgressData() {
+        print("PROGRESS_VIEW: loadProgressData called - starting data fetch")
         showLoading(true)
         
         // Get historical EMA data from DataLogger
         DataLogger.shared.getHistoricalEMAData { [weak self] historicalData in
-            guard let self = self else { return }
+            print("PROGRESS_VIEW: DataLogger completion handler called with \(historicalData.count) sessions")
+            
+            guard let self = self else { 
+                print("PROGRESS_VIEW: ERROR - ProgressViewController was deallocated before data loading completed")
+                return 
+            }
             
             DispatchQueue.main.async {
+                print("PROGRESS_VIEW: Processing data on main thread")
                 self.showLoading(false)
                 self.rawHistoricalData = historicalData
                 self.processDataForCurrentGranularity()
@@ -229,6 +242,11 @@ class ProgressViewController: UIViewController {
                     print("PROGRESS_VIEW: No historical EMA data found")
                 } else {
                     print("PROGRESS_VIEW: Loaded \(historicalData.count) historical sessions")
+                    for (index, session) in historicalData.enumerated() {
+                        print("PROGRESS_VIEW: Session \(index): Date: \(session.sessionDate)")
+                        print("PROGRESS_VIEW: - Pre-session EMA: \(session.preSessionEMA)")
+                        print("PROGRESS_VIEW: - Post-session EMA: \(session.postSessionEMA)")
+                    }
                 }
             }
         }
@@ -242,13 +260,13 @@ class ProgressViewController: UIViewController {
     
     private func convertHistoricalDataToSessionData(_ historicalData: [HistoricalSessionData]) -> [SessionData] {
         return historicalData.compactMap { session in
-            // Extract EMA values from the stored responses
-            let preStress = extractEMAValue(from: session.preSessionEMA, questionId: "stress")
-            let postStress = extractEMAValue(from: session.postSessionEMA, questionId: "stress")
-            let preCalm = extractEMAValue(from: session.preSessionEMA, questionId: "calm")
-            let postCalm = extractEMAValue(from: session.postSessionEMA, questionId: "calm")
-            let preEnergy = extractEMAValue(from: session.preSessionEMA, questionId: "energy")
-            let postEnergy = extractEMAValue(from: session.postSessionEMA, questionId: "energy")
+            // Extract EMA values from the stored responses using the correct keys
+            let preStress = extractEMAValue(from: session.preSessionEMA, questionId: "stress", sessionType: "pre")
+            let postStress = extractEMAValue(from: session.postSessionEMA, questionId: "stress", sessionType: "post")
+            let preCalm = extractEMAValue(from: session.preSessionEMA, questionId: "calm", sessionType: "pre")
+            let postCalm = extractEMAValue(from: session.postSessionEMA, questionId: "calm", sessionType: "post")
+            let preEnergy = extractEMAValue(from: session.preSessionEMA, questionId: "energy", sessionType: "pre")
+            let postEnergy = extractEMAValue(from: session.postSessionEMA, questionId: "energy", sessionType: "post")
             
             return SessionData(
                 date: session.sessionDate,
@@ -262,15 +280,40 @@ class ProgressViewController: UIViewController {
         }
     }
     
-    private func extractEMAValue(from emaData: [String: Any], questionId: String) -> Double? {
-        // Handle both direct values and nested response structures
-        if let value = emaData[questionId] as? Double {
+    private func extractEMAValue(from emaData: [String: Any], questionId: String, sessionType: String) -> Double? {
+        // Build the correct key based on the session type and question ID
+        let keyBase = "ema_\(sessionType)_session"
+        let fullKey: String
+        
+        switch questionId {
+        case "stress":
+            fullKey = "\(keyBase)_stress"
+        case "calm":
+            fullKey = "\(keyBase)_calm_agitation"  // Special case: calm maps to calm_agitation
+        case "energy":
+            fullKey = "\(keyBase)_energy"
+        default:
+            print("PROGRESS_VIEW: Unknown question ID '\(questionId)'")
+            return nil
+        }
+        
+        print("PROGRESS_VIEW: extractEMAValue for '\(questionId)' (\(sessionType)-session)")
+        print("PROGRESS_VIEW: Looking for key: '\(fullKey)'")
+        print("PROGRESS_VIEW: Available keys: \(Array(emaData.keys))")
+        
+        // Extract the value using the correct key
+        if let value = emaData[fullKey] as? Double {
+            print("PROGRESS_VIEW: Found Double value for '\(fullKey)': \(value)")
             return value
-        } else if let value = emaData[questionId] as? Int {
+        } else if let value = emaData[fullKey] as? Int {
+            print("PROGRESS_VIEW: Found Int value for '\(fullKey)': \(value)")
             return Double(value)
-        } else if let value = emaData[questionId] as? String, let doubleValue = Double(value) {
+        } else if let value = emaData[fullKey] as? String, let doubleValue = Double(value) {
+            print("PROGRESS_VIEW: Found String value for '\(fullKey)': \(value) -> \(doubleValue)")
             return doubleValue
         }
+        
+        print("PROGRESS_VIEW: No value found for '\(fullKey)' in EMA data")
         return nil
     }
     
@@ -288,18 +331,18 @@ class ProgressViewController: UIViewController {
             energyChartView.isHidden = false
             noDataLabel.isHidden = true
             
-            // Update charts
+            // Update charts with current granularity
             let stressPreData = sessionData.compactMap { $0.preStress }
             let stressPostData = sessionData.compactMap { $0.postStress }
-            stressChartView.updateData(preData: stressPreData, postData: stressPostData, dates: sessionData.map { $0.date })
+            stressChartView.updateData(preData: stressPreData, postData: stressPostData, dates: sessionData.map { $0.date }, granularity: currentGranularity)
             
             let calmPreData = sessionData.compactMap { $0.preCalm }
             let calmPostData = sessionData.compactMap { $0.postCalm }
-            calmChartView.updateData(preData: calmPreData, postData: calmPostData, dates: sessionData.map { $0.date })
+            calmChartView.updateData(preData: calmPreData, postData: calmPostData, dates: sessionData.map { $0.date }, granularity: currentGranularity)
             
             let energyPreData = sessionData.compactMap { $0.preEnergy }
             let energyPostData = sessionData.compactMap { $0.postEnergy }
-            energyChartView.updateData(preData: energyPreData, postData: energyPostData, dates: sessionData.map { $0.date })
+            energyChartView.updateData(preData: energyPreData, postData: energyPostData, dates: sessionData.map { $0.date }, granularity: currentGranularity)
         }
     }
     
@@ -309,22 +352,37 @@ class ProgressViewController: UIViewController {
     }
     
     @objc private func timeGranularityChanged() {
-        guard let newGranularity = TimeGranularity(rawValue: timeGranularityControl.selectedSegmentIndex) else { return }
+        print("PROGRESS_VIEW: timeGranularityChanged called")
+        print("PROGRESS_VIEW: Selected segment index: \(timeGranularityControl.selectedSegmentIndex)")
         
+        guard let newGranularity = TimeGranularity(rawValue: timeGranularityControl.selectedSegmentIndex) else { 
+            print("PROGRESS_VIEW: ERROR - Invalid granularity index")
+            return 
+        }
+        
+        print("PROGRESS_VIEW: Granularity changing from \(currentGranularity.displayName) to \(newGranularity.displayName)")
         currentGranularity = newGranularity
+        
+        // Add defensive check for view hierarchy
+        print("PROGRESS_VIEW: About to process data for new granularity")
         processDataForCurrentGranularity()
         
-        print("PROGRESS_VIEW: Granularity changed to \(newGranularity.displayName)")
+        print("PROGRESS_VIEW: Granularity change completed successfully")
     }
     
     // MARK: - Data Processing
     private func groupAndAverageData(_ data: [SessionData], by granularity: TimeGranularity) -> [SessionData] {
-        guard !data.isEmpty else { return [] }
+        guard !data.isEmpty else { 
+            print("PROGRESS_VIEW: groupAndAverageData - No data to process")
+            return [] 
+        }
+        
+        print("PROGRESS_VIEW: groupAndAverageData - Processing \(data.count) sessions")
         
         // Sort data by date
         let sortedData = data.sorted { $0.date < $1.date }
         
-        // Group data by time period
+        // Group data by time period using UTC timezone for consistency
         let calendar = Calendar.current
         var groupedData: [String: [SessionData]] = [:]
         
@@ -335,6 +393,7 @@ class ProgressViewController: UIViewController {
             case .daily:
                 let dateFormatter = DateFormatter()
                 dateFormatter.dateFormat = "yyyy-MM-dd"
+                dateFormatter.timeZone = TimeZone(identifier: "UTC") // Use UTC for consistent grouping
                 key = dateFormatter.string(from: session.date)
                 
             case .weekly:
@@ -348,17 +407,23 @@ class ProgressViewController: UIViewController {
                 key = "\(year)-\(String(format: "%02d", month))"
             }
             
+            print("PROGRESS_VIEW: Session date: \(session.date), Key: \(key)")
+            
             if groupedData[key] == nil {
                 groupedData[key] = []
             }
             groupedData[key]?.append(session)
         }
         
+        print("PROGRESS_VIEW: Grouped into \(groupedData.count) distinct periods")
+        
         // Average the grouped data
         var averagedData: [SessionData] = []
         
-        for (_, sessions) in groupedData {
+        for (key, sessions) in groupedData {
             guard !sessions.isEmpty else { continue }
+            
+            print("PROGRESS_VIEW: Processing group \(key) with \(sessions.count) sessions")
             
             // Use the first session's date as representative date for the group
             let representativeDate = sessions.first!.date
@@ -378,6 +443,8 @@ class ProgressViewController: UIViewController {
             let avgPreEnergy = preEnergyValues.isEmpty ? nil : preEnergyValues.reduce(0, +) / Double(preEnergyValues.count)
             let avgPostEnergy = postEnergyValues.isEmpty ? nil : postEnergyValues.reduce(0, +) / Double(postEnergyValues.count)
             
+            print("PROGRESS_VIEW: Averages for \(key) - Stress: \(avgPreStress ?? 0)/\(avgPostStress ?? 0), Calm: \(avgPreCalm ?? 0)/\(avgPostCalm ?? 0), Energy: \(avgPreEnergy ?? 0)/\(avgPostEnergy ?? 0)")
+            
             let averagedSession = SessionData(
                 date: representativeDate,
                 preStress: avgPreStress,
@@ -392,7 +459,9 @@ class ProgressViewController: UIViewController {
         }
         
         // Sort by date and return
-        return averagedData.sorted { $0.date < $1.date }
+        let finalData = averagedData.sorted { $0.date < $1.date }
+        print("PROGRESS_VIEW: Final processed data count: \(finalData.count)")
+        return finalData
     }
     
     // MARK: - Helper Methods
@@ -530,25 +599,32 @@ class LineChartView: UIView {
         setupLegend() // Refresh legend with new colors
     }
     
-    func updateData(preData: [Double], postData: [Double], dates: [Date]) {
+    func updateData(preData: [Double], postData: [Double], dates: [Date], granularity: TimeGranularity) {
         self.preData = preData
         self.postData = postData
         self.dates = dates
         
-        setNeedsDisplay()
+        // Absolutely minimal approach - no cleanup at all, just overdraw
+        // Clear only the drawing layers synchronously, avoid any subview access
+        chartContainerView.layer.sublayers = []
         
-        // Remove existing chart layer and redraw
-        chartContainerView.layer.sublayers?.removeAll()
-        DispatchQueue.main.async {
-            self.drawChart()
-        }
+        // Redraw immediately without any async dispatch
+        drawChart()
+        addAxisLabels(granularity: granularity)
     }
     
     private func drawChart() {
-        guard !preData.isEmpty && !postData.isEmpty && preData.count == postData.count else { return }
+        // Allow drawing even if only one dataset has data, but require at least one non-empty dataset
+        guard (!preData.isEmpty || !postData.isEmpty) && preData.count == postData.count else { 
+            print("CHART: Cannot draw - preData: \(preData.count), postData: \(postData.count)")
+            return 
+        }
         
         let chartBounds = chartContainerView.bounds
-        guard chartBounds.width > 0 && chartBounds.height > 0 else { return }
+        guard chartBounds.width > 0 && chartBounds.height > 0 else { 
+            print("CHART: Cannot draw - invalid bounds: \(chartBounds)")
+            return 
+        }
         
         let margin: CGFloat = 20
         let drawingRect = CGRect(
@@ -560,13 +636,26 @@ class LineChartView: UIView {
         
         // Calculate data ranges
         let allValues = preData + postData
+        guard !allValues.isEmpty else { 
+            print("CHART: No values to draw")
+            return 
+        }
+        
         let minValue = allValues.min() ?? 0
         let maxValue = allValues.max() ?? 10
         let valueRange = maxValue - minValue
         
+        print("CHART: Drawing with \(preData.count) points, range: \(minValue) - \(maxValue)")
+        
         // Helper function to convert data point to screen coordinates
         func pointForData(index: Int, value: Double) -> CGPoint {
-            let x = drawingRect.minX + (CGFloat(index) / CGFloat(preData.count - 1)) * drawingRect.width
+            let x: CGFloat
+            if preData.count == 1 {
+                // Center single point horizontally
+                x = drawingRect.minX + drawingRect.width / 2
+            } else {
+                x = drawingRect.minX + (CGFloat(index) / CGFloat(preData.count - 1)) * drawingRect.width
+            }
             let normalizedValue = valueRange > 0 ? (value - minValue) / valueRange : 0.5
             let y = drawingRect.maxY - CGFloat(normalizedValue) * drawingRect.height
             return CGPoint(x: x, y: y)
@@ -575,63 +664,71 @@ class LineChartView: UIView {
         // Draw grid lines
         drawGrid(in: drawingRect, minValue: minValue, maxValue: maxValue)
         
-        // Draw pre-session line
-        if preData.count > 1 {
-            let prePath = UIBezierPath()
-            for (index, value) in preData.enumerated() {
-                let point = pointForData(index: index, value: value)
-                if index == 0 {
-                    prePath.move(to: point)
-                } else {
-                    prePath.addLine(to: point)
+        // Draw pre-session data
+        if !preData.isEmpty {
+            // Draw line only if more than one point
+            if preData.count > 1 {
+                let prePath = UIBezierPath()
+                for (index, value) in preData.enumerated() {
+                    let point = pointForData(index: index, value: value)
+                    if index == 0 {
+                        prePath.move(to: point)
+                    } else {
+                        prePath.addLine(to: point)
+                    }
                 }
+                
+                let preLineLayer = CAShapeLayer()
+                preLineLayer.path = prePath.cgPath
+                preLineLayer.strokeColor = secondaryColor.cgColor
+                preLineLayer.lineWidth = 2
+                preLineLayer.fillColor = UIColor.clear.cgColor
+                chartContainerView.layer.addSublayer(preLineLayer)
             }
             
-            let preLineLayer = CAShapeLayer()
-            preLineLayer.path = prePath.cgPath
-            preLineLayer.strokeColor = secondaryColor.cgColor
-            preLineLayer.lineWidth = 2
-            preLineLayer.fillColor = UIColor.clear.cgColor
-            chartContainerView.layer.addSublayer(preLineLayer)
-            
-            // Add dots for pre-session data
+            // Always draw dots for pre-session data
             for (index, value) in preData.enumerated() {
                 let point = pointForData(index: index, value: value)
                 let dotLayer = CAShapeLayer()
-                dotLayer.path = UIBezierPath(arcCenter: point, radius: 3, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
+                dotLayer.path = UIBezierPath(arcCenter: point, radius: 4, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
                 dotLayer.fillColor = secondaryColor.cgColor
                 chartContainerView.layer.addSublayer(dotLayer)
             }
         }
         
-        // Draw post-session line
-        if postData.count > 1 {
-            let postPath = UIBezierPath()
-            for (index, value) in postData.enumerated() {
-                let point = pointForData(index: index, value: value)
-                if index == 0 {
-                    postPath.move(to: point)
-                } else {
-                    postPath.addLine(to: point)
+        // Draw post-session data
+        if !postData.isEmpty {
+            // Draw line only if more than one point
+            if postData.count > 1 {
+                let postPath = UIBezierPath()
+                for (index, value) in postData.enumerated() {
+                    let point = pointForData(index: index, value: value)
+                    if index == 0 {
+                        postPath.move(to: point)
+                    } else {
+                        postPath.addLine(to: point)
+                    }
                 }
+                
+                let postLineLayer = CAShapeLayer()
+                postLineLayer.path = postPath.cgPath
+                postLineLayer.strokeColor = primaryColor.cgColor
+                postLineLayer.lineWidth = 2
+                postLineLayer.fillColor = UIColor.clear.cgColor
+                chartContainerView.layer.addSublayer(postLineLayer)
             }
             
-            let postLineLayer = CAShapeLayer()
-            postLineLayer.path = postPath.cgPath
-            postLineLayer.strokeColor = primaryColor.cgColor
-            postLineLayer.lineWidth = 2
-            postLineLayer.fillColor = UIColor.clear.cgColor
-            chartContainerView.layer.addSublayer(postLineLayer)
-            
-            // Add dots for post-session data
+            // Always draw dots for post-session data
             for (index, value) in postData.enumerated() {
                 let point = pointForData(index: index, value: value)
                 let dotLayer = CAShapeLayer()
-                dotLayer.path = UIBezierPath(arcCenter: point, radius: 3, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
+                dotLayer.path = UIBezierPath(arcCenter: point, radius: 4, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
                 dotLayer.fillColor = primaryColor.cgColor
                 chartContainerView.layer.addSublayer(dotLayer)
             }
         }
+        
+        print("CHART: Successfully drew chart with pre: \(preData.count) points, post: \(postData.count) points")
     }
     
     private func drawGrid(in rect: CGRect, minValue: Double, maxValue: Double) {
@@ -666,6 +763,85 @@ class LineChartView: UIView {
                 gridLayer.lineWidth = 0.5
                 chartContainerView.layer.addSublayer(gridLayer)
             }
+        }
+    }
+    
+    private func addAxisLabels(granularity: TimeGranularity) {
+        guard !dates.isEmpty && !preData.isEmpty else { return }
+        
+        let chartBounds = chartContainerView.bounds
+        let margin: CGFloat = 20
+        let drawingRect = CGRect(
+            x: margin,
+            y: margin,
+            width: chartBounds.width - 2 * margin,
+            height: chartBounds.height - 2 * margin
+        )
+        
+        // Add Y-axis labels using CATextLayer instead of UILabel subviews
+        let allValues = preData + postData
+        let minValue = allValues.min() ?? 0
+        let maxValue = allValues.max() ?? 100
+        
+        for i in 0...4 {
+            let value = minValue + (maxValue - minValue) * Double(i) / 4.0
+            let y = drawingRect.maxY - (CGFloat(i) / 4.0) * drawingRect.height
+            
+            let textLayer = CATextLayer()
+            textLayer.string = String(format: "%.0f", value)
+            textLayer.font = UIFont.systemFont(ofSize: 10, weight: .medium)
+            textLayer.fontSize = 10
+            textLayer.foregroundColor = secondaryColor.cgColor
+            textLayer.alignmentMode = .right
+            textLayer.contentsScale = UIScreen.main.scale
+            
+            // Position the text layer
+            let textSize = CGSize(width: 30, height: 12)
+            textLayer.frame = CGRect(x: margin - textSize.width - 5, y: y - textSize.height/2, width: textSize.width, height: textSize.height)
+            
+            chartContainerView.layer.addSublayer(textLayer)
+        }
+        
+        // Add X-axis labels using CATextLayer based on granularity
+        for (index, date) in dates.enumerated() {
+            let x: CGFloat
+            if dates.count == 1 {
+                x = drawingRect.minX + drawingRect.width / 2
+            } else {
+                x = drawingRect.minX + (CGFloat(index) / CGFloat(dates.count - 1)) * drawingRect.width
+            }
+            
+            let labelText: String
+            let dateFormatter = DateFormatter()
+            
+            switch granularity {
+            case .daily:
+                dateFormatter.dateFormat = "M/d"  // 8/19, 8/20, 12/31, etc.
+                labelText = dateFormatter.string(from: date)
+                
+            case .weekly:
+                let calendar = Calendar.current
+                let weekOfYear = calendar.component(.weekOfYear, from: date)
+                labelText = "W\(weekOfYear)"
+                
+            case .monthly:
+                dateFormatter.dateFormat = "MMM"  // Aug, Sep, Oct, etc.
+                labelText = dateFormatter.string(from: date)
+            }
+            
+            let textLayer = CATextLayer()
+            textLayer.string = labelText
+            textLayer.font = UIFont.systemFont(ofSize: 10, weight: .medium)
+            textLayer.fontSize = 10
+            textLayer.foregroundColor = secondaryColor.cgColor
+            textLayer.alignmentMode = .center
+            textLayer.contentsScale = UIScreen.main.scale
+            
+            // Position the text layer
+            let textSize = CGSize(width: 40, height: 12)
+            textLayer.frame = CGRect(x: x - textSize.width/2, y: drawingRect.maxY + 5, width: textSize.width, height: textSize.height)
+            
+            chartContainerView.layer.addSublayer(textLayer)
         }
     }
 }
