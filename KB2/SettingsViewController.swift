@@ -19,6 +19,7 @@ class SettingsViewController: UIViewController {
     private let viewProgressButton = UIButton(type: .system)
     private let restoreButton = UIButton(type: .system)
     private let manageSubscriptionButton = UIButton(type: .system)
+    private let clearHistoryButton = UIButton(type: .system)
     private let privacyButton = UIButton(type: .system)
     private let termsButton = UIButton(type: .system)
     private let doneButton = UIButton(type: .system)
@@ -80,6 +81,9 @@ class SettingsViewController: UIViewController {
         setupButton(manageSubscriptionButton, title: "Manage Subscription", isPrimary: false)
         manageSubscriptionButton.addTarget(self, action: #selector(manageSubscriptionButtonTapped), for: .touchUpInside)
         
+        setupButton(clearHistoryButton, title: "Clear Session History", isPrimary: false, isDestructive: true)
+        clearHistoryButton.addTarget(self, action: #selector(clearHistoryButtonTapped), for: .touchUpInside)
+        
         setupButton(privacyButton, title: "Privacy Policy", isPrimary: false)
         privacyButton.addTarget(self, action: #selector(privacyButtonTapped), for: .touchUpInside)
         
@@ -107,6 +111,7 @@ class SettingsViewController: UIViewController {
         mainStackView.addArrangedSubview(viewProgressButton)
         mainStackView.addArrangedSubview(restoreButton)
         mainStackView.addArrangedSubview(manageSubscriptionButton)
+        mainStackView.addArrangedSubview(clearHistoryButton)
         mainStackView.addArrangedSubview(privacyButton)
         mainStackView.addArrangedSubview(termsButton)
         
@@ -124,7 +129,7 @@ class SettingsViewController: UIViewController {
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
     }
     
-    private func setupButton(_ button: UIButton, title: String, isPrimary: Bool) {
+    private func setupButton(_ button: UIButton, title: String, isPrimary: Bool, isDestructive: Bool = false) {
         button.setTitle(title, for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         button.layer.cornerRadius = 12
@@ -134,6 +139,11 @@ class SettingsViewController: UIViewController {
             button.backgroundColor = primaryColor
             button.setTitleColor(darkColor, for: .normal)
             button.layer.borderWidth = 0
+        } else if isDestructive {
+            button.backgroundColor = .clear
+            button.setTitleColor(.systemRed, for: .normal)
+            button.layer.borderWidth = 2
+            button.layer.borderColor = UIColor.systemRed.cgColor
         } else {
             button.backgroundColor = .clear
             button.setTitleColor(secondaryColor, for: .normal)
@@ -240,6 +250,53 @@ class SettingsViewController: UIViewController {
         let urlString = "itms-apps://apps.apple.com/account/subscriptions"
         if let url = URL(string: urlString) {
             UIApplication.shared.open(url)
+        }
+    }
+    
+    @objc private func clearHistoryButtonTapped() {
+        let alert = UIAlertController(
+            title: "Clear Session History?",
+            message: "This will permanently delete all session data and reset the adaptive difficulty system. This action cannot be undone.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Clear Data", style: .destructive) { [weak self] _ in
+            self?.performHistoryClearing()
+        })
+        
+        present(alert, animated: true)
+    }
+    
+    private func performHistoryClearing() {
+        showLoading(true)
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Get current user ID
+            let userId = UserIDManager.getUserId()
+            
+            // Clear session files
+            let sessionResult = DataLogger.deleteAllSessionFiles()
+            
+            // Clear ADM state
+            ADMPersistenceManager.clearState(for: userId)
+            
+            DispatchQueue.main.async {
+                self.showLoading(false)
+                
+                if sessionResult.success {
+                    let message = sessionResult.deletedCount > 0 
+                        ? "Session history cleared successfully. Deleted \(sessionResult.deletedCount) session files and reset adaptive difficulty."
+                        : "Session history cleared successfully. No session files found to delete, but adaptive difficulty has been reset."
+                    
+                    self.showAlert(title: "History Cleared", message: message)
+                } else {
+                    let errorDetails = sessionResult.errors.isEmpty ? "Unknown error occurred" : sessionResult.errors.joined(separator: "\n")
+                    self.showAlert(title: "Clear Failed", message: "Failed to clear session history: \(errorDetails)")
+                }
+            }
         }
     }
     

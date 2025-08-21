@@ -1595,6 +1595,48 @@ class DataLogger {
         }
     }
     
+    /// Delete all session history files from local storage
+    /// This permanently removes all historical session data but does not affect the current active session
+    static func deleteAllSessionFiles() -> (success: Bool, deletedCount: Int, errors: [String]) {
+        do {
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsPath, 
+                                                                     includingPropertiesForKeys: nil)
+            
+            // Filter for session files
+            let sessionFiles = fileURLs.filter { 
+                $0.pathExtension == "json" && $0.lastPathComponent.hasPrefix("kb2_session_") 
+            }
+            
+            print("DATA_LOG: Found \(sessionFiles.count) session files to delete")
+            
+            var deletedCount = 0
+            var errors: [String] = []
+            
+            for fileURL in sessionFiles {
+                do {
+                    try FileManager.default.removeItem(at: fileURL)
+                    deletedCount += 1
+                    print("DATA_LOG: Deleted session file: \(fileURL.lastPathComponent)")
+                } catch {
+                    let errorMessage = "Failed to delete \(fileURL.lastPathComponent): \(error.localizedDescription)"
+                    errors.append(errorMessage)
+                    print("DATA_LOG: Error - \(errorMessage)")
+                }
+            }
+            
+            let success = errors.isEmpty
+            print("DATA_LOG: Session file deletion completed - Deleted: \(deletedCount), Errors: \(errors.count)")
+            
+            return (success: success, deletedCount: deletedCount, errors: errors)
+            
+        } catch {
+            let errorMessage = "Failed to enumerate session files: \(error.localizedDescription)"
+            print("DATA_LOG: Error - \(errorMessage)")
+            return (success: false, deletedCount: 0, errors: [errorMessage])
+        }
+    }
+    
     // MARK: - Private Methods
     
     /// Calculate the distance between target and tap positions

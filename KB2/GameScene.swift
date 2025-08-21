@@ -1728,9 +1728,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 breathingCueLabel.text = ""
             case .inhale: 
                 breathingCueLabel.text = "Inhale"
-            case .partialExhale, .remainderExhale: 
+            case .partialExhale:
+                breathingCueLabel.text = ""
+            case .remainderExhale:
                 breathingCueLabel.text = "Exhale"
-            case .holdMidExhale, .holdAfterExhale: 
+            case .holdMidExhale, .holdAfterExhale:
                 breathingCueLabel.text = "Hold"
             }
             breathingCueLabel.isHidden = false
