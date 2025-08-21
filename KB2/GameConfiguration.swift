@@ -51,7 +51,7 @@ struct GameConfiguration {
     // --- Debug/QA ---
     /// When true, onboarding will be shown on every app launch regardless of completion state.
     /// Use for refining copy and interaction. Default: false.
-    var forceShowOnboarding: Bool = false
+    var forceShowOnboarding: Bool = true
 
     /// When true, the tutorial will be shown regardless of completion state.
     /// Use for refining copy and interaction. Default: false.
