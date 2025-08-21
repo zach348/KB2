@@ -417,6 +417,22 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         slider = nil
     }
     
+    // MARK: - UI Refresh
+    private func refreshUI() {
+        guard let view = self.view else { return }
+        
+        // Remove all existing SpriteKit nodes
+        self.removeAllChildren()
+        
+        // Remove UIKit elements
+        slider?.removeFromSuperview()
+        slider = nil
+        
+        // Reconstruct the UI
+        setupUI()
+        setupSlider(in: view)
+    }
+    
     // MARK: - PaywallViewControllerDelegate
     func paywallViewController(_ controller: PaywallViewController, didCompleteWith result: PaywallResult) {
         controller.dismiss(animated: true) { [weak self] in
@@ -425,8 +441,8 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
                 // User successfully purchased or restored, start the session
                 self?.startSessionFlow()
             case .cancelled:
-                // User cancelled, do nothing
-                break
+                // User cancelled, refresh the UI to ensure proper rendering
+                self?.refreshUI()
             }
         }
     }
