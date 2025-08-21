@@ -748,7 +748,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     //====================================================================================================
     // MARK: - IDENTIFICATION PHASE
     //====================================================================================================
-    internal func startIdentificationPhase() {
+    internal func startIdentificationPhase(isTutorial: Bool = false) {
         isEndingIdentification = false
         totalIterations += 1
         currentState = .identifying; updateUI()
@@ -791,10 +791,24 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         for ball in balls { ball.hideIdentity(hiddenColor: self.activeDistractorColor) } 
         
         let waitBeforeCountdown = SKAction.wait(forDuration: gameConfiguration.identificationStartDelay)
-        let startCountdownAction = SKAction.run { [weak self] in 
-            self?.startIdentificationTimeout() 
+        
+        if isTutorial {
+            // TUTORIAL MODE: Show static timer without countdown
+            let showStaticTimerAction = SKAction.run { [weak self] in 
+                guard let self = self else { return }
+                // Show static timer display with full time
+                self.countdownLabel.text = String(format: "Time: %.1f", self.currentIdentificationDuration)
+                self.countdownLabel.isHidden = false
+                // No timeout action - timer is purely visual
+            }
+            self.run(SKAction.sequence([waitBeforeCountdown, showStaticTimerAction]))
+        } else {
+            // NORMAL MODE: Start countdown timer
+            let startCountdownAction = SKAction.run { [weak self] in 
+                self?.startIdentificationTimeout() 
+            }
+            self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
         }
-        self.run(SKAction.sequence([waitBeforeCountdown, startCountdownAction]))
     }
     
     func startIdentificationTimeout(duration: TimeInterval) {
