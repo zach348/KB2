@@ -51,7 +51,7 @@ struct GameConfiguration {
     // --- Debug/QA ---
     /// When true, onboarding will be shown on every app launch regardless of completion state.
     /// Use for refining copy and interaction. Default: false.
-    var forceShowOnboarding: Bool = true
+    var forceShowOnboarding: Bool = false
 
     /// When true, the tutorial will be shown regardless of completion state.
     /// Use for refining copy and interaction. Default: false.
@@ -229,8 +229,8 @@ struct GameConfiguration {
     // Mean Ball Speed (lower is easier)
     let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 25.0
     let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 75.0
-    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 650.0
-    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 950.0
+    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 600.0
+    let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1000.0
     
     // Ball Speed Standard Deviation (lower is easier)
     let ballSpeedSD_MinArousal_EasiestSetting: CGFloat = 0.0
@@ -283,20 +283,20 @@ struct GameConfiguration {
     // Direction-specific smoothing factors
     // For hardening (making the game harder)
     let domHardeningSmoothingFactors: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 0.2,  // Original value
-        .meanBallSpeed: 0.1,       // Original value
-        .ballSpeedSD: 0.1,         // Original value
-        .responseTime: 0.1,       // Original value
-        .targetCount: 0.3          // Original value
+        .discriminatoryLoad: 0.3,  // Original value
+        .meanBallSpeed: 0.3,       // Original value
+        .ballSpeedSD: 0.3,         // Original value
+        .responseTime: 0.3,       // Original value
+        .targetCount: 0.45          // Original value
     ]
     
     // For easing (making the game easier - higher values for faster response to poor performance)
     let domEasingSmoothingFactors: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 0.3,  // 2x hardening factor
-        .meanBallSpeed: 0.1,       // 2x hardening factor
-        .ballSpeedSD: 0.1,         // 2x hardening factor
-        .responseTime: 0.15,        // 2x hardening factor
-        .targetCount: 0.15          // 2x hardening factor
+        .discriminatoryLoad: 0.25,  // 2x hardening factor
+        .meanBallSpeed: 0.25,       // 2x hardening factor
+        .ballSpeedSD: 0.25,         // 2x hardening factor
+        .responseTime: 0.3,        // 2x hardening factor
+        .targetCount: 0.25          // 2x hardening factor
     ]
     
     // Keeping this for backward compatibility, now maps to hardening factors
@@ -323,18 +323,18 @@ struct GameConfiguration {
     // --- DOM Adaptation Rates (Phase 5) ---
     // These now act as base adaptation rates, not budget shares
     let domAdaptationRates_LowMidArousal: [DOMTargetType: CGFloat] = [
-        .targetCount: 5.0,
-        .responseTime: 2.0,
-        .discriminatoryLoad: 5.0,
+        .targetCount: 4.0,
+        .responseTime: 1.5,
+        .discriminatoryLoad: 4.0,
         .meanBallSpeed: 2.0,
         .ballSpeedSD: 2.0
     ]
     
     let domAdaptationRates_HighArousal: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 7.0,
+        .discriminatoryLoad: 6.0,
         .meanBallSpeed: 3.0,
         .ballSpeedSD: 3.0,
-        .responseTime: 2.0,
+        .responseTime: 2.5,
         .targetCount: 2.0
     ]
     
@@ -350,7 +350,7 @@ struct GameConfiguration {
 
     // --- Confidence-Based Adaptation (Phase 4) ---
     let enableConfidenceScaling: Bool = true
-    let minConfidenceMultiplier: CGFloat = 0.2  // Minimum adaptation strength
+    let minConfidenceMultiplier: CGFloat = 0.5  // Minimum adaptation strength
     let confidenceThresholdWideningFactor: CGFloat = 0.05 // How much thresholds expand when confidence is low
     
     // --- Cross-Session Persistence (Phase 4.5) ---
@@ -404,6 +404,13 @@ struct GameConfiguration {
     /// Higher values reduce the impact of performance trend slope on adaptation
     let domSlopeDampeningFactor: CGFloat = 20.0
     
+    /// Half-life in hours for recency weighting of historical performance data
+    /// Default: 0.25 (15 minutes) - provides responsive adaptation to recent performance changes
+    /// - Smaller values (e.g., 0.01 ≈ 36 seconds) increase responsiveness to very recent performance
+    /// - Larger values (e.g., 24.0) prioritize long-term, cross-session stability
+    /// This affects both PD controller calculations and global adaptation confidence metrics
+    let domRecencyWeightHalfLifeHours: Double = 0.35
+    
     /// Minimum number of data points required before DOM-specific adaptation begins
     /// Default: 15
     /// Ensures statistical stability before making adaptation decisions
@@ -437,7 +444,7 @@ struct GameConfiguration {
     /// Maximum signal magnitude per round to prevent jarring difficulty changes
     /// Default: 0.15 (15% of normalized range)
     /// This clamps the PD controller output to ensure smooth difficulty transitions
-    var domMaxSignalPerRound: CGFloat = 0.08
+    var domMaxSignalPerRound: CGFloat = 0.05
     
     // --- Direction-Specific Adaptation Rates (Phase 5 - bypassSmoothing resolution) ---
     
@@ -454,14 +461,14 @@ struct GameConfiguration {
     // Optional per-DOM overrides for direction multipliers (fallback to globals if absent)
     // Example: [.meanBallSpeed: 0.6, .ballSpeedSD: 0.6] to make hardening more conservative for speed DOMs
     var domEasingRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
-        .meanBallSpeed: 1.25,
-        .ballSpeedSD: 1.25,
-        .discriminatoryLoad: 2.0
+        .meanBallSpeed: 1.4,
+        .ballSpeedSD: 1.4,
+        .discriminatoryLoad: 2.5
     ]
     var domHardeningRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 1.0,
         .ballSpeedSD: 1.0,
-        .discriminatoryLoad: 3.0,
+        .discriminatoryLoad: 2.0,
         .targetCount: 2.5
     ]
 }

@@ -63,59 +63,39 @@ class TutorialManager {
         
         switch tutorialStep {
         case 0:
+            // Step 1: Single, Clear Instruction
             scene.pauseBalls()
-            calloutLabel?.text = "Track the highlighted balls as they move."
+            calloutLabel?.text = "First, keep track of the highlighted targets as they move."
             calloutLabel?.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY + 100)
             nextButton?.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY - 100)
-            nextButtonLabel?.text = "Next"
+            nextButtonLabel?.text = "Start Practice"
             nextButton?.isHidden = false
         case 1:
+            // Step 2: One Practice Round - Track Phase
             calloutLabel?.isHidden = true
             nextButton?.isHidden = true
             scene.resumeBalls()
             let wait = SKAction.wait(forDuration: 5.0)
             let startIdentification = SKAction.run {
-                scene.startIdentificationPhase()
+                scene.startIdentificationPhase(isTutorial: true)
                 self.advanceStep()
             }
             scene.run(SKAction.sequence([wait, startIdentification]))
         case 2:
-            calloutLabel?.text = "While balls are frozen, tap the targets before time runs out."
+            // Step 2: One Practice Round - Tap Phase (No-fail with visual timer)
+            calloutLabel?.text = "Now, tap the targets. In a real session, this timer will count down, but for this practice, it's paused. Take all the time you need."
             calloutLabel?.isHidden = false
             nextButton?.isHidden = true
-            scene.startIdentificationTimeout(duration: 7.0)
+            // Note: We start the identification phase to show the timer visually, but don't call startIdentificationTimeout
+            // so there's no actual timeout - the user can take as long as they need
         case 3:
-            calloutLabel?.text = "Great job!"
-            nextButton?.isHidden = true
-            let wait = SKAction.wait(forDuration: 2.0)
-            let advance = SKAction.run { self.advanceStep() }
-            scene.run(SKAction.sequence([wait, advance]))
-        case 4:
-            calloutLabel?.text = "Let's try that again. Track the highlighted balls."
-            nextButton?.isHidden = true
-            scene.resumeBalls()
-            let wait2 = SKAction.wait(forDuration: 5.0)
-            let startIdentification2 = SKAction.run {
-                scene.startIdentificationPhase()
-                self.advanceStep()
-            }
-            scene.run(SKAction.sequence([wait2, startIdentification2]))
-        case 5:
-            calloutLabel?.text = "While balls are frozen, tap the tracked balls one more time."
-            calloutLabel?.isHidden = false
-            nextButton?.isHidden = true
-            scene.startIdentificationTimeout(duration: 7.0)
-        case 6:
-            calloutLabel?.text = "Excellent!"
-            nextButton?.isHidden = true
-            let wait3 = SKAction.wait(forDuration: 2.0)
-            let advance3 = SKAction.run { self.advanceStep() }
-            scene.run(SKAction.sequence([wait3, advance3]))
-        case 7:
+            // Step 3: Reinforce the "Why" and transition
             scene.pauseBalls()
-            calloutLabel?.text = "That’s the task. In a session, difficulty adapts as you play."
+            calloutLabel?.text = "Well done. The goal of this focus task is to prepare your mind for the guided breathing that follows. Ready to start your first session?"
+            calloutLabel?.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY + 100)
+            nextButton?.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY - 100)
+            nextButtonLabel?.text = "Start Session"
             nextButton?.isHidden = false
-            nextButtonLabel?.text = "Finish"
         default:
             endTutorial()
         }
@@ -138,7 +118,7 @@ class TutorialManager {
         guard let scene = scene, let nextButton = nextButton else { return }
         
         if nextButton.contains(location) && !nextButton.isHidden {
-            if tutorialStep == 7 {
+            if tutorialStep == 3 {
                 endTutorial()
             } else {
                 advanceStep()
@@ -146,7 +126,7 @@ class TutorialManager {
             return
         }
         
-        if tutorialStep == 2 || tutorialStep == 5 {
+        if tutorialStep == 2 {
             let nodes = scene.nodes(at: location)
             for node in nodes {
                 if let ball = node as? Ball, ball.isTarget {

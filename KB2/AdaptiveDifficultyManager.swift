@@ -875,8 +875,8 @@ class AdaptiveDifficultyManager {
         return performanceHistory.map { entry in
             let age = (currentTime - entry.timestamp) / 3600.0 // Convert to hours
             // Exponential decay: full weight for recent data, decreasing weight for older data
-            // Using 24-hour half-life (weight = 0.5 at 24 hours old)
-            let weight = CGFloat(exp(-age * log(2.0) / 24.0))
+            // Using configurable half-life from GameConfiguration
+            let weight = CGFloat(exp(-age * log(2.0) / config.domRecencyWeightHalfLifeHours))
             return (entry: entry, weight: weight)
         }
     }
@@ -1564,11 +1564,11 @@ class AdaptiveDifficultyManager {
             return 0.0
         }
         
-        // Calculate recency weights (24-hour half-life)
+        // Calculate recency weights using configurable half-life
         let currentTime = CACurrentMediaTime()
         let weights = dataPoints.map { entry in
             let ageInHours = (currentTime - entry.timestamp) / 3600.0
-            return CGFloat(exp(-ageInHours * log(2.0) / 24.0))
+            return CGFloat(exp(-ageInHours * log(2.0) / config.domRecencyWeightHalfLifeHours))
         }
         
         // Calculate weighted slope
@@ -1613,7 +1613,7 @@ class AdaptiveDifficultyManager {
             let currentTime = CACurrentMediaTime()
             let weights = dataPoints.map { entry in
                 let ageInHours = (currentTime - entry.timestamp) / 3600.0
-                return CGFloat(exp(-ageInHours * log(2.0) / 24.0))
+                return CGFloat(exp(-ageInHours * log(2.0) / config.domRecencyWeightHalfLifeHours))
             }
             let averagePerformance = calculateWeightedAveragePerformance(data: dataPoints, weights: weights)
             let performanceGap = averagePerformance - config.domProfilingPerformanceTarget

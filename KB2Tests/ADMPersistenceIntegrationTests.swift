@@ -106,9 +106,10 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         // Calculate confidence to verify recency weighting is applied
         let confidence = newADM.calculateAdaptationConfidence()
         
-        // With aged data, confidence should be lower than if all data was recent
-        XCTAssertLessThan(confidence.history, 0.7, "History confidence should reflect aged data")
-        XCTAssertGreaterThan(confidence.history, 0.3, "History confidence should still have some value")
+        // With very aged data (24+ hours with 0.35h half-life), confidence should be very low
+        // 24 hours = ~69 half-lives, so weight ≈ e^(-69) ≈ 0 (essentially no contribution)
+        XCTAssertLessThan(confidence.history, 0.1, "History confidence should reflect minimal contribution from aged data")
+        XCTAssertGreaterThan(confidence.history, 0.0, "History confidence should still be non-zero")
         
         // DOM positions should be preserved
         XCTAssertEqual(Double(newADM.normalizedPositions[.discriminatoryLoad] ?? 0), 0.7, accuracy: 0.001)
@@ -199,17 +200,19 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         // WHEN: Calculating confidence
         let confidence = adm.calculateAdaptationConfidence()
         
-        // THEN: Very old data should have minimal impact
-        // The weight of 1-week-old data should be approximately e^(-7*24/24) = e^(-7) ≈ 0.0009
-        let expectedOldWeight = exp(-7.0)
-        XCTAssertLessThan(expectedOldWeight, 0.001, "Week-old data should have <0.1% weight")
+        // THEN: Very old data should have minimal impact with 0.35h half-life
+        // The weight of 1-week-old data should be approximately e^(-7*24/0.35) = e^(-480) ≈ 0 (effectively zero)
+        let hoursAgo = 7.0 * 24.0 // 1 week in hours
+        let halfLifeHours = 0.35
+        let expectedOldWeight = exp(-hoursAgo / halfLifeHours)
+        XCTAssertLessThan(expectedOldWeight, 1e-100, "Week-old data should have essentially zero weight with aggressive recency weighting")
         
-        // The effective history size should be close to 1 (just the recent entry)
+        // The effective history size should be essentially just the recent entry (~1.0)
         let effectiveSize = 1.0 + expectedOldWeight
         // Use the baseline of 10 entries for full confidence instead of window size
         let historyConfidenceBaseline: CGFloat = 10.0
         let expectedHistoryConfidence = effectiveSize / historyConfidenceBaseline
-        XCTAssertLessThan(abs(confidence.history - expectedHistoryConfidence), 0.05, 
+        XCTAssertLessThan(abs(confidence.history - expectedHistoryConfidence), 0.02, 
                          "History confidence should reflect minimal contribution from old data")
     }
     
@@ -258,11 +261,15 @@ class ADMPersistenceIntegrationTests: XCTestCase {
         
         adm.saveState()
         
-        // THEN: Metrics should reflect the improving pattern
+        // THEN: Metrics should reflect the improving pattern, but confidence will be low due to aged data
         XCTAssertGreaterThan(trend, 0, "Trend should be positive for improving performance")
         XCTAssertGreaterThan(average, 0.5, "Average should reflect recent good performance")
         XCTAssertLessThan(variance, 0.1, "Variance should be relatively low for consistent improvement")
-        XCTAssertGreaterThan(confidence.total, 0.6, "Confidence should be reasonably high")
+        
+        // With 0.35h half-life, only the 2-hour-ago session (6 rounds) has meaningful weight
+        // 2 hours = ~5.7 half-lives, so effective history is very small → low confidence
+        XCTAssertLessThan(confidence.total, 0.4, "Confidence should be low with mostly aged data")
+        XCTAssertGreaterThan(confidence.total, 0.1, "Confidence should still be positive")
         
         // Verify persistence
         config.clearPastSessionData = false
