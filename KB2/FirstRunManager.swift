@@ -7,6 +7,9 @@ final class FirstRunManager {
 
     private let hasCompletedOnboardingKey = "hasCompletedOnboarding"
     private let hasCompletedTutorialKey = "hasCompletedTutorial"
+    private let sessionCountKey = "sessionCount"
+    private let hasAcceptedSurveyKey = "hasAcceptedSurvey"
+    private let surveyLastDeclinedVersionKey = "surveyLastDeclinedVersion"
 
     var hasCompletedOnboarding: Bool {
         get {
@@ -26,6 +29,33 @@ final class FirstRunManager {
         }
     }
     
+    var sessionCount: Int {
+        get {
+            UserDefaults.standard.integer(forKey: sessionCountKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: sessionCountKey)
+        }
+    }
+    
+    var hasAcceptedSurvey: Bool {
+        get {
+            UserDefaults.standard.bool(forKey: hasAcceptedSurveyKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: hasAcceptedSurveyKey)
+        }
+    }
+    
+    var surveyLastDeclinedVersion: String? {
+        get {
+            UserDefaults.standard.string(forKey: surveyLastDeclinedVersionKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: surveyLastDeclinedVersionKey)
+        }
+    }
+    
     // Tracks whether we've shown the non-blocking subscription offer during trial
     private let hasShownSubscriptionOfferKey = "hasShownSubscriptionOffer"
     var hasShownSubscriptionOffer: Bool {
@@ -42,6 +72,9 @@ final class FirstRunManager {
         UserDefaults.standard.removeObject(forKey: hasCompletedOnboardingKey)
         UserDefaults.standard.removeObject(forKey: hasCompletedTutorialKey)
         UserDefaults.standard.removeObject(forKey: hasShownSubscriptionOfferKey)
+        UserDefaults.standard.removeObject(forKey: sessionCountKey)
+        UserDefaults.standard.removeObject(forKey: hasAcceptedSurveyKey)
+        UserDefaults.standard.removeObject(forKey: surveyLastDeclinedVersionKey)
     }
 
     func resetTutorialForDebug() {
@@ -60,12 +93,15 @@ final class FirstRunManager {
         UserDefaults.standard.removeObject(forKey: hasCompletedOnboardingKey)
         UserDefaults.standard.removeObject(forKey: hasCompletedTutorialKey)
         UserDefaults.standard.removeObject(forKey: hasShownSubscriptionOfferKey)
+        UserDefaults.standard.removeObject(forKey: sessionCountKey)
+        UserDefaults.standard.removeObject(forKey: hasAcceptedSurveyKey)
+        UserDefaults.standard.removeObject(forKey: surveyLastDeclinedVersionKey)
         
         // Reset trial date for fresh TestFlight experience
         let now = Date()
         _ = KeychainManager.shared.setDate(now, forKey: "trial_start_date")
         
-        print("[FirstRunManager] Reset all onboarding state for TestFlight testing")
+        print("[FirstRunManager] Reset all onboarding and survey state for TestFlight testing")
     }
     
     /// Detects if app is running in DEBUG mode OR TestFlight (but not App Store)

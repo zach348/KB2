@@ -39,7 +39,7 @@ class PaywallViewController: UIViewController {
     
     // Product data
     private var monthlyPrice: String = "$0.99"
-    private var annualPrice: String = "$7.99"
+    private var annualPrice: String = "$4.99"
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
