@@ -42,8 +42,8 @@ class ADMConfidenceTests: XCTestCase {
         // WHEN: Confidence is calculated
         let confidence = adm.calculateAdaptationConfidence().total
         
-        // THEN: Confidence should be high due to low variance
-        XCTAssertGreaterThan(confidence, 0.7, "Confidence should be high for low variance performance")
+        // THEN: Confidence should be reasonably high due to low variance, but adjusted for aggressive recency weighting
+        XCTAssertGreaterThan(confidence, 0.65, "Confidence should be reasonably high for low variance performance")
     }
 
     func testConfidence_HighVariance() {
@@ -58,16 +58,31 @@ class ADMConfidenceTests: XCTestCase {
     }
 
     func testConfidence_StableDirection() {
-        // GIVEN: A stable adaptation direction
+        // GIVEN: A stable adaptation direction with recent data for aggressive recency weighting
         adm.directionStableCount = 5 // Max stability
         adm.lastAdaptationDirection = .increasing
-        adm.performanceHistory = TestHelpers.createPerformanceHistory(scores: [0.6, 0.65, 0.7])
+        
+        // Create recent performance history (within last 0.35 hours to get full weight)
+        let currentTime = CACurrentMediaTime()
+        var recentHistory: [PerformanceHistoryEntry] = []
+        for (index, score) in [0.6, 0.65, 0.7].enumerated() {
+            let entry = PerformanceHistoryEntry(
+                timestamp: currentTime - Double(index * 300), // 5-minute intervals
+                overallScore: score,
+                normalizedKPIs: [:],
+                arousalLevel: 0.5,
+                currentDOMValues: [:],
+                sessionContext: nil
+            )
+            recentHistory.append(entry)
+        }
+        adm.performanceHistory = recentHistory
         
         // WHEN: Confidence is calculated
         let confidence = adm.calculateAdaptationConfidence().total
         
-        // THEN: Confidence should be high
-        XCTAssertGreaterThan(confidence, 0.7, "Confidence should be high for stable adaptation direction")
+        // THEN: Confidence should be reasonably high (adjusted for aggressive recency weighting)
+        XCTAssertGreaterThan(confidence, 0.6, "Confidence should be reasonably high for stable adaptation direction with recent data")
     }
     
     func testConfidence_InsufficientHistory() {
@@ -87,16 +102,31 @@ class ADMConfidenceTests: XCTestCase {
     // MARK: - Effective Threshold Tests
 
     func testEffectiveThresholds_HighConfidence() {
-        // GIVEN: High confidence state
-        adm.performanceHistory = TestHelpers.createPerformanceHistory(scores: [0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58, 0.59]) // Full history, low variance
+        // GIVEN: High confidence state with recent data for aggressive recency weighting
+        let currentTime = CACurrentMediaTime()
+        var recentHistory: [PerformanceHistoryEntry] = []
+        
+        // Create recent performance history with low variance (within last 10 minutes)
+        for (index, score) in [0.5, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56, 0.57, 0.58, 0.59].enumerated() {
+            let entry = PerformanceHistoryEntry(
+                timestamp: currentTime - Double(index * 60), // 1-minute intervals for recent data
+                overallScore: score,
+                normalizedKPIs: [:],
+                arousalLevel: 0.5,
+                currentDOMValues: [:],
+                sessionContext: nil
+            )
+            recentHistory.append(entry)
+        }
+        adm.performanceHistory = recentHistory
         adm.directionStableCount = 5
         
         // WHEN: Effective thresholds are calculated
         let thresholds = adm.getEffectiveAdaptationThresholds()
         
-        // THEN: Thresholds should be close to the base configuration
-        XCTAssertEqual(thresholds.increaseThreshold, config.adaptationIncreaseThreshold, accuracy: 0.01, "Increase threshold should not widen much with high confidence")
-        XCTAssertEqual(thresholds.decreaseThreshold, config.adaptationDecreaseThreshold, accuracy: 0.01, "Decrease threshold should not widen much with high confidence")
+        // THEN: Thresholds should be reasonably close to the base configuration (with some tolerance for aggressive recency weighting)
+        XCTAssertEqual(thresholds.increaseThreshold, config.adaptationIncreaseThreshold, accuracy: 0.03, "Increase threshold should not widen much with high confidence from recent data")
+        XCTAssertEqual(thresholds.decreaseThreshold, config.adaptationDecreaseThreshold, accuracy: 0.03, "Decrease threshold should not widen much with high confidence from recent data")
     }
 
     func testEffectiveThresholds_LowConfidence() {
@@ -163,10 +193,10 @@ class ADMConfidenceTests: XCTestCase {
     }
     
     func testRecencyWeighting_OldDataLowWeight() {
-        // GIVEN: Performance history with old data (24 hours = half-life)
+        // GIVEN: Performance history with old data (0.7 hours = 2 half-lives with 0.35h half-life)
         let currentTime = CACurrentMediaTime()
         let oldEntry = PerformanceHistoryEntry(
-            timestamp: currentTime - (24 * 3600), // 24 hours ago
+            timestamp: currentTime - (0.7 * 3600), // 0.7 hours ago (2 half-lives)
             overallScore: 0.7,
             normalizedKPIs: [:],
             arousalLevel: 0.5,
@@ -178,19 +208,19 @@ class ADMConfidenceTests: XCTestCase {
         // WHEN: Confidence is calculated
         let confidence = adm.calculateAdaptationConfidence()
         
-        // THEN: Old data should have approximately half weight (0.5)
-        // The effective history size should be around 0.5, making history confidence around 0.05
-        XCTAssertLessThan(confidence.history, 0.06, "24-hour old data should contribute ~50% weight")
-        XCTAssertGreaterThan(confidence.history, 0.04, "24-hour old data should contribute ~50% weight")
+        // THEN: Old data at 2 half-lives should have approximately 25% weight (0.25)
+        // The effective history size should be around 0.25, making history confidence around 0.025
+        XCTAssertLessThan(confidence.history, 0.035, "0.7-hour old data should contribute ~25% weight")
+        XCTAssertGreaterThan(confidence.history, 0.015, "0.7-hour old data should contribute ~25% weight")
     }
     
     func testRecencyWeighting_MixedAgeData() {
-        // GIVEN: Performance history with mixed age data
+        // GIVEN: Performance history with mixed age data (using 0.35h half-life)
         let currentTime = CACurrentMediaTime()
         var history: [PerformanceHistoryEntry] = []
         
-        // Add entries at different ages
-        for hoursAgo in [0.1, 1.0, 6.0, 12.0, 24.0] {
+        // Add entries at different ages - use shorter times for 0.35h half-life
+        for hoursAgo in [0.1, 0.35, 0.7, 1.05, 1.4] {
             let entry = PerformanceHistoryEntry(
                 timestamp: currentTime - (hoursAgo * 3600),
                 overallScore: 0.5,
@@ -207,21 +237,20 @@ class ADMConfidenceTests: XCTestCase {
         let confidence = adm.calculateAdaptationConfidence()
         
         // THEN: The effective history size should be less than the actual count
-        // due to older entries having less weight
-        // Expected weights: ~1.0, ~0.97, ~0.75, ~0.59, ~0.5 = ~3.81 effective size
+        // Expected weights with 0.35h half-life: ~0.82, ~0.5, ~0.25, ~0.125, ~0.0625 ≈ 1.76 effective size
         // With the baseline of 10 entries for full confidence:
-        let expectedEffectiveSize = 3.81 / 10.0  // Using baseline instead of window size
-        XCTAssertLessThan(confidence.history, expectedEffectiveSize + 0.1, "Mixed age data should have reduced effective history size")
-        XCTAssertGreaterThan(confidence.history, expectedEffectiveSize - 0.1, "Mixed age data should have predictable effective history size")
+        let expectedEffectiveSize = 1.76 / 10.0  // Using baseline instead of window size
+        XCTAssertLessThan(confidence.history, expectedEffectiveSize + 0.05, "Mixed age data should have reduced effective history size")
+        XCTAssertGreaterThan(confidence.history, expectedEffectiveSize - 0.05, "Mixed age data should have predictable effective history size")
     }
     
     func testRecencyWeighting_VarianceCalculation() {
-        // GIVEN: Performance history with consistent scores but different ages
+        // GIVEN: Performance history with consistent scores but different ages (using 0.35h half-life)
         let currentTime = CACurrentMediaTime()
         var history: [PerformanceHistoryEntry] = []
         
-        // Add alternating scores: old entries have extreme values, recent ones are moderate
-        let ages = [48.0, 36.0, 24.0, 12.0, 1.0] // hours ago
+        // Add alternating scores: older entries have extreme values, recent ones are moderate
+        let ages = [1.4, 1.05, 0.7, 0.35, 0.1] // hours ago - using shorter times for 0.35h half-life
         let scores = [0.9, 0.1, 0.9, 0.5, 0.5] // extreme values are older
         
         for (hoursAgo, score) in zip(ages, scores) {
@@ -246,10 +275,10 @@ class ADMConfidenceTests: XCTestCase {
     }
     
     func testRecencyWeighting_DirectionConfidence() {
-        // GIVEN: Stable direction count but with old data
+        // GIVEN: Stable direction count but with old data (using 0.35h half-life)
         let currentTime = CACurrentMediaTime()
         let oldEntry = PerformanceHistoryEntry(
-            timestamp: currentTime - (48 * 3600), // 48 hours ago
+            timestamp: currentTime - (1.4 * 3600), // 1.4 hours ago (4 half-lives with 0.35h half-life)
             overallScore: 0.7,
             normalizedKPIs: [:],
             arousalLevel: 0.5,
@@ -264,10 +293,10 @@ class ADMConfidenceTests: XCTestCase {
         let confidence = adm.calculateAdaptationConfidence()
         
         // THEN: Direction confidence should be reduced by the recency weight
-        // 48 hours = 2 half-lives, so weight ≈ 0.25
-        let expectedWeight = 0.25
+        // 1.4 hours = 4 half-lives, so weight ≈ 0.0625 (6.25%)
+        let expectedWeight = 0.0625
         let expectedDirectionConfidence = 1.0 * expectedWeight // max direction confidence * weight
-        XCTAssertLessThan(confidence.direction, expectedDirectionConfidence + 0.1, "Direction confidence should be weighted by data recency")
-        XCTAssertGreaterThan(confidence.direction, expectedDirectionConfidence - 0.1, "Direction confidence should be predictably weighted")
+        XCTAssertLessThan(confidence.direction, expectedDirectionConfidence + 0.05, "Direction confidence should be weighted by data recency")
+        XCTAssertGreaterThan(confidence.direction, expectedDirectionConfidence - 0.05, "Direction confidence should be predictably weighted")
     }
 }
