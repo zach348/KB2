@@ -53,7 +53,7 @@ struct OnboardingView: View {
             page3[range].font = boldFont
         }
         
-        var page4 = AttributedString("Each session has two parts: a focus task to settle your mind, followed by guided breathing to deepen your calm.")
+        var page4 = AttributedString("Each session has two parts: a focus task to first engage and then settle your mind, followed by guided breathing to deepen your calm.")
         page4.font = baseFont
         if let range1 = page4.range(of: "focus task") {
             page4[range1].font = boldFont
@@ -77,13 +77,22 @@ struct OnboardingView: View {
             page6[range2].font = boldFont
         }
         
-        var page7 = AttributedString("A few minutes is all it takes to complete a session. Ready to begin?")
+        var page7 = AttributedString("Like any skill, the benefits of Kalibrate grow stronger with practice. Your first few sessions help you learn the experience—the real magic happens as it becomes familiar.")
         page7.font = baseFont
-        if let range = page7.range(of: "Ready to begin?") {
-            page7[range].font = boldFont
+        if let range1 = page7.range(of: "benefits of Kalibrate grow stronger with practice") {
+            page7[range1].font = boldFont
+        }
+        if let range2 = page7.range(of: "real magic happens as it becomes familiar") {
+            page7[range2].font = boldFont
         }
         
-        return [page1, page2, page3, page4, page5, page6, page7]
+        var page8 = AttributedString("A few minutes is all it takes to complete a session. Ready to begin?")
+        page8.font = baseFont
+        if let range = page8.range(of: "Ready to begin?") {
+            page8[range].font = boldFont
+        }
+        
+        return [page1, page2, page3, page4, page5, page6, page7, page8]
     }
     
     @Environment(\.sizeCategory) private var sizeCategory
