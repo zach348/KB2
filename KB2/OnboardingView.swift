@@ -47,9 +47,9 @@ struct OnboardingView: View {
             page2[range2].font = boldFont
         }
         
-        var page3 = AttributedString("To do this, Kalibrate uses synchronized pulses of light, sound, and vibration to gently guide your brain's rhythm.")
+        var page3 = AttributedString("To do this, Kalibrate uses progressively changing synchronized pulses of light, sound, and vibration that adapt to influence how you feel over the course of a session.")
         page3.font = baseFont
-        if let range = page3.range(of: "light, sound, and vibration") {
+        if let range = page3.range(of: "progressively changing synchronized pulses") {
             page3[range].font = boldFont
         }
         
@@ -68,31 +68,49 @@ struct OnboardingView: View {
             page5[range].font = boldFont
         }
         
-        var page6 = AttributedString("Don't worry about your score. The real measure of success is completing the full session and noticing how you feel afterward.")
+        var page6 = AttributedString("The challenge you face will evolve over the course of the session—at first, you'll follow targets that look almost identical to distractors. As the session progresses, distinguishing targets becomes easier as movement slows down, but your working memory is challenged more as the number of targets increases.")
         page6.font = baseFont
-        if let range1 = page6.range(of: "Don't worry about your score.") {
+        if let range1 = page6.range(of: "The challenge you face will evolve over the course of the session") {
             page6[range1].font = boldFont
         }
-        if let range2 = page6.range(of: "completing the full session") {
+        if let range2 = page6.range(of: "easier as movement slows down") {
             page6[range2].font = boldFont
         }
+        if let range3 = page6.range(of: "working memory is challenged more") {
+            page6[range3].font = boldFont
+        }
         
-        var page7 = AttributedString("Like any skill, the benefits of Kalibrate grow stronger with practice. Your first few sessions help you learn the experience—the real magic happens as it becomes familiar.")
+        var page7 = AttributedString("Your score isn't what matters—the primary measure of success is how you feel before and after the session. Simply paying close attention and completing full sessions will facilitate positive changes over time, regardless of your initial performance.")
         page7.font = baseFont
-        if let range1 = page7.range(of: "benefits of Kalibrate grow stronger with practice") {
+        if let range1 = page7.range(of: "Your score isn't what matters") {
             page7[range1].font = boldFont
         }
-        if let range2 = page7.range(of: "real magic happens as it becomes familiar") {
+        if let range2 = page7.range(of: "how you feel before and after") {
             page7[range2].font = boldFont
         }
-        
-        var page8 = AttributedString("A few minutes is all it takes to complete a session. Ready to begin?")
-        page8.font = baseFont
-        if let range = page8.range(of: "Ready to begin?") {
-            page8[range].font = boldFont
+        if let range3 = page7.range(of: "regardless of your initial performance") {
+            page7[range3].font = boldFont
         }
         
-        return [page1, page2, page3, page4, page5, page6, page7, page8]
+        var page8 = AttributedString("Your score will naturally improve as you become familiar with the experience. Like any skill, the benefits of Kalibrate grow stronger with practice—the real magic happens as it becomes familiar.")
+        page8.font = baseFont
+        if let range1 = page8.range(of: "score will naturally improve") {
+            page8[range1].font = boldFont
+        }
+        if let range2 = page8.range(of: "benefits of Kalibrate grow stronger with practice") {
+            page8[range2].font = boldFont
+        }
+        if let range3 = page8.range(of: "real magic happens as it becomes familiar") {
+            page8[range3].font = boldFont
+        }
+        
+        var page9 = AttributedString("A few minutes is all it takes to complete a session. Ready to begin?")
+        page9.font = baseFont
+        if let range = page9.range(of: "Ready to begin?") {
+            page9[range].font = boldFont
+        }
+        
+        return [page1, page2, page3, page4, page5, page6, page7, page8, page9]
     }
     
     @Environment(\.sizeCategory) private var sizeCategory
