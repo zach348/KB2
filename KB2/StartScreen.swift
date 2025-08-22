@@ -21,6 +21,7 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
     private var startButton: SKSpriteNode!
     private var startButtonLabel: SKLabelNode!
     private var settingsButton: SKLabelNode!
+    private var ballGraphic: StartScreenBall!
     private var slider: UISlider!
     private var sliderValue: Double = 15.0
     private var debugTapGR: UITapGestureRecognizer?
@@ -90,13 +91,19 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         let screenHeight = frame.height
         let isSmallScreen = screenHeight < 700 // iPhone SE and similar
         
-        // Duration selection label - position below subtitle with proper spacing
+        // Ball graphic - positioned between subtitle and duration controls (40% larger)
+        let ballRadius: CGFloat = isSmallScreen ? 49.0 : 63.0 // Increased by 40% for better prominence
+        ballGraphic = StartScreenBall(radius: ballRadius, color: primaryColor)
+        ballGraphic.position = CGPoint(x: frame.midX, y: subtitleLabel.position.y - (isSmallScreen ? 80 : 100))
+        addChild(ballGraphic)
+        
+        // Duration selection label - position below ball graphic with increased spacing
         durationLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
         durationLabel.text = "Session Duration: \(Int(initialSessionMinutes)) minutes"
         durationLabel.fontSize = isSmallScreen ? 20 : 24
         durationLabel.fontColor = SKColor(cgColor: whiteColor.cgColor)
-        // Position with adequate spacing from subtitle
-        durationLabel.position = CGPoint(x: frame.midX, y: subtitleLabel.position.y - (isSmallScreen ? 60 : 80))
+        // Position with increased spacing from ball graphic to reduce dead space
+        durationLabel.position = CGPoint(x: frame.midX, y: ballGraphic.position.y - (isSmallScreen ? 100 : 120))
         addChild(durationLabel)
         
         // Duration explanation text
@@ -107,9 +114,9 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         explanationLabel.position = CGPoint(x: frame.midX, y: durationLabel.position.y - (isSmallScreen ? 30 : 35))
         addChild(explanationLabel)
         
-        // Start button background - positioned with proper spacing below slider
+        // Start button background - positioned with more spacing for slider
         startButton = SKSpriteNode(color: .systemBlue, size: CGSize(width: 200, height: 60))
-        startButton.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - (isSmallScreen ? 90 : 120))
+        startButton.position = CGPoint(x: frame.midX, y: explanationLabel.position.y - (isSmallScreen ? 110 : 135))
         startButton.zPosition = 10
         startButton.name = "startButton"
         
@@ -135,15 +142,31 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         startButtonLabel.name = "startButton"
         addChild(startButtonLabel)
 
+        // Repeat tutorial button - positioned closer to reduce dead space
         if FirstRunManager.shared.hasCompletedTutorial {
             let repeatTutorialButton = SKLabelNode(fontNamed: "HelveticaNeue-Light")
             repeatTutorialButton.text = "Repeat Tutorial"
             repeatTutorialButton.fontSize = 18
             repeatTutorialButton.fontColor = SKColor(cgColor: secondaryColor.cgColor)
-            repeatTutorialButton.position = CGPoint(x: frame.midX, y: startButton.position.y - 80)
+            repeatTutorialButton.position = CGPoint(x: frame.midX, y: startButton.position.y - (isSmallScreen ? 60 : 70))
             repeatTutorialButton.name = "repeatTutorialButton"
             addChild(repeatTutorialButton)
         }
+        
+        // Add version footer to utilize bottom space
+        let versionLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
+        if let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            versionLabel.text = "v\(appVersion)"
+        } else {
+            versionLabel.text = "v1.0"
+        }
+        versionLabel.fontSize = 12
+        versionLabel.fontColor = SKColor(cgColor: secondaryColor.cgColor).withAlphaComponent(0.6)
+        let bottomPosition = FirstRunManager.shared.hasCompletedTutorial ? 
+            (startButton.position.y - (isSmallScreen ? 60 : 70) - 40) : 
+            (startButton.position.y - 40)
+        versionLabel.position = CGPoint(x: frame.midX, y: max(bottomPosition, 30))
+        addChild(versionLabel)
     }
     
     private func setupSlider(in view: SKView) {
@@ -151,14 +174,15 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         let screenHeight = view.bounds.height
         let isSmallScreen = screenHeight < 700 // iPhone SE and similar
         
-        // Calculate the actual positions as they are set in setupUI
-        let titleY = screenHeight - 120.0  // frame.maxY - 120 (updated position)
+        // Calculate the actual positions as they are set in setupUI (updated for larger ball and spacing)
+        let titleY = screenHeight - 120.0  // frame.maxY - 120
         let subtitleY = titleY - 40.0      // titleLabel.position.y - 40
-        let durationLabelY = subtitleY - (isSmallScreen ? 60.0 : 80.0) // subtitleLabel.position.y - spacing
+        let ballY = subtitleY - (isSmallScreen ? 80.0 : 100.0) // Updated ball position
+        let durationLabelY = ballY - (isSmallScreen ? 100.0 : 120.0) // Updated duration label spacing
         let explanationLabelY = durationLabelY - (isSmallScreen ? 30.0 : 35.0) // durationLabel.position.y - spacing
         
-        // Position slider between explanation label and start button with proper spacing
-        let spacingBelowExplanation: CGFloat = isSmallScreen ? 40.0 : 50.0 // Reduced spacing for small screens
+        // Position slider between explanation label and start button - ensure slider is ABOVE button
+        let spacingBelowExplanation: CGFloat = isSmallScreen ? 40.0 : 50.0 // Increased spacing for better breathing room
         let sliderYInSKCoords = explanationLabelY - spacingBelowExplanation
         
         // Convert from SKScene coordinates to UIKit coordinates
