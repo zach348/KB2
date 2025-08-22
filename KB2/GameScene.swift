@@ -221,6 +221,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private var safeAreaTopInset: CGFloat = 0
     private var fadeOverlayNode: SKSpriteNode!
     
+    // --- Breathing Cue Icons ---
+    private var inhaleChevronNode: SKShapeNode!
+    private var exhaleChevronNode: SKShapeNode!
+    private var holdCircleNode: SKShapeNode!
+    
     // --- Session UI Elements ---
     private var sessionProgressBar: SKShapeNode?
     private var sessionProgressFill: SKShapeNode?
@@ -449,8 +454,45 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         countdownLabel.position = CGPoint(x: frame.midX, y: frame.maxY - safeAreaTopInset - 60); countdownLabel.horizontalAlignmentMode = .center; countdownLabel.isHidden = true; addChild(countdownLabel)
         arousalLabel.fontName = "HelveticaNeue-Light"; arousalLabel.fontSize = 16; arousalLabel.fontColor = .lightGray
         arousalLabel.position = CGPoint(x: frame.maxX - 20, y: frame.maxY - safeAreaTopInset - 30); arousalLabel.horizontalAlignmentMode = .right; addChild(arousalLabel)
-        breathingCueLabel.fontName = "HelveticaNeue-Bold"; breathingCueLabel.fontSize = 36; breathingCueLabel.fontColor = .white
+        breathingCueLabel.fontName = "HelveticaNeue-Bold"; breathingCueLabel.fontSize = 26; breathingCueLabel.fontColor = .white
         breathingCueLabel.position = CGPoint(x: frame.midX, y: frame.midY + 50); breathingCueLabel.horizontalAlignmentMode = .center; breathingCueLabel.isHidden = true; addChild(breathingCueLabel)
+        
+        // --- Setup Breathing Cue Icons ---
+        let iconSize = CGSize(width: 22, height: 22)
+        let iconPosition = CGPoint(x: frame.midX, y: frame.midY)
+        
+        // Inhale Chevron (Up)
+        let inhalePath = UIBezierPath()
+        inhalePath.move(to: CGPoint(x: -iconSize.width / 2, y: -iconSize.height / 4))
+        inhalePath.addLine(to: CGPoint(x: 0, y: iconSize.height / 4))
+        inhalePath.addLine(to: CGPoint(x: iconSize.width / 2, y: -iconSize.height / 4))
+        inhaleChevronNode = SKShapeNode(path: inhalePath.cgPath)
+        inhaleChevronNode.position = iconPosition
+        inhaleChevronNode.strokeColor = .white
+        inhaleChevronNode.lineWidth = 4
+        inhaleChevronNode.isHidden = true
+        addChild(inhaleChevronNode)
+        
+        // Exhale Chevron (Down)
+        let exhalePath = UIBezierPath()
+        exhalePath.move(to: CGPoint(x: -iconSize.width / 2, y: iconSize.height / 4))
+        exhalePath.addLine(to: CGPoint(x: 0, y: -iconSize.height / 4))
+        exhalePath.addLine(to: CGPoint(x: iconSize.width / 2, y: iconSize.height / 4))
+        exhaleChevronNode = SKShapeNode(path: exhalePath.cgPath)
+        exhaleChevronNode.position = iconPosition
+        exhaleChevronNode.strokeColor = .white
+        exhaleChevronNode.lineWidth = 4
+        exhaleChevronNode.isHidden = true
+        addChild(exhaleChevronNode)
+        
+        // Hold Circle
+        holdCircleNode = SKShapeNode(circleOfRadius: iconSize.width / 3)
+        holdCircleNode.position = iconPosition
+        holdCircleNode.strokeColor = .white
+        holdCircleNode.fillColor = .clear
+        holdCircleNode.lineWidth = 4
+        holdCircleNode.isHidden = true
+        addChild(holdCircleNode)
         
         // Setup challenge phase indicator (moved to bottom-right corner)
         challengeIndicator = SKShapeNode(circleOfRadius: 10)
@@ -1735,25 +1777,49 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func updateBreathingPhase(_ newPhase: BreathingPhase) {
         currentBreathingPhase = newPhase
         
-        // Only update the breathing cue label text if this is the first cycle
         if !completedFirstBreathingCycle {
+            // First Cycle: Use descriptive text labels
+            breathingCueLabel.isHidden = false
+            inhaleChevronNode.isHidden = true
+            exhaleChevronNode.isHidden = true
+            holdCircleNode.isHidden = true
+            
             switch newPhase {
-            case .idle: 
+            case .idle:
                 breathingCueLabel.text = ""
-            case .inhale: 
-                breathingCueLabel.text = "Inhale"
+            case .inhale:
+                breathingCueLabel.text = "Inhale as the balls expand"
             case .partialExhale:
                 breathingCueLabel.text = ""
             case .remainderExhale:
-                breathingCueLabel.text = "Exhale"
+                breathingCueLabel.text = "Exhale as the balls contract"
             case .holdMidExhale, .holdAfterExhale:
                 breathingCueLabel.text = "Hold"
             }
-            breathingCueLabel.isHidden = false
         } else {
-            // For cycles after the first one, hide the label and clear the text
+            // Subsequent Cycles: Use iconic cues
             breathingCueLabel.isHidden = true
             breathingCueLabel.text = ""
+            
+            switch newPhase {
+            case .inhale:
+                inhaleChevronNode.isHidden = false
+                exhaleChevronNode.isHidden = true
+                holdCircleNode.isHidden = true
+            case .remainderExhale:
+                inhaleChevronNode.isHidden = true
+                exhaleChevronNode.isHidden = false
+                holdCircleNode.isHidden = true
+            case .holdMidExhale, .holdAfterExhale:
+                inhaleChevronNode.isHidden = true
+                exhaleChevronNode.isHidden = true
+                holdCircleNode.isHidden = false
+            case .idle, .partialExhale:
+                // Hide all icons during transitions or idle
+                inhaleChevronNode.isHidden = true
+                exhaleChevronNode.isHidden = true
+                holdCircleNode.isHidden = true
+            }
         }
     }
 
