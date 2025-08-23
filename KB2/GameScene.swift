@@ -1803,11 +1803,23 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 inhaleChevronNode.isHidden = true
                 exhaleChevronNode.isHidden = false
                 holdCircleNode.isHidden = true
-            case .holdMidExhale, .holdAfterExhale:
+            case .holdMidExhale:
                 breathingCueLabel.text = "Hold"
                 inhaleChevronNode.isHidden = true
                 exhaleChevronNode.isHidden = true
                 holdCircleNode.isHidden = false
+                // Set circle to solid for mid-exhale hold
+                holdCircleNode.fillColor = .white
+                holdCircleNode.strokeColor = .white
+                holdCircleNode.lineWidth = 4
+            case .holdAfterExhale:
+                breathingCueLabel.text = "Hold"
+                inhaleChevronNode.isHidden = true
+                exhaleChevronNode.isHidden = true
+                holdCircleNode.isHidden = false
+                // Set circle to hollow for after-exhale hold
+                holdCircleNode.fillColor = .clear
+                holdCircleNode.lineWidth = 4
             }
         } else {
             // Subsequent Cycles: Use iconic cues only
@@ -1823,10 +1835,21 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 inhaleChevronNode.isHidden = true
                 exhaleChevronNode.isHidden = false
                 holdCircleNode.isHidden = true
-            case .holdMidExhale, .holdAfterExhale:
+        case .holdMidExhale:
+            inhaleChevronNode.isHidden = true
+            exhaleChevronNode.isHidden = true
+            holdCircleNode.isHidden = false
+            // Set circle to solid for mid-exhale hold
+            holdCircleNode.fillColor = .white
+            holdCircleNode.strokeColor = .white
+            holdCircleNode.lineWidth = 4
+            case .holdAfterExhale:
                 inhaleChevronNode.isHidden = true
                 exhaleChevronNode.isHidden = true
                 holdCircleNode.isHidden = false
+                // Set circle to hollow for after-exhale hold
+                holdCircleNode.fillColor = .clear
+                holdCircleNode.lineWidth = 4
             case .idle, .partialExhale:
                 // Hide all icons during transitions or idle
                 inhaleChevronNode.isHidden = true
