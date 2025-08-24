@@ -266,7 +266,7 @@ private struct AccuracyCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Accuracy")
+                Text("Focus Quality")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundColor(.white)

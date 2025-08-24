@@ -1661,10 +1661,14 @@ class AdaptiveDifficultyManager {
             if abs(potentialChange) < config.domConvergenceThreshold || saturatedOutward {
                 // DOM is effectively stable/converged
                 domConvergenceCounters[domType] = currentConvergenceCount + 1
-                print("[ADM PD Controller]   └─ Convergence (effective) count: \(currentConvergenceCount + 1)/\(config.domConvergenceDuration) (Δ=\(String(format: "%.4f", potentialChange))\(saturatedOutward ? ", SATURATED" : ""))")
                 
-                // Check if ready for exploration nudge
-                if domConvergenceCounters[domType]! >= config.domConvergenceDuration {
+                // Determine appropriate convergence criterion based on boundary saturation
+                let convergenceCriterion = saturatedOutward ? config.domBoundaryConvergenceDuration : config.domConvergenceDuration
+                
+                print("[ADM PD Controller]   └─ Convergence (effective) count: \(currentConvergenceCount + 1)/\(convergenceCriterion) (Δ=\(String(format: "%.4f", potentialChange))\(saturatedOutward ? ", SATURATED [boundary criterion]" : ""))")
+                
+                // Check if ready for exploration nudge using the appropriate criterion
+                if domConvergenceCounters[domType]! >= convergenceCriterion {
                     // Apply exploration nudge away from current position (boundary-tunable if saturated)
                     let nudgeDirection: CGFloat = (currentPosition < 0.5) ? 1.0 : -1.0
                     let nudgeMagnitude: CGFloat = saturatedOutward

@@ -47,10 +47,13 @@ struct OnboardingView: View {
             page2[range2].font = boldFont
         }
         
-        var page3 = AttributedString("To do this, Kalibrate uses progressively changing synchronized pulses of light, sound, and vibration that adapt to influence how you feel over the course of a session.")
+        var page3 = AttributedString("To do this, Kalibrate uses progressively changing synchronized pulses of light, sound, and vibration that adapt to influence how you feel over the course of a session. You should use headphones for maximal benefit.")
         page3.font = baseFont
-        if let range = page3.range(of: "progressively changing synchronized pulses") {
-            page3[range].font = boldFont
+        if let range1 = page3.range(of: "progressively changing synchronized pulses of light, sound, and vibration") {
+            page3[range1].font = boldFont
+        }
+        if let range2 = page3.range(of: "You should use headphones for maximal benefit.") {
+            page3[range2].font = boldFont
         }
         
         var page4 = AttributedString("Each session has two parts: a focus task to first engage and then settle your mind, followed by guided breathing to deepen your calm.")
@@ -68,15 +71,15 @@ struct OnboardingView: View {
             page5[range].font = boldFont
         }
         
-        var page6 = AttributedString("The challenge you face will evolve over the course of the session—at first, you'll follow targets that look almost identical to distractors. As the session progresses, distinguishing targets becomes easier as movement slows down, but your working memory is challenged more as the number of targets increases.")
+        var page6 = AttributedString("The challenge you face will evolve over the course of the session. As the session progresses, distinguishing targets becomes easier and movement slows down, but your memory is challenged as the number of targets increases.")
         page6.font = baseFont
         if let range1 = page6.range(of: "The challenge you face will evolve over the course of the session") {
             page6[range1].font = boldFont
         }
-        if let range2 = page6.range(of: "easier as movement slows down") {
+        if let range2 = page6.range(of: "distinguishing targets becomes easier") {
             page6[range2].font = boldFont
         }
-        if let range3 = page6.range(of: "working memory is challenged more") {
+        if let range3 = page6.range(of: "memory is challenged") {
             page6[range3].font = boldFont
         }
         

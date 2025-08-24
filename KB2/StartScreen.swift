@@ -79,6 +79,16 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
         titleLabel.position = CGPoint(x: frame.midX, y: frame.maxY - 120)
         addChild(titleLabel)
         
+        // TM symbol (smaller, positioned next to title)
+        let tmLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        tmLabel.text = "™"
+        tmLabel.fontSize = 14 // 60% reduction from 36
+        tmLabel.fontColor = SKColor(cgColor: whiteColor.cgColor)
+        // Position to the right of the main title
+        let titleWidth = titleLabel.frame.width
+        tmLabel.position = CGPoint(x: titleLabel.position.x + titleWidth/2 + 5, y: titleLabel.position.y + 8)
+        addChild(tmLabel)
+        
         // Subtitle
         let subtitleLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
         subtitleLabel.text = "(Don't forget your headphones...)"
