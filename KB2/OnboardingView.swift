@@ -68,15 +68,15 @@ struct OnboardingView: View {
             page5[range].font = boldFont
         }
         
-        var page6 = AttributedString("The challenge you face will evolve over the course of the session—at first, you'll follow targets that look almost identical to distractors. As the session progresses, distinguishing targets becomes easier as movement slows down, but your working memory is challenged more as the number of targets increases.")
+        var page6 = AttributedString("The challenge you face will evolve over the course of the session. As the session progresses, distinguishing targets becomes easier and movement slows down, but your memory is challenged as the number of targets increases.")
         page6.font = baseFont
         if let range1 = page6.range(of: "The challenge you face will evolve over the course of the session") {
             page6[range1].font = boldFont
         }
-        if let range2 = page6.range(of: "easier as movement slows down") {
+        if let range2 = page6.range(of: "easier and movement slows down") {
             page6[range2].font = boldFont
         }
-        if let range3 = page6.range(of: "working memory is challenged more") {
+        if let range3 = page6.range(of: "memory is challenged") {
             page6[range3].font = boldFont
         }
         

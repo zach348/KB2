@@ -109,7 +109,7 @@ struct GameConfiguration {
     let minIdentificationDurationAtHighArousal: TimeInterval = 0.75
     // Color Similarity / Discriminatory Load
     let targetColor_LowArousal: SKColor = SKColor(red: 0.2, green: 0.6, blue: 1.0, alpha: 1.0) // Bright Blue
-    let distractorColor_LowArousal: SKColor = SKColor(red: 0.3, green: 1.0, blue: 0.6, alpha: 1.0) // Bright Green
+    let distractorColor_LowArousal: SKColor = SKColor(red: 0.25, green: 1.0, blue: 0.75, alpha: 1.0) // Bright Green
     let targetColor_HighArousal: SKColor = SKColor(red: 1.0, green: 0.4, blue: 0.2, alpha: 1.0) // Orange-Red
     let distractorColor_HighArousal: SKColor = SKColor(red: 0.8, green: 0.6, blue: 0.2, alpha: 1.0) // Orange-Yellow
     // REMOVED: hiddenColor (will use activeDistractorColor)
@@ -222,14 +222,14 @@ struct GameConfiguration {
     
     // Discriminability Factor (higher is easier - more different colors)
     let discriminabilityFactor_MinArousal_EasiestSetting: CGFloat = 1.0
-    let discriminabilityFactor_MinArousal_HardestSetting: CGFloat = 0.65
+    let discriminabilityFactor_MinArousal_HardestSetting: CGFloat = 0.6
     let discriminabilityFactor_MaxArousal_EasiestSetting: CGFloat = 0.3
     let discriminabilityFactor_MaxArousal_HardestSetting: CGFloat = 0.075
     
     // Mean Ball Speed (lower is easier)
     let meanBallSpeed_MinArousal_EasiestSetting: CGFloat = 25.0
     let meanBallSpeed_MinArousal_HardestSetting: CGFloat = 75.0
-    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 600.0
+    let meanBallSpeed_MaxArousal_EasiestSetting: CGFloat = 700.0
     let meanBallSpeed_MaxArousal_HardestSetting: CGFloat = 1000.0
     
     // Ball Speed Standard Deviation (lower is easier)
@@ -323,19 +323,19 @@ struct GameConfiguration {
     // --- DOM Adaptation Rates (Phase 5) ---
     // These now act as base adaptation rates, not budget shares
     let domAdaptationRates_LowMidArousal: [DOMTargetType: CGFloat] = [
-        .targetCount: 4.0,
+        .targetCount: 2.0,
         .responseTime: 1.5,
-        .discriminatoryLoad: 4.0,
-        .meanBallSpeed: 2.0,
-        .ballSpeedSD: 2.0
+        .discriminatoryLoad: 5.0,
+        .meanBallSpeed: 1.0,
+        .ballSpeedSD: 1.0
     ]
     
     let domAdaptationRates_HighArousal: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 6.0,
-        .meanBallSpeed: 3.0,
-        .ballSpeedSD: 3.0,
-        .responseTime: 2.5,
-        .targetCount: 2.0
+        .discriminatoryLoad: 8.0,
+        .meanBallSpeed: 1.0,
+        .ballSpeedSD: 1.0,
+        .responseTime: 1.0,
+        .targetCount: 1.0
     ]
     
     // --- Global Performance Target ---
@@ -426,7 +426,12 @@ struct GameConfiguration {
     /// Number of consecutive rounds a DOM must be stable to be considered converged
     /// Default: 5 rounds
     /// Prevents premature convergence detection due to temporary stability
-    var domConvergenceDuration: Int = 4
+    var domConvergenceDuration: Int = 6
+    
+    /// Number of consecutive rounds a DOM must be stable at a boundary (0.0 or 1.0) before exploration nudge
+    /// Default: 6 rounds (higher than domConvergenceDuration for more cautious boundary handling)
+    /// Allows for different convergence criteria when DOM is saturated at bounds
+    var domBoundaryConvergenceDuration: Int = 3
     
     /// Controlled nudge factor applied to converged DOMs to stimulate learning
     /// Default: 0.03 (3% of normalized range)
@@ -444,7 +449,7 @@ struct GameConfiguration {
     /// Maximum signal magnitude per round to prevent jarring difficulty changes
     /// Default: 0.15 (15% of normalized range)
     /// This clamps the PD controller output to ensure smooth difficulty transitions
-    var domMaxSignalPerRound: CGFloat = 0.05
+    var domMaxSignalPerRound: CGFloat = 0.075
     
     // --- Direction-Specific Adaptation Rates (Phase 5 - bypassSmoothing resolution) ---
     
@@ -463,12 +468,13 @@ struct GameConfiguration {
     var domEasingRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 1.4,
         .ballSpeedSD: 1.4,
-        .discriminatoryLoad: 2.5
+        .discriminatoryLoad: 7.5,
+        .targetCount: 1.0
     ]
     var domHardeningRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 1.0,
         .ballSpeedSD: 1.0,
-        .discriminatoryLoad: 2.0,
-        .targetCount: 2.5
+        .discriminatoryLoad: 5.0,
+        .targetCount: 1.75
     ]
 }
