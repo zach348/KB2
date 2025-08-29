@@ -109,9 +109,12 @@ class TutorialManager {
     private func endTutorial() {
         FirstRunManager.shared.hasCompletedTutorial = true
         overlay?.removeFromParent()
-        if let view = scene?.view, let vc = view.window?.rootViewController as? GameViewController {
-            vc.presentStartScreen()
-        }
+        
+        // Stop all audio and haptic feedback before transitioning
+        scene?.stopTutorialAudioAndHaptics()
+        
+        // Trigger the completion handler to continue the flow
+        scene?.tutorialCompletionHandler?()
     }
     
     func handleTap(at location: CGPoint) {

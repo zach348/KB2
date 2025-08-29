@@ -91,6 +91,9 @@ private var lastUploadedProgressIncrement: Int = 0 // ADDED for partial uploads
 private var isPartialUploadInProgress: Bool = false // ADDED to prevent rapid partial uploads
 private var tutorialManager: TutorialManager?
 
+// Tutorial completion callback
+var tutorialCompletionHandler: (() -> Void)?
+
 // --- Session Management Properties ---
 var tutorialMode: Bool = false
 var sessionMode: Bool = false
@@ -3194,6 +3197,33 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 ball.hideIdentity(hiddenColor: activeDistractorColor)
             }
         }
+    }
+    
+    // MARK: - Tutorial Cleanup
+    /// Explicitly stops all audio and haptic components for clean tutorial exit
+    func stopTutorialAudioAndHaptics() {
+        print("GameScene: Stopping tutorial audio and haptics...")
+        
+        // Stop precision timer
+        precisionTimer?.stop()
+        
+        // Stop audio manager
+        audioManager?.stopEngine()
+        
+        // Stop haptic engine
+        if hapticsReady {
+            hapticEngine?.stop(completionHandler: { error in
+                if let error = error {
+                    print("Error stopping haptic engine during tutorial cleanup: \(error.localizedDescription)")
+                }
+            })
+            hapticsReady = false
+        }
+        
+        // Stop any ongoing actions
+        removeAllActions()
+        
+        print("GameScene: Tutorial audio and haptics stopped.")
     }
 
 } // Final closing brace for GameScene Class

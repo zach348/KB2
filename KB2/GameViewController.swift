@@ -10,6 +10,9 @@ class GameViewController: UIViewController {
     var preSessionEMA: EMAResponse?
     
     private var didCheckEntryFlow = false
+    
+    // Store session parameters while tutorial is running
+    private var pendingSessionParameters: (duration: TimeInterval, profile: SessionProfile, initialArousal: CGFloat)?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -81,7 +84,11 @@ class GameViewController: UIViewController {
         let shouldShowTutorial = shouldForceTutorial || !FirstRunManager.shared.hasCompletedTutorial
 
         if shouldShowTutorial {
-            presentTutorial()
+            // Store session parameters for after tutorial completion
+            self.pendingSessionParameters = (sessionDuration, sessionProfile, initialArousalFromStartScreen)
+            presentTutorial { [weak self] in
+                self?.startPendingSession()
+            }
             return
         }
         // Start a new data logging session BEFORE presenting the pre-session EMA
@@ -189,7 +196,7 @@ class GameViewController: UIViewController {
         }
     }
 
-    func presentTutorial() {
+    func presentTutorial(completion: (() -> Void)? = nil) {
         guard let view = self.view as? SKView else {
             print("Error: GameViewController's view is not an SKView. Cannot present Tutorial.")
             return
@@ -197,11 +204,29 @@ class GameViewController: UIViewController {
         view.presentScene(nil)
         let tutorialScene = GameScene(size: view.bounds.size)
         tutorialScene.tutorialMode = true
+        tutorialScene.tutorialCompletionHandler = completion
         tutorialScene.scaleMode = .aspectFill
         view.presentScene(tutorialScene, transition: SKTransition.fade(withDuration: 0.5))
         view.ignoresSiblingOrder = true
         view.showsFPS = true
         view.showsNodeCount = true
+    }
+    
+    private func startPendingSession() {
+        guard let params = pendingSessionParameters else {
+            presentStartScreen() // Fallback
+            return
+        }
+        
+        // Clear the pending parameters
+        pendingSessionParameters = nil
+        
+        // Now start the session flow with the stored parameters
+        presentPreSessionEMAAndStartGame(
+            sessionDuration: params.duration,
+            sessionProfile: params.profile,
+            initialArousalFromStartScreen: params.initialArousal
+        )
     }
 
     private func presentGameScene(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalForEstimator: CGFloat, systemInitialArousal: CGFloat) {

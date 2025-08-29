@@ -77,7 +77,7 @@ struct GameConfiguration {
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
-    let breathingFadeOutThreshold: CGFloat = 0.025
+    let breathingFadeOutThreshold: CGFloat = 0.035
     // MODIFIED: Expanded arousal steps for finer control (0.025 increment)
     let arousalSteps: [CGFloat] = stride(from: 0.0, through: 1.0, by: 0.025).map { $0 }
     // Generates [0.0, 0.025, 0.05, 0.075, ..., 0.975, 1.0]
@@ -178,7 +178,7 @@ struct GameConfiguration {
     //====================================================================================================
     let usePreciseAudio: Bool = true // Feature flag for PreciseAudioPulser
     let minAudioFrequency: Float = 75.0 // Min frequency for rhythmic audio
-    let maxAudioFrequency: Float = 350.0 // Max frequency for rhythmic audio
+    let maxAudioFrequency: Float = 300.0 // Max frequency for rhythmic audio
     let audioMinAmplitude: Float = 0.15   // Min amplitude for audio pulse
     let audioMaxAmplitude: Float = 0.325   // Max amplitude for audio pulse
     let audioPulseRateFactor: Double = 0.8 // Factor to derive pulser rate from timer frequency
