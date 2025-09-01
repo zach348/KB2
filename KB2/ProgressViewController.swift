@@ -374,7 +374,8 @@ class ProgressViewController: UIViewController {
             calmChartView.updateData(preData: calmPreData, postData: calmPostData, dates: sessionData.map { $0.date }, granularity: currentGranularity)
             
             // Focus quality chart uses empty arrays for pre-data since focus quality is only measured post-session
-            let focusQualityData = sessionData.compactMap { $0.focusQuality }
+            // Convert from decimal (0.0-1.0) to percentage (0-100) for proper chart display
+            let focusQualityData = sessionData.compactMap { $0.focusQuality }.map { $0 * 100 }
             let emptyPreData: [Double] = []
             
             // FOCUS QUALITY DEBUG: Log final data being passed to chart
