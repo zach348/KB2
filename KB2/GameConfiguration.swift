@@ -323,19 +323,19 @@ struct GameConfiguration {
     // --- DOM Adaptation Rates (Phase 5) ---
     // These now act as base adaptation rates, not budget shares
     let domAdaptationRates_LowMidArousal: [DOMTargetType: CGFloat] = [
-        .targetCount: 2.0,
+        .targetCount: 1.0,
         .responseTime: 1.5,
-        .discriminatoryLoad: 5.0,
-        .meanBallSpeed: 1.0,
-        .ballSpeedSD: 1.0
+        .discriminatoryLoad: 2.0,
+        .meanBallSpeed: 0.7,
+        .ballSpeedSD: 0.7
     ]
     
     let domAdaptationRates_HighArousal: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 8.0,
+        .discriminatoryLoad: 3.0,
         .meanBallSpeed: 1.0,
         .ballSpeedSD: 1.0,
         .responseTime: 1.0,
-        .targetCount: 1.0
+        .targetCount: 0.7
     ]
     
     // --- Global Performance Target ---
@@ -416,7 +416,7 @@ struct GameConfiguration {
     /// Dampening factor for the derivative term in the PD controller
     /// Default: 10.0
     /// Higher values reduce the impact of performance trend slope on adaptation
-    let domSlopeDampeningFactor: CGFloat = 20.0
+    let domSlopeDampeningFactor: CGFloat = 40.0
     
     /// Half-life in hours for recency weighting of historical performance data
     /// Default: 0.25 (15 minutes) - provides responsive adaptation to recent performance changes
@@ -482,13 +482,13 @@ struct GameConfiguration {
     var domEasingRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 1.4,
         .ballSpeedSD: 1.4,
-        .discriminatoryLoad: 7.5,
+        .discriminatoryLoad: 5.5,
         .targetCount: 1.0
     ]
     var domHardeningRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 1.0,
         .ballSpeedSD: 1.0,
-        .discriminatoryLoad: 5.0,
+        .discriminatoryLoad: 3.5,
         .targetCount: 1.75
     ]
 }

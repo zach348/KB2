@@ -137,9 +137,9 @@ class GameViewController: UIViewController {
         )
         
         DataLogger.shared.logEMAResponse(
-            questionId: "ema_\(contextString)_calm_agitation",
-            questionText: "How calm or agitated do you feel right now?",
-            response: response.calmAgitationLevel,
+            questionId: "ema_\(contextString)_calm_jittery",
+            questionText: "How calm or jittery do you feel right now?",
+            response: response.calmJitteryLevel,
             responseType: "VAS",
             completionTime: response.completionTime,
             context: contextString
@@ -154,7 +154,7 @@ class GameViewController: UIViewController {
             context: contextString
         )
         
-        print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Agitation=\(Int(response.calmAgitationLevel)), Energy=\(Int(response.energyLevel))")
+        print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel)), Energy=\(Int(response.energyLevel))")
     }
     
     /// Calculates the initial arousal level based on EMA responses
@@ -164,19 +164,19 @@ class GameViewController: UIViewController {
         let config = GameConfiguration()
         
         // Normalize EMA scores from 0-100 to 0.0-1.0
-        let normalizedAgitation = emaResponse.calmAgitationLevel / 100.0
+        let normalizedJittery = emaResponse.calmJitteryLevel / 100.0
         let normalizedStress = emaResponse.stressLevel / 100.0
         
-        // Calculate weighted average: 75% agitation, 25% stress
-        // Agitation is weighted more heavily as it's more directly related to physiological arousal
-        let emaArousal = (normalizedAgitation * 0.75) + (normalizedStress * 0.25)
+        // Calculate weighted average: 75% jittery level, 25% stress
+        // Jittery level is weighted more heavily as it's more directly related to physiological arousal
+        let emaArousal = (normalizedJittery * 0.75) + (normalizedStress * 0.25)
         
         // Map to the tunable range from GameConfiguration
         let rangeSpan = config.emaArousalTargetMax - config.emaArousalTargetMin
         let initialArousal = config.emaArousalTargetMin + (emaArousal * rangeSpan)
         
         print("[GameViewController] EMA-based arousal calculation:")
-        print("  ├─ Agitation: \(Int(emaResponse.calmAgitationLevel)) → \(String(format: "%.3f", normalizedAgitation))")
+        print("  ├─ Jittery: \(Int(emaResponse.calmJitteryLevel)) → \(String(format: "%.3f", normalizedJittery))")
         print("  ├─ Stress: \(Int(emaResponse.stressLevel)) → \(String(format: "%.3f", normalizedStress))")
         print("  ├─ Weighted average: \(String(format: "%.3f", emaArousal))")
         print("  ├─ Target range: [\(String(format: "%.3f", config.emaArousalTargetMin)), \(String(format: "%.3f", config.emaArousalTargetMax))]")

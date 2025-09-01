@@ -3092,9 +3092,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         )
         
         DataLogger.shared.logEMAResponse(
-            questionId: "ema_\(contextString)_calm_agitation",
-            questionText: "How calm or agitated do you feel right now?",
-            response: response.calmAgitationLevel,
+            questionId: "ema_\(contextString)_calm_jittery",
+            questionText: "How calm or jittery do you feel right now?",
+            response: response.calmJitteryLevel,
             responseType: "VAS",
             completionTime: response.completionTime,
             context: contextString
@@ -3109,7 +3109,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             context: contextString
         )
         
-        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Agitation=\(Int(response.calmAgitationLevel)), Energy=\(Int(response.energyLevel))")
+        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel)), Energy=\(Int(response.energyLevel))")
     }
 
     private func presentSurveyModal() {

@@ -111,7 +111,7 @@ class ProgressViewController: UIViewController {
         
         // Chart setup
         setupChartView(stressChartView, title: "Stress Level", metric: "Lower is better")
-        setupChartView(calmChartView, title: "Calm / Restlessness", metric: "Lower is better") 
+        setupChartView(calmChartView, title: "Calm ↔ Jittery", metric: "Lower is better")
         setupChartView(energyChartView, title: "Energy Level", metric: "Higher is better")
         
         // No data label (initially hidden)

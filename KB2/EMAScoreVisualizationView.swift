@@ -63,9 +63,9 @@ struct EMAScoreVisualizationView: View {
                             )
 
                             MetricDeltaRow(
-                                title: "Calm ↔ Agitation",
-                                pre: preEMA?.calmAgitationLevel,
-                                post: postEMA?.calmAgitationLevel,
+                                title: "Calm ↔ Jittery",
+                                pre: preEMA?.calmJitteryLevel,
+                                post: postEMA?.calmJitteryLevel,
                                 improvementWhenDecreases: true,
                                 preColor: .teal,
                                 postColor: .green
@@ -330,8 +330,8 @@ private struct AccuracyCard: View {
 
 struct EMAScoreVisualizationView_Previews: PreviewProvider {
     static var previews: some View {
-        let pre = EMAResponse(stressLevel: 62, calmAgitationLevel: 55, energyLevel: 40, completionTime: 10, emaType: .preSession)
-        let post = EMAResponse(stressLevel: 38, calmAgitationLevel: 30, energyLevel: 52, completionTime: 8, emaType: .postSession)
+        let pre = EMAResponse(stressLevel: 62, calmJitteryLevel: 55, energyLevel: 40, completionTime: 10, emaType: .preSession)
+        let post = EMAResponse(stressLevel: 38, calmJitteryLevel: 30, energyLevel: 52, completionTime: 8, emaType: .postSession)
         let summary = SessionSummary(totalRounds: 12, correctRounds: 8, accuracy: 8.0/12.0, avgReactionTime: 1.4)
 
         return Group {
