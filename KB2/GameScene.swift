@@ -91,15 +91,27 @@ private var lastUploadedProgressIncrement: Int = 0 // ADDED for partial uploads
 private var isPartialUploadInProgress: Bool = false // ADDED to prevent rapid partial uploads
 private var tutorialManager: TutorialManager?
 
+// Tutorial completion callback
+var tutorialCompletionHandler: (() -> Void)?
+
 // --- Session Management Properties ---
 var tutorialMode: Bool = false
 var sessionMode: Bool = false
 var sessionDuration: TimeInterval = 0
 var sessionStartTime: TimeInterval = 0
 var initialArousalLevel: CGFloat = 1.0
+var targetArousalForWarmup: CGFloat = 1.0 // ADDED: Target arousal from EMA calculation
 var sessionProfile: SessionProfile = .standard // Default profile
 var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
 var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point
+
+// --- ADDED: Warmup Ramp Properties ---
+private var isWarmupRampActive: Bool = false
+private var warmupRoundTargetArousal: CGFloat = 0.0
+private var warmupRampIncrement: CGFloat = 0.0
+private var warmupStartingArousal: CGFloat = 0.0
+private var isFinalWarmupRound: Bool = false
+// --- END ADDED ---
 
 // --- User Arousal Estimation ---
 var arousalEstimator: ArousalEstimator? // Tracks the user's estimated arousal level
@@ -325,6 +337,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         )
         print("GameScene: AdaptiveDifficultyManager initialized with arousal: \(admInitialArousal)")
 
+        // ADDED: Initialize warmup ramp if session mode is enabled
+        if sessionMode {
+            initializeWarmupRamp()
+        }
+
         setupPhysicsWorld(); setupWalls(); setupUI(); setupHaptics()
         // setupAudio() // REMOVED - handled by AudioManager init
         
@@ -335,8 +352,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         audioManager.startEngine() // MODIFIED
         
         if sessionMode {
+            // Ensure session target is correct for arousal calculations
+            initialArousalLevel = targetArousalForWarmup
             sessionStartTime = CACurrentMediaTime()
-            _currentArousalLevel = initialArousalLevel
             
             // Randomly determine when the breathing state should begin (40-60% range)
             breathingTransitionPoint = Double.random(in: 
@@ -980,6 +998,19 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 actualTargetsToFindInRound: actualTargetsInCompletedRound
             )
             
+            // MODIFIED: Check for warmup phase transition and handle warmup ramp advancement
+            if sessionMode && isWarmupRampActive && adm.currentPhase == .warmup {
+                advanceWarmupRampRound()
+                print("WARMUP_RAMP: Advanced after identification round (Success: \(success))")
+            } else if sessionMode && isWarmupRampActive && !isFinalWarmupRound {
+                // Check if ADM has transitioned from warmup to standard phase
+                if adm.currentPhase == .standard {
+                    // The warmup phase has just ended - this was the final warmup round
+                    isFinalWarmupRound = true
+                    print("WARMUP_RAMP: Detected end of warmup phase - entering final smoothing period")
+                }
+            }
+            
             // Explicitly force a DOM update after recording performance
             // This ensures that changes to normalized positions are immediately
             // reflected in the absolute DOM values before the next gameplay phase
@@ -1382,6 +1413,77 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         }
     }
     
+    //====================================================================================================
+    // MARK: - WARMUP RAMP MANAGEMENT
+    //====================================================================================================
+    
+    /// Initializes the warmup ramp system when session mode is enabled
+    private func initializeWarmupRamp() {
+        guard sessionMode else { return }
+        
+        // Calculate starting arousal (target * multiplier from config)
+        warmupStartingArousal = targetArousalForWarmup * gameConfiguration.warmupArousalStartMultiplier
+        
+        // Calculate the number of warmup rounds from ADM
+        guard let adm = adaptiveDifficultyManager else {
+            print("WARMUP_RAMP: ERROR - ADM not initialized")
+            return
+        }
+        
+        // Get warmup phase length from ADM (calculated in ADM init based on session duration)
+        let expectedRounds = SessionAnalytics.estimateExpectedRounds(
+            forSessionDuration: sessionDuration,
+            config: gameConfiguration,
+            initialArousal: initialArousalLevel
+        )
+        let warmupRounds = Int(CGFloat(expectedRounds) * gameConfiguration.warmupPhaseProportion)
+        
+        guard warmupRounds > 0 else {
+            print("WARMUP_RAMP: No warmup rounds calculated - ramp disabled")
+            isWarmupRampActive = false
+            return
+        }
+        
+        // Calculate increment per round to reach target from starting point
+        warmupRampIncrement = (targetArousalForWarmup - warmupStartingArousal) / CGFloat(warmupRounds)
+        
+        // Set starting arousal and initialize first round target
+        currentArousalLevel = warmupStartingArousal
+        warmupRoundTargetArousal = warmupStartingArousal + warmupRampIncrement
+        isWarmupRampActive = true
+        
+        print("WARMUP_RAMP: Initialized")
+        print("  - Target arousal: \(String(format: "%.3f", targetArousalForWarmup))")
+        print("  - Starting arousal: \(String(format: "%.3f", warmupStartingArousal))")
+        print("  - Warmup rounds: \(warmupRounds)")
+        print("  - Increment per round: \(String(format: "%.3f", warmupRampIncrement))")
+        print("  - First round target: \(String(format: "%.3f", warmupRoundTargetArousal))")
+    }
+    
+    /// Advances the warmup ramp to the next round target - called after each identification round during warmup
+    private func advanceWarmupRampRound() {
+        guard isWarmupRampActive else { return }
+        
+        // Move to next round target
+        warmupRoundTargetArousal = min(targetArousalForWarmup, warmupRoundTargetArousal + warmupRampIncrement)
+        
+        print("WARMUP_RAMP: Advanced to round target \(String(format: "%.3f", warmupRoundTargetArousal))")
+    }
+    
+    /// Updates arousal smoothly toward the current round target - called per-frame during warmup
+    private func updateWarmupRampSmoothing(deltaTime: TimeInterval) {
+        guard isWarmupRampActive else { return }
+        
+        let arousalDifference = warmupRoundTargetArousal - currentArousalLevel
+        
+        // Only apply smoothing if there's a meaningful difference
+        if abs(arousalDifference) > 0.001 {
+            // Use smoothing factor from config for per-frame interpolation
+            let smoothingStep = arousalDifference * gameConfiguration.warmupArousalSmoothingFactor
+            currentArousalLevel += smoothingStep
+        }
+    }
+
     //====================================================================================================
     // MARK: - AROUSAL MANAGEMENT
     //====================================================================================================
@@ -2131,6 +2233,18 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Note: updateArousalForSession itself contains throttling logic
             updateArousalForSession()
         }
+        
+        // ADDED: Update warmup ramp smoothing per-frame during warmup phase
+        if sessionMode && isWarmupRampActive {
+            updateWarmupRampSmoothing(deltaTime: dt)
+            
+            // Check if final warmup smoothing is complete
+            if isFinalWarmupRound && abs(currentArousalLevel - targetArousalForWarmup) < 0.005 {
+                isWarmupRampActive = false
+                isFinalWarmupRound = false
+                print("WARMUP_RAMP: Smoothing complete. Handoff to main session arousal logic.")
+            }
+        }
 
         if currentState == .tracking {
             timeUntilNextShift -= dt
@@ -2347,6 +2461,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
     private func updateArousalForSession() {
         guard sessionMode, !isSessionCompleted else { return } // Do not update if session is already completed
+        
+        // Exit if warmup ramp is active - let it control arousal exclusively
+        guard !isWarmupRampActive else { return }
         
         // Throttle updates to improve performance
         let currentTime = CACurrentMediaTime()
@@ -2975,9 +3092,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         )
         
         DataLogger.shared.logEMAResponse(
-            questionId: "ema_\(contextString)_calm_agitation",
-            questionText: "How calm or agitated do you feel right now?",
-            response: response.calmAgitationLevel,
+            questionId: "ema_\(contextString)_calm_jittery",
+            questionText: "How calm or jittery do you feel right now?",
+            response: response.calmJitteryLevel,
             responseType: "VAS",
             completionTime: response.completionTime,
             context: contextString
@@ -2992,7 +3109,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             context: contextString
         )
         
-        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Agitation=\(Int(response.calmAgitationLevel)), Energy=\(Int(response.energyLevel))")
+        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel)), Energy=\(Int(response.energyLevel))")
     }
 
     private func presentSurveyModal() {
@@ -3194,6 +3311,33 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 ball.hideIdentity(hiddenColor: activeDistractorColor)
             }
         }
+    }
+    
+    // MARK: - Tutorial Cleanup
+    /// Explicitly stops all audio and haptic components for clean tutorial exit
+    func stopTutorialAudioAndHaptics() {
+        print("GameScene: Stopping tutorial audio and haptics...")
+        
+        // Stop precision timer
+        precisionTimer?.stop()
+        
+        // Stop audio manager
+        audioManager?.stopEngine()
+        
+        // Stop haptic engine
+        if hapticsReady {
+            hapticEngine?.stop(completionHandler: { error in
+                if let error = error {
+                    print("Error stopping haptic engine during tutorial cleanup: \(error.localizedDescription)")
+                }
+            })
+            hapticsReady = false
+        }
+        
+        // Stop any ongoing actions
+        removeAllActions()
+        
+        print("GameScene: Tutorial audio and haptics stopped.")
     }
 
 } // Final closing brace for GameScene Class

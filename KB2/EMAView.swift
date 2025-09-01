@@ -29,7 +29,7 @@ struct EMAView: View {
     let onCompletion: (EMAResponse) -> Void
     
     @State private var stressLevel: Double = 50
-    @State private var calmAgitationLevel: Double = 50
+    @State private var calmJitteryLevel: Double = 50
     @State private var energyLevel: Double = 50
     @State private var startTime: Date = Date()
     
@@ -123,7 +123,7 @@ struct EMAView: View {
                     
                     // Calm/Agitation Level VAS
                     VStack(spacing: innerSpacing) {
-                        Text("How calm or agitated do you feel right now?")
+                        Text("How calm or jittery do you feel right now?")
                             .font(headlineFontSize)
                             .foregroundColor(.white)
                             .multilineTextAlignment(.center)
@@ -131,7 +131,7 @@ struct EMAView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         
                         VStack(spacing: 8) {
-                            Slider(value: $calmAgitationLevel, in: 0...100, step: 1)
+                            Slider(value: $calmJitteryLevel, in: 0...100, step: 1)
                                 .accentColor(primaryColor)
                             
                             HStack {
@@ -141,7 +141,7 @@ struct EMAView: View {
                                     .lineLimit(2)
                                     .multilineTextAlignment(.leading)
                                 Spacer()
-                                Text("Very Agitated")
+                                Text("Very Jittery")
                                     .font(isSmallScreen ? .caption2 : .caption)
                                     .foregroundColor(.gray)
                                     .lineLimit(2)
@@ -149,7 +149,7 @@ struct EMAView: View {
                             }
                         }
                         
-                        Text("\(Int(calmAgitationLevel))")
+                        Text("\(Int(calmJitteryLevel))")
                             .font(isSmallScreen ? .title3 : .title2)
                             .fontWeight(.semibold)
                             .foregroundColor(.white)
@@ -219,7 +219,7 @@ struct EMAView: View {
         // Create response object to pass back
         let response = EMAResponse(
             stressLevel: stressLevel,
-            calmAgitationLevel: calmAgitationLevel,
+            calmJitteryLevel: calmJitteryLevel,
             energyLevel: energyLevel,
             completionTime: completionTime,
             emaType: emaType
@@ -232,7 +232,7 @@ struct EMAView: View {
 
 struct EMAResponse {
     let stressLevel: Double
-    let calmAgitationLevel: Double
+    let calmJitteryLevel: Double
     let energyLevel: Double
     let completionTime: TimeInterval
     let emaType: EMAType

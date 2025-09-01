@@ -77,7 +77,7 @@ struct GameConfiguration {
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
-    let breathingFadeOutThreshold: CGFloat = 0.025
+    let breathingFadeOutThreshold: CGFloat = 0.035
     // MODIFIED: Expanded arousal steps for finer control (0.025 increment)
     let arousalSteps: [CGFloat] = stride(from: 0.0, through: 1.0, by: 0.025).map { $0 }
     // Generates [0.0, 0.025, 0.05, 0.075, ..., 0.975, 1.0]
@@ -178,7 +178,7 @@ struct GameConfiguration {
     //====================================================================================================
     let usePreciseAudio: Bool = true // Feature flag for PreciseAudioPulser
     let minAudioFrequency: Float = 75.0 // Min frequency for rhythmic audio
-    let maxAudioFrequency: Float = 350.0 // Max frequency for rhythmic audio
+    let maxAudioFrequency: Float = 300.0 // Max frequency for rhythmic audio
     let audioMinAmplitude: Float = 0.15   // Min amplitude for audio pulse
     let audioMaxAmplitude: Float = 0.325   // Max amplitude for audio pulse
     let audioPulseRateFactor: Double = 0.8 // Factor to derive pulser rate from timer frequency
@@ -283,7 +283,7 @@ struct GameConfiguration {
     // Direction-specific smoothing factors
     // For hardening (making the game harder)
     let domHardeningSmoothingFactors: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 0.3,  // Original value
+        .discriminatoryLoad: 0.15,  // Original value
         .meanBallSpeed: 0.3,       // Original value
         .ballSpeedSD: 0.3,         // Original value
         .responseTime: 0.3,       // Original value
@@ -323,19 +323,19 @@ struct GameConfiguration {
     // --- DOM Adaptation Rates (Phase 5) ---
     // These now act as base adaptation rates, not budget shares
     let domAdaptationRates_LowMidArousal: [DOMTargetType: CGFloat] = [
-        .targetCount: 2.0,
+        .targetCount: 1.0,
         .responseTime: 1.5,
-        .discriminatoryLoad: 5.0,
-        .meanBallSpeed: 1.0,
-        .ballSpeedSD: 1.0
+        .discriminatoryLoad: 2.0,
+        .meanBallSpeed: 0.7,
+        .ballSpeedSD: 0.7
     ]
     
     let domAdaptationRates_HighArousal: [DOMTargetType: CGFloat] = [
-        .discriminatoryLoad: 8.0,
+        .discriminatoryLoad: 3.0,
         .meanBallSpeed: 1.0,
         .ballSpeedSD: 1.0,
         .responseTime: 1.0,
-        .targetCount: 1.0
+        .targetCount: 0.7
     ]
     
     // --- Global Performance Target ---
@@ -359,11 +359,25 @@ struct GameConfiguration {
     /// Set to false to improve save performance; set to true only when debugging PD profiles across sessions.
     var persistDomPerformanceProfilesInState: Bool = true
 
+    // --- EMA-Based Initial Arousal Configuration ---
+    
+    /// The minimum arousal level that can be set from the pre-session EMA.
+    let emaArousalTargetMin: CGFloat = 0.65
+    
+    /// The maximum arousal level that can be set from the pre-session EMA.
+    let emaArousalTargetMax: CGFloat = 1.0
+    
+    /// Multiplier to determine the starting arousal for the warmup ramp (e.g., 0.85 means start at 85% of the EMA-calculated target arousal).
+    let warmupArousalStartMultiplier: CGFloat = 0.8
+    
+    /// Controls how quickly the arousal smooths towards its per-round target during the warmup ramp. Higher values mean faster smoothing.
+    let warmupArousalSmoothingFactor: CGFloat = 0.005
+
     // --- Session-Aware Adaptation (Phase 5) ---
     
     /// Enables session phase management (warmup, standard)
     /// When true, sessions start with a warmup phase for recalibration
-    var enableSessionPhases: Bool = false
+    var enableSessionPhases: Bool = true
     
     /// Proportion of the session dedicated to warmup phase (0.0-1.0)
     /// Default: 0.25 (25% of expected rounds)
@@ -373,17 +387,17 @@ struct GameConfiguration {
     /// Initial difficulty multiplier applied during warmup phase
     /// Default: 0.85 (85% of normal difficulty)
     /// This ensures players start at a comfortable level while the system recalibrates
-    let warmupInitialDifficultyMultiplier: CGFloat = 0.9
+    let warmupInitialDifficultyMultiplier: CGFloat = 1.0
     
     /// Performance target during warmup phase (0.0-1.0)
     /// Default: 0.60 (vs 0.50 in standard phase)
     /// Higher target prevents over-hardening while finding appropriate difficulty
-    let warmupPerformanceTarget: CGFloat = 0.7
+    let warmupPerformanceTarget: CGFloat = 0.6
     
     /// Adaptation rate multiplier during warmup phase
     /// Default: 1.7 (1.7x faster than normal)
     /// Faster adaptation helps quickly find the player's current appropriate difficulty
-    let warmupAdaptationRateMultiplier: CGFloat = 1.5
+    let warmupAdaptationRateMultiplier: CGFloat = 1.0
     
     // --- DOM-Specific Performance Profiling (Phase 5.2) ---
     
@@ -402,7 +416,7 @@ struct GameConfiguration {
     /// Dampening factor for the derivative term in the PD controller
     /// Default: 10.0
     /// Higher values reduce the impact of performance trend slope on adaptation
-    let domSlopeDampeningFactor: CGFloat = 20.0
+    let domSlopeDampeningFactor: CGFloat = 40.0
     
     /// Half-life in hours for recency weighting of historical performance data
     /// Default: 0.25 (15 minutes) - provides responsive adaptation to recent performance changes
@@ -468,13 +482,13 @@ struct GameConfiguration {
     var domEasingRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 1.4,
         .ballSpeedSD: 1.4,
-        .discriminatoryLoad: 7.5,
+        .discriminatoryLoad: 5.5,
         .targetCount: 1.0
     ]
     var domHardeningRateMultiplierByDOM: [DOMTargetType: CGFloat] = [
         .meanBallSpeed: 1.0,
         .ballSpeedSD: 1.0,
-        .discriminatoryLoad: 5.0,
+        .discriminatoryLoad: 3.5,
         .targetCount: 1.75
     ]
 }

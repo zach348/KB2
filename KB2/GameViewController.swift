@@ -10,6 +10,9 @@ class GameViewController: UIViewController {
     var preSessionEMA: EMAResponse?
     
     private var didCheckEntryFlow = false
+    
+    // Store session parameters while tutorial is running
+    private var pendingSessionParameters: (duration: TimeInterval, profile: SessionProfile, initialArousal: CGFloat)?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -81,7 +84,11 @@ class GameViewController: UIViewController {
         let shouldShowTutorial = shouldForceTutorial || !FirstRunManager.shared.hasCompletedTutorial
 
         if shouldShowTutorial {
-            presentTutorial()
+            // Store session parameters for after tutorial completion
+            self.pendingSessionParameters = (sessionDuration, sessionProfile, initialArousalFromStartScreen)
+            presentTutorial { [weak self] in
+                self?.startPendingSession()
+            }
             return
         }
         // Start a new data logging session BEFORE presenting the pre-session EMA
@@ -96,33 +103,14 @@ class GameViewController: UIViewController {
 
             // Dismiss the EMA view and then present GameScene
             self?.dismiss(animated: true, completion: {
-                // Use arousal from EMA if available, otherwise fallback to StartScreen's default/placeholder
-                // For now, we assume EMAView provides the necessary arousal levels in its response.
-                // We'll need to ensure GameScene can accept this.
-                // Let's assume emaResponse contains the necessary arousal level.
-                // For simplicity, we'll use a combined or primary arousal from EMA.
-                // This part might need refinement based on EMAResponse structure.
-                // For now, let's assume a primary 'overallArousal' or similar from EMA,
-                // or we use the initialArousalFromStartScreen as a fallback if EMA doesn't provide one directly.
-                // The key is that GameScene needs an initialArousal.
+                // NEW: Calculate dynamic initial arousal from EMA responses
+                let calculatedArousal = self?.calculateInitialArousal(from: emaResponse) ?? initialArousalFromStartScreen
                 
-                // For now, we'll pass the initialArousalFromStartScreen,
-                // and GameScene will need to be updated to potentially use a more specific value from EMA if available.
-                // Or, we decide here which arousal value to pass to GameScene.
-                // Let's assume EMAView's response will give us a single value for now, e.g., average of the VAS scales or a primary one.
-                // For this iteration, we'll use the initialArousalFromStartScreen as the primary source,
-                // as StartScreen already had a mechanism for this. The EMA logging is separate.
-                // The GameScene's initialArousalLevel will be set using this.
-                
-                // The EMA response itself (stress, calm, energy) is logged.
-                // For initializing GameScene's arousalEstimator, we'll use the initialArousalFromStartScreen
-                // as that was the prior behavior for the StartScreen's own slider.
-                // If a more direct EMA-derived arousal is needed for GameScene init, GameScene's init or properties would need adjustment.
                 self?.presentGameScene(
                     sessionDuration: sessionDuration,
                     sessionProfile: sessionProfile,
-                    initialArousalForEstimator: initialArousalFromStartScreen, // This was the value from StartScreen's slider
-                    systemInitialArousal: initialArousalFromStartScreen // GameScene's own initialArousalLevel
+                    initialArousalForEstimator: calculatedArousal, // Now using EMA-calculated value
+                    systemInitialArousal: calculatedArousal // Now using EMA-calculated value
                 )
             })
         }
@@ -149,9 +137,9 @@ class GameViewController: UIViewController {
         )
         
         DataLogger.shared.logEMAResponse(
-            questionId: "ema_\(contextString)_calm_agitation",
-            questionText: "How calm or agitated do you feel right now?",
-            response: response.calmAgitationLevel,
+            questionId: "ema_\(contextString)_calm_jittery",
+            questionText: "How calm or jittery do you feel right now?",
+            response: response.calmJitteryLevel,
             responseType: "VAS",
             completionTime: response.completionTime,
             context: contextString
@@ -166,7 +154,35 @@ class GameViewController: UIViewController {
             context: contextString
         )
         
-        print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Agitation=\(Int(response.calmAgitationLevel)), Energy=\(Int(response.energyLevel))")
+        print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel)), Energy=\(Int(response.energyLevel))")
+    }
+    
+    /// Calculates the initial arousal level based on EMA responses
+    /// - Parameter emaResponse: The user's pre-session EMA responses
+    /// - Returns: A CGFloat in the range specified by emaArousalTargetMin to emaArousalTargetMax
+    private func calculateInitialArousal(from emaResponse: EMAResponse) -> CGFloat {
+        let config = GameConfiguration()
+        
+        // Normalize EMA scores from 0-100 to 0.0-1.0
+        let normalizedJittery = emaResponse.calmJitteryLevel / 100.0
+        let normalizedStress = emaResponse.stressLevel / 100.0
+        
+        // Calculate weighted average: 75% jittery level, 25% stress
+        // Jittery level is weighted more heavily as it's more directly related to physiological arousal
+        let emaArousal = (normalizedJittery * 0.75) + (normalizedStress * 0.25)
+        
+        // Map to the tunable range from GameConfiguration
+        let rangeSpan = config.emaArousalTargetMax - config.emaArousalTargetMin
+        let initialArousal = config.emaArousalTargetMin + (emaArousal * rangeSpan)
+        
+        print("[GameViewController] EMA-based arousal calculation:")
+        print("  ├─ Jittery: \(Int(emaResponse.calmJitteryLevel)) → \(String(format: "%.3f", normalizedJittery))")
+        print("  ├─ Stress: \(Int(emaResponse.stressLevel)) → \(String(format: "%.3f", normalizedStress))")
+        print("  ├─ Weighted average: \(String(format: "%.3f", emaArousal))")
+        print("  ├─ Target range: [\(String(format: "%.3f", config.emaArousalTargetMin)), \(String(format: "%.3f", config.emaArousalTargetMax))]")
+        print("  └─ Calculated initial arousal: \(String(format: "%.3f", initialArousal))")
+        
+        return CGFloat(initialArousal)
     }
 
     func presentStartScreen() {
@@ -189,7 +205,7 @@ class GameViewController: UIViewController {
         }
     }
 
-    func presentTutorial() {
+    func presentTutorial(completion: (() -> Void)? = nil) {
         guard let view = self.view as? SKView else {
             print("Error: GameViewController's view is not an SKView. Cannot present Tutorial.")
             return
@@ -197,11 +213,29 @@ class GameViewController: UIViewController {
         view.presentScene(nil)
         let tutorialScene = GameScene(size: view.bounds.size)
         tutorialScene.tutorialMode = true
+        tutorialScene.tutorialCompletionHandler = completion
         tutorialScene.scaleMode = .aspectFill
         view.presentScene(tutorialScene, transition: SKTransition.fade(withDuration: 0.5))
         view.ignoresSiblingOrder = true
         view.showsFPS = true
         view.showsNodeCount = true
+    }
+    
+    private func startPendingSession() {
+        guard let params = pendingSessionParameters else {
+            presentStartScreen() // Fallback
+            return
+        }
+        
+        // Clear the pending parameters
+        pendingSessionParameters = nil
+        
+        // Now start the session flow with the stored parameters
+        presentPreSessionEMAAndStartGame(
+            sessionDuration: params.duration,
+            sessionProfile: params.profile,
+            initialArousalFromStartScreen: params.initialArousal
+        )
     }
 
     private func presentGameScene(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalForEstimator: CGFloat, systemInitialArousal: CGFloat) {
@@ -213,6 +247,9 @@ class GameViewController: UIViewController {
             gameScene.sessionDuration = sessionDuration
             gameScene.sessionProfile = sessionProfile
             gameScene.initialArousalLevel = systemInitialArousal // For GameScene's own logic
+            
+            // NEW: Pass the target arousal for warmup ramp
+            gameScene.targetArousalForWarmup = systemInitialArousal
             
             // Initialize ArousalEstimator with the value from StartScreen/EMA
             gameScene.arousalEstimator = ArousalEstimator(initialArousal: initialArousalForEstimator)

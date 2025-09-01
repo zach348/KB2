@@ -122,13 +122,13 @@ class AdaptiveDifficultyManager {
     /// Represents the current phase of the gaming session
     /// - warmup: Initial recalibration phase with reduced difficulty and faster adaptation
     /// - standard: Main gameplay phase with normal adaptation
-    private enum SessionPhase {
+    enum SessionPhase {
         case warmup
         case standard
     }
     
     /// Current session phase
-    private var currentPhase: SessionPhase
+    private(set) var currentPhase: SessionPhase
     
     /// Number of rounds completed in the current phase
     private var roundsInCurrentPhase: Int = 0
