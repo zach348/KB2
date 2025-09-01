@@ -3054,9 +3054,32 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Capture post-session EMA for later visualization
             self.postSessionEMA = response
 
-            // End the session and trigger the cloud upload.
-            // This is the final data collection point for the session.
-            DataLogger.shared.endSession()
+        // Log session performance summary for historical tracking
+        let totalRounds = self.totalIterations
+        let correctRounds = self.score
+        let accuracy = totalRounds > 0 ? Double(correctRounds) / Double(totalRounds) : 0.0
+        
+        // Get average reaction time from arousal estimator if available
+        let avgReactionTime: TimeInterval? = {
+            guard let estimator = self.arousalEstimator,
+                  !estimator.recentPerformanceHistory.isEmpty else { return nil }
+            
+            let validReactionTimes = estimator.recentPerformanceHistory.compactMap { $0.reactionTime }
+            return validReactionTimes.isEmpty ? nil : validReactionTimes.reduce(0, +) / Double(validReactionTimes.count)
+        }()
+        
+        DataLogger.shared.logSessionPerformanceSummary(
+            totalRounds: totalRounds,
+            correctRounds: correctRounds,
+            accuracy: accuracy,
+            avgReactionTime: avgReactionTime
+        )
+        
+        print("Session performance logged: \(correctRounds)/\(totalRounds) rounds (\(String(format: "%.1f", accuracy * 100))% accuracy)")
+
+        // End the session and trigger the cloud upload.
+        // This is the final data collection point for the session.
+        DataLogger.shared.endSession()
 
             // Dismiss the EMA view
             strongRootViewController.dismiss(animated: true) {
@@ -3100,16 +3123,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             context: contextString
         )
         
-        DataLogger.shared.logEMAResponse(
-            questionId: "ema_\(contextString)_energy",
-            questionText: "How energetic or drained do you feel right now?",
-            response: response.energyLevel,
-            responseType: "VAS",
-            completionTime: response.completionTime,
-            context: contextString
-        )
-        
-        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel)), Energy=\(Int(response.energyLevel))")
+        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel))")
     }
 
     private func presentSurveyModal() {

@@ -145,16 +145,7 @@ class GameViewController: UIViewController {
             context: contextString
         )
         
-        DataLogger.shared.logEMAResponse(
-            questionId: "ema_\(contextString)_energy",
-            questionText: "How energetic or drained do you feel right now?",
-            response: response.energyLevel,
-            responseType: "VAS",
-            completionTime: response.completionTime,
-            context: contextString
-        )
-        
-        print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel)), Energy=\(Int(response.energyLevel))")
+        print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel))")
     }
     
     /// Calculates the initial arousal level based on EMA responses

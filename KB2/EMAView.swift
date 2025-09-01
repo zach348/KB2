@@ -30,7 +30,6 @@ struct EMAView: View {
     
     @State private var stressLevel: Double = 50
     @State private var calmJitteryLevel: Double = 50
-    @State private var energyLevel: Double = 50
     @State private var startTime: Date = Date()
     
     // Brand Colors (matching PaywallViewController and other views)
@@ -156,41 +155,6 @@ struct EMAView: View {
                     }
                     .padding(.horizontal, horizontalPadding)
                     
-                    // Energy Level VAS
-                    VStack(spacing: innerSpacing) {
-                        Text("How energetic or drained do you feel right now?")
-                            .font(headlineFontSize)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                        
-                        VStack(spacing: 8) {
-                            Slider(value: $energyLevel, in: 0...100, step: 1)
-                                .accentColor(primaryColor)
-                            
-                            HStack {
-                                Text("Drained / Lethargic")
-                                    .font(isSmallScreen ? .caption2 : .caption)
-                                    .foregroundColor(.gray)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.leading)
-                                Spacer()
-                                Text("Full of Energy / Vigorous")
-                                    .font(isSmallScreen ? .caption2 : .caption)
-                                    .foregroundColor(.gray)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
-                        
-                        Text("\(Int(energyLevel))")
-                            .font(isSmallScreen ? .title3 : .title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, horizontalPadding)
-                    
                     // Submit Button using brand colors
                     Button(action: submitEMA) {
                         Text(emaType.buttonText)
@@ -220,7 +184,6 @@ struct EMAView: View {
         let response = EMAResponse(
             stressLevel: stressLevel,
             calmJitteryLevel: calmJitteryLevel,
-            energyLevel: energyLevel,
             completionTime: completionTime,
             emaType: emaType
         )
@@ -233,7 +196,6 @@ struct EMAView: View {
 struct EMAResponse {
     let stressLevel: Double
     let calmJitteryLevel: Double
-    let energyLevel: Double
     let completionTime: TimeInterval
     let emaType: EMAType
 }
