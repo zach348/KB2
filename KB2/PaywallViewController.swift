@@ -294,7 +294,7 @@ class PaywallViewController: UIViewController {
                 guard let self = self else { return }
                 
                 let monthlyPrice = await StoreManager.shared.displayPrice(for: "com.kalibrate.kb2.monthly") ?? "$0.99"
-                let annualPrice = await StoreManager.shared.displayPrice(for: "com.kalibrate.kb2.annual") ?? "$7.99"
+                let annualPrice = await StoreManager.shared.displayPrice(for: "com.kalibrate.kb2.annual") ?? "$4.99"
                 
                 await MainActor.run {
                     self.monthlyPrice = monthlyPrice
