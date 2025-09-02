@@ -229,7 +229,8 @@ class AudioManager {
             frequency: targetAudioFrequency,
             amplitude: calculatedAmplitude,
             squarenessFactor: squareness,
-            pulseRate: pulseRate
+            pulseRate: pulseRate,
+            lowPassCutoff: gameConfiguration.audioLowPassCutoff
         )
     }
 
@@ -431,4 +432,4 @@ extension GameConfiguration {
     var audioMaxAmplitude: Float { return 0.7 }
     var audioPulseRateFactor: Double { return 0.8 }
 }
-*/ 
+*/

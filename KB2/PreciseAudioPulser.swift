@@ -10,12 +10,14 @@ class PreciseAudioPulser {
     private var audioEngine: AVAudioEngine?
     private var sourceNode: AVAudioSourceNode?
     private var mainMixer: AVAudioMixerNode?
+    private var lowPassFilter: AVAudioUnitEQ?
     
     // Audio parameters
     private(set) var frequency: Float = 440.0
     private(set) var amplitude: Float = 0.5
     private(set) var squarenessFactor: Float = 0.5
     private(set) var pulseRate: Double = 5.0
+    private(set) var lowPassCutoff: Float = 2000.0 // Default cutoff at 2kHz for warmer sound
     private(set) var isRunning: Bool = false
     
     // Sample tracking
@@ -182,10 +184,17 @@ class PreciseAudioPulser {
             return noErr
         }
         
-        // Connect source node to mixer
-        if let sourceNode = sourceNode, let format = format {
+        // Set up low-pass filter for smoother audio
+        setupLowPassFilter()
+        
+        // Connect source node through filter to mixer
+        if let sourceNode = sourceNode, let format = format, let filter = lowPassFilter {
             engine.attach(sourceNode)
-            engine.connect(sourceNode, to: engine.mainMixerNode, format: format)
+            engine.attach(filter)
+            
+            // Route: sourceNode -> lowPassFilter -> mainMixer
+            engine.connect(sourceNode, to: filter, format: format)
+            engine.connect(filter, to: engine.mainMixerNode, format: format)
             
             // Save sample rate from current format
             sampleRate = Float(format.sampleRate)
@@ -315,7 +324,7 @@ class PreciseAudioPulser {
     }
     
     // Update all parameters at once to avoid multiple queue operations
-    func updateParameters(frequency: Float, amplitude: Float, squarenessFactor: Float, pulseRate: Double) {
+    func updateParameters(frequency: Float, amplitude: Float, squarenessFactor: Float, pulseRate: Double, lowPassCutoff: Float) {
         audioQueue.async(flags: .barrier) {
             self.frequency = max(20.0, min(frequency, 20000.0))
             self.amplitude = max(0.0, min(amplitude, 1.0))
@@ -327,6 +336,43 @@ class PreciseAudioPulser {
             let maxTransitionTime = Float(self.pulseDuration * 0.2)
             self.attackTime = min(0.01, maxTransitionTime * 0.3)
             self.releaseTime = min(0.02, maxTransitionTime * 0.7)
+            
+            // Update low-pass filter cutoff
+            self.lowPassCutoff = max(200.0, min(lowPassCutoff, 20000.0))
+            if let filter = self.lowPassFilter {
+                filter.bands[0].frequency = self.lowPassCutoff
+            }
+        }
+    }
+    
+    // MARK: - Low-Pass Filter Setup
+    
+    private func setupLowPassFilter() {
+        // Create EQ unit configured as a low-pass filter
+        lowPassFilter = AVAudioUnitEQ(numberOfBands: 1)
+        
+        if let filter = lowPassFilter {
+            // Configure the single band as a low-pass filter
+            let band = filter.bands[0]
+            band.filterType = .lowPass
+            band.frequency = lowPassCutoff
+            band.bandwidth = 0.5 // Q factor - not critical for low-pass
+            band.gain = 0.0 // No gain boost/cut
+            band.bypass = false
+            
+            print("PreciseAudioPulser: Low-pass filter configured at \(lowPassCutoff)Hz")
+        }
+    }
+    
+    // Method to update the low-pass filter cutoff frequency
+    func setLowPassCutoff(_ newCutoff: Float) {
+        audioQueue.async(flags: .barrier) {
+            self.lowPassCutoff = max(200.0, min(newCutoff, 20000.0))
+            
+            // Update the filter if it exists
+            if let filter = self.lowPassFilter {
+                filter.bands[0].frequency = self.lowPassCutoff
+            }
         }
     }
     

@@ -41,6 +41,7 @@ class VHAManager {
     private var currentAudioAmplitude: Float = 0.5
     private var currentAudioSquareness: Float = 0.5
     private var currentAudioPulseRate: Double = 4.0
+    private var currentAudioLowPassCutoff: Float = 2000.0
     public var audioOffset: TimeInterval = 0.040
     
     
@@ -88,7 +89,8 @@ class VHAManager {
                           audioFrequency: Float,
                           audioAmplitude: Float,
                           audioSquareness: Float,
-                          audioPulseRate: Double) {
+                          audioPulseRate: Double,
+                          audioLowPassCutoff: Float) {
         // Update timer frequency
         self.currentTimerFrequency = frequency
         
@@ -97,6 +99,7 @@ class VHAManager {
         self.currentAudioAmplitude = audioAmplitude
         self.currentAudioSquareness = audioSquareness
         self.currentAudioPulseRate = audioPulseRate
+        self.currentAudioLowPassCutoff = audioLowPassCutoff
         
         // Apply audio parameter updates
         updateAudioParameters()
@@ -246,13 +249,14 @@ class VHAManager {
                 frequency: currentTargetAudioFrequency,
                 amplitude: currentAudioAmplitude,
                 squarenessFactor: currentAudioSquareness,
-                pulseRate: currentAudioPulseRate
+                pulseRate: currentAudioPulseRate,
+                lowPassCutoff: currentAudioLowPassCutoff
             )
             
             // Debug logs for problematic arousal ranges
             let clampedArousal = 0.5 + (currentTargetAudioFrequency - 440.0) / (1000.0 - 200.0) // Rough estimation
             if clampedArousal >= 0.67 && clampedArousal <= 0.78 {
-                print("AUDIO DEBUG: Precise audio params at critical calculated arousal \(String(format: "%.2f", clampedArousal)): Freq=\(String(format: "%.1f", currentTargetAudioFrequency))Hz, Pulse=\(String(format: "%.1f", currentAudioPulseRate))Hz")
+                print("AUDIO DEBUG: Precise audio params at critical calculated arousal \(String(format: "%.2f", clampedArousal)): Freq=\(String(format: "%.1f", currentTargetAudioFrequency))Hz, Pulse=\(String(format: "%.1f", currentAudioPulseRate))Hz, LPF=\(String(format: "%.0f", currentAudioLowPassCutoff))Hz")
             }
         }
     }
