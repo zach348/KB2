@@ -352,6 +352,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         audioManager.startEngine() // MODIFIED
         
         if sessionMode {
+            // Initialize achievement tracking for this session
+            AchievementManager.shared.startSession()
+            
             // Ensure session target is correct for arousal calculations
             initialArousalLevel = targetArousalForWarmup
             sessionStartTime = CACurrentMediaTime()
@@ -812,6 +815,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     internal func startIdentificationPhase(isTutorial: Bool = false) {
         isEndingIdentification = false
         totalIterations += 1
+        
+        // Record identification round start for achievements (skip for tutorial)
+        if !isTutorial && sessionMode {
+            AchievementManager.shared.recordIdentificationRoundStart()
+        }
+        
         currentState = .identifying; updateUI()
         
         // TUTORIAL FIX: Stop any ongoing flash animations to prevent race condition
@@ -1022,6 +1031,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // END ADDED KPI Collection
 
         if success { score += 1 } 
+        
+        // Record identification round completion for achievements (skip for tutorial)
+        if !tutorialMode && sessionMode {
+            AchievementManager.shared.recordIdentificationRoundEnd(success: success)
+        }
+        
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
         
         // --- MODIFIED: Delay motion resumption ---
@@ -1645,6 +1660,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         self.removeAction(forKey: "targetShiftSoundSequence") // Stop shift sound sequence if running
 
         currentState = .breathing; currentBreathingPhase = .idle
+        
+        // Record breathing state entry for achievements (skip for tutorial)
+        if sessionMode {
+            AchievementManager.shared.recordBreathingStateEntered()
+        }
+        
         updateParametersFromArousal(); updateUI(); breathingVisualsFaded = false
 
         let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
@@ -1678,6 +1699,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     
     private func transitionToTrackingState() {
         guard currentState == .breathing else { return }
+        
+        // Record breathing state exit for achievements (skip for tutorial)
+        if sessionMode {
+            AchievementManager.shared.recordBreathingStateExited()
+        }
+        
         stopBreathingAnimation();
         currentState = .tracking; currentBreathingPhase = .idle
         fadeInBreathingVisuals()
@@ -3054,6 +3081,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Capture post-session EMA for later visualization
             self.postSessionEMA = response
 
+            // Complete achievement session tracking via GameViewController
+            if self.sessionMode, let gameViewController = strongRootViewController as? GameViewController {
+                gameViewController.completeAchievementSession(postSessionEMA: response)
+            }
+
         // Log session performance summary for historical tracking
         let totalRounds = self.totalIterations
         let correctRounds = self.score
@@ -3199,11 +3231,18 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let preEMA = (rootViewController as? GameViewController)?.preSessionEMA
         let postEMA = self.postSessionEMA
 
+        // Get newly unlocked achievements from this session
+        let newlyUnlockedAchievements = AchievementManager.shared.getNewlyUnlockedAchievements()
+
         let vizView = EMAScoreVisualizationView(
             preEMA: preEMA,
             postEMA: postEMA,
             summary: summary,
+            newlyUnlockedAchievements: newlyUnlockedAchievements,
             onDone: { [weak self, weak rootViewController] in
+                // Clear the newly unlocked achievements after displaying them
+                AchievementManager.shared.clearNewlyUnlockedAchievements()
+                
                 // Dismiss and return to start
                 rootViewController?.dismiss(animated: true) {
                     self?.transitionToStartScreenAfterEMA()

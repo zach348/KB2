@@ -12,6 +12,7 @@ struct EMAScoreVisualizationView: View {
     let preEMA: EMAResponse?
     let postEMA: EMAResponse?
     let summary: SessionSummary
+    let newlyUnlockedAchievements: [Achievement]
     let onDone: () -> Void
 
     @Environment(\.horizontalSizeClass) private var hSize
@@ -84,6 +85,11 @@ struct EMAScoreVisualizationView: View {
                                          totalRounds: summary.totalRounds,
                                          correctRounds: summary.correctRounds,
                                          avgReactionTime: summary.avgReactionTime)
+                        }
+
+                        // Section: Achievements (only show if there are any)
+                        if !newlyUnlockedAchievements.isEmpty {
+                            AchievementBannerView(achievements: newlyUnlockedAchievements)
                         }
 
                         // Optional note if any EMA is missing
@@ -324,12 +330,31 @@ struct EMAScoreVisualizationView_Previews: PreviewProvider {
         let pre = EMAResponse(stressLevel: 62, calmJitteryLevel: 55, completionTime: 10, emaType: .preSession)
         let post = EMAResponse(stressLevel: 38, calmJitteryLevel: 30, completionTime: 8, emaType: .postSession)
         let summary = SessionSummary(totalRounds: 12, correctRounds: 8, accuracy: 8.0/12.0, avgReactionTime: 1.4)
+        
+        let sampleAchievements = [
+            Achievement(
+                id: "perfect_round",
+                title: "Perfect Round",
+                description: "Achieve 100% focus quality in a single round",
+                sfSymbolName: "checkmark.seal.fill",
+                category: .performance
+            ),
+            Achievement(
+                id: "zen_master",
+                title: "Zen Master",
+                description: "Spend over 4 minutes in breathing state",
+                sfSymbolName: "lungs.fill",
+                category: .mastery
+            )
+        ]
 
         return Group {
-            EMAScoreVisualizationView(preEMA: pre, postEMA: post, summary: summary, onDone: {})
+            EMAScoreVisualizationView(preEMA: pre, postEMA: post, summary: summary, newlyUnlockedAchievements: sampleAchievements, onDone: {})
                 .preferredColorScheme(.dark)
-            EMAScoreVisualizationView(preEMA: nil, postEMA: post, summary: summary, onDone: {})
+                .previewDisplayName("With Achievements")
+            EMAScoreVisualizationView(preEMA: nil, postEMA: post, summary: summary, newlyUnlockedAchievements: [], onDone: {})
                 .preferredColorScheme(.dark)
+                .previewDisplayName("No Achievements")
         }
     }
 }

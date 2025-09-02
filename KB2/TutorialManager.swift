@@ -108,6 +108,10 @@ class TutorialManager {
     
     private func endTutorial() {
         FirstRunManager.shared.hasCompletedTutorial = true
+        
+        // Record tutorial completion for achievements
+        AchievementManager.shared.recordTutorialCompletion()
+        
         overlay?.removeFromParent()
         
         // Stop all audio and haptic feedback before transitioning

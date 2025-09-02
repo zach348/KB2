@@ -13,6 +13,10 @@ class GameViewController: UIViewController {
     
     // Store session parameters while tutorial is running
     private var pendingSessionParameters: (duration: TimeInterval, profile: SessionProfile, initialArousal: CGFloat)?
+    
+    // Achievement tracking properties
+    private var currentSessionDuration: TimeInterval = 0
+    private var sessionStartTime: TimeInterval = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -232,6 +236,10 @@ class GameViewController: UIViewController {
     private func presentGameScene(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalForEstimator: CGFloat, systemInitialArousal: CGFloat) {
         if let view = self.view as? SKView {
             view.presentScene(nil) // Clear existing scene
+            
+            // Track session start time and duration for achievements
+            currentSessionDuration = sessionDuration
+            sessionStartTime = CACurrentMediaTime()
 
             let gameScene = GameScene(size: view.bounds.size)
             gameScene.sessionMode = true
@@ -250,6 +258,23 @@ class GameViewController: UIViewController {
         } else {
             print("Error: GameViewController's view is not an SKView. Cannot present GameScene.")
         }
+    }
+    
+    // MARK: - Achievement Integration
+    
+    /// Called by GameScene when post-session EMA is completed to finalize achievement processing
+    func completeAchievementSession(postSessionEMA: EMAResponse) {
+        // Calculate actual session duration
+        let actualDuration = CACurrentMediaTime() - sessionStartTime
+        
+        // Call AchievementManager with complete session data
+        AchievementManager.shared.endSession(
+            duration: actualDuration,
+            preSessionEMA: preSessionEMA,
+            postSessionEMA: postSessionEMA
+        )
+        
+        print("GameViewController: Achievement session completed with duration \(String(format: "%.1f", actualDuration))s")
     }
     
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
