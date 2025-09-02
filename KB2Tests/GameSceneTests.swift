@@ -129,7 +129,7 @@ class GameSceneTests: XCTestCase {
         // Verify initial state
         XCTAssertTrue(gameScene.sessionMode)
         XCTAssertEqual(gameScene.sessionDuration, 300)
-        XCTAssertEqual(gameScene.currentArousalLevel, 1.0, accuracy: 0.01)
+        XCTAssertEqual(gameScene.currentArousalLevel, 0.8, accuracy: 0.01)
     }
 
     func testArousalPowerCurve() {

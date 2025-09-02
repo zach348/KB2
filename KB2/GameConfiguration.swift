@@ -387,7 +387,7 @@ struct GameConfiguration {
     /// Initial difficulty multiplier applied during warmup phase
     /// Default: 0.85 (85% of normal difficulty)
     /// This ensures players start at a comfortable level while the system recalibrates
-    let warmupInitialDifficultyMultiplier: CGFloat = 1.0
+    let warmupInitialDifficultyMultiplier: CGFloat = 0.9
     
     /// Performance target during warmup phase (0.0-1.0)
     /// Default: 0.60 (vs 0.50 in standard phase)
@@ -416,7 +416,7 @@ struct GameConfiguration {
     /// Dampening factor for the derivative term in the PD controller
     /// Default: 10.0
     /// Higher values reduce the impact of performance trend slope on adaptation
-    let domSlopeDampeningFactor: CGFloat = 40.0
+    let domSlopeDampeningFactor: CGFloat = 50.0
     
     /// Half-life in hours for recency weighting of historical performance data
     /// Default: 0.25 (15 minutes) - provides responsive adaptation to recent performance changes
