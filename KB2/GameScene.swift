@@ -105,13 +105,13 @@ var sessionProfile: SessionProfile = .standard // Default profile
 var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
 var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point
 
-// --- ADDED: Warmup Ramp Properties ---
-private var isWarmupRampActive: Bool = false
-private var warmupRoundTargetArousal: CGFloat = 0.0
-private var warmupRampIncrement: CGFloat = 0.0
-private var warmupStartingArousal: CGFloat = 0.0
-private var isFinalWarmupRound: Bool = false
-// --- END ADDED ---
+    // --- ADDED: Warmup Ramp Properties ---
+    private var isWarmupRampActive: Bool = false
+    private var warmupRoundTargetArousal: CGFloat = 0.0
+    private var warmupRampIncrement: CGFloat = 0.0
+    private var warmupStartingArousal: CGFloat = 0.0
+    private var warmupSmoothingTargetArousal: CGFloat = 0.0
+    // --- END ADDED ---
 
 // --- User Arousal Estimation ---
 var arousalEstimator: ArousalEstimator? // Tracks the user's estimated arousal level
@@ -1010,16 +1010,16 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 // This completion handler runs on the main thread after background processing
                 guard let self = self else { return }
                 
-                // MODIFIED: Check for warmup phase transition and handle warmup ramp advancement
-                if self.sessionMode && self.isWarmupRampActive && adm.currentPhase == .warmup {
-                    self.advanceWarmupRampRound()
-                    print("WARMUP_RAMP: Advanced after identification round (Success: \(success))")
-                } else if self.sessionMode && self.isWarmupRampActive && !self.isFinalWarmupRound {
-                    // Check if ADM has transitioned from warmup to standard phase
-                    if adm.currentPhase == .standard {
-                        // The warmup phase has just ended - this was the final warmup round
-                        self.isFinalWarmupRound = true
-                        print("WARMUP_RAMP: Detected end of warmup phase - entering final smoothing period")
+                // MODIFIED: Use ADM phase as source of truth for warmup ramp management
+                if self.sessionMode && self.isWarmupRampActive {
+                    if adm.currentPhase == .warmup {
+                        // Still in warmup phase - advance to next round target
+                        self.advanceWarmupRampRound()
+                        print("WARMUP_RAMP: Advanced after identification round (Success: \(success))")
+                    } else if adm.currentPhase == .standard {
+                        // ADM has transitioned to standard phase - begin final smoothing to session target
+                        self.warmupSmoothingTargetArousal = self.targetArousalForWarmup
+                        print("WARMUP_RAMP: ADM phase changed to standard - smoothing to target \(String(format: "%.3f", self.warmupSmoothingTargetArousal))")
                     }
                 }
                 
@@ -1492,8 +1492,18 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     /// Updates arousal smoothly toward the current round target - called per-frame during warmup
     private func updateWarmupRampSmoothing(deltaTime: TimeInterval) {
         guard isWarmupRampActive else { return }
+        guard let adm = adaptiveDifficultyManager else { return }
         
-        let arousalDifference = warmupRoundTargetArousal - currentArousalLevel
+        let targetArousal: CGFloat
+        if adm.currentPhase == .warmup {
+            // Still in warmup - smooth toward round target
+            targetArousal = warmupRoundTargetArousal
+        } else {
+            // Transitioned to standard phase - smooth toward final session target
+            targetArousal = warmupSmoothingTargetArousal
+        }
+        
+        let arousalDifference = targetArousal - currentArousalLevel
         
         // Only apply smoothing if there's a meaningful difference
         if abs(arousalDifference) > 0.001 {
@@ -2270,9 +2280,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             updateWarmupRampSmoothing(deltaTime: dt)
             
             // Check if final warmup smoothing is complete
-            if isFinalWarmupRound && abs(currentArousalLevel - targetArousalForWarmup) < 0.005 {
+            if let adm = adaptiveDifficultyManager, adm.currentPhase == .standard && 
+               abs(currentArousalLevel - warmupSmoothingTargetArousal) < 0.005 {
                 isWarmupRampActive = false
-                isFinalWarmupRound = false
                 print("WARMUP_RAMP: Smoothing complete. Handoff to main session arousal logic.")
             }
         }
