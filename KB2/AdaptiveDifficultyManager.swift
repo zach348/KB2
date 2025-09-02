@@ -79,6 +79,10 @@ class AdaptiveDifficultyManager {
     internal let config: GameConfiguration
     private var currentArousalLevel: CGFloat
     var userId: String // Changed to var and made internal for testing
+    
+    // MARK: - Thread Safety
+    /// Serial queue for protecting ADM state from concurrent access
+    private let admQueue = DispatchQueue(label: "com.kalibrate.ADMQueue", qos: .userInitiated)
 
     // Current actual values of DOM targets (owned by ADM)
     private(set) var currentDiscriminabilityFactor: CGFloat
@@ -381,6 +385,119 @@ class AdaptiveDifficultyManager {
         }
     }
 
+    /// Asynchronous version of recordIdentificationPerformance that performs intensive calculations on a background thread
+    /// - Parameters:
+    ///   - taskSuccess: Whether the identification task was successful
+    ///   - tfTtfRatio: Targets Found / Targets To Find ratio
+    ///   - reactionTime: User's reaction time
+    ///   - responseDuration: Duration of response phase
+    ///   - averageTapAccuracy: Average tap accuracy in points
+    ///   - actualTargetsToFindInRound: Number of targets in the round
+    ///   - completion: Completion handler called on main thread when processing is complete
+    func recordIdentificationPerformanceAsync(
+        taskSuccess: Bool,
+        tfTtfRatio: CGFloat,
+        reactionTime: TimeInterval,
+        responseDuration: TimeInterval,
+        averageTapAccuracy: CGFloat,
+        actualTargetsToFindInRound: Int,
+        completion: @escaping () -> Void
+    ) {
+        // Perform all intensive calculations on background thread
+        admQueue.async { [weak self] in
+            guard let self = self else {
+                DispatchQueue.main.async { completion() }
+                return
+            }
+            
+            // 1. Normalize all relevant KPIs
+            let normalizedKPIs = self.normalizeAllKPIs(
+                rawTaskSuccess: taskSuccess,
+                rawTfTtfRatio: tfTtfRatio,
+                rawReactionTime: reactionTime,
+                rawResponseDuration: responseDuration,
+                rawAverageTapAccuracy: averageTapAccuracy,
+                actualTargetsToFind: actualTargetsToFindInRound
+            )
+            
+            // 2. Calculate overallPerformanceScore
+            let performanceScore = self.calculateOverallPerformanceScore(normalizedKPIs: normalizedKPIs)
+            
+            // Phase 5.2: Collect DOM-specific performance data (passive)
+            for domType in DOMTargetType.allCases {
+                let currentValue = self.getCurrentValue(for: domType)
+                self.domPerformanceProfiles[domType]?.recordPerformance(
+                    domValue: currentValue,
+                    performance: performanceScore
+                )
+                
+                // Temporary logging to verify data collection
+                if let profile = self.domPerformanceProfiles[domType] {
+                    print("[ADM DOM Profiling] \(domType): value=\(String(format: "%.3f", currentValue)), performance=\(String(format: "%.3f", performanceScore)), buffer_size=\(profile.performanceByValue.count)")
+                }
+            }
+            
+            // 3. Store performance history
+            let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
+                $0[$1] = self.getCurrentValue(for: $1)
+            }
+            
+            let entry = PerformanceHistoryEntry(
+                timestamp: CACurrentMediaTime(),
+                overallScore: performanceScore,
+                normalizedKPIs: normalizedKPIs,
+                arousalLevel: self.currentArousalLevel,
+                currentDOMValues: domValues,
+                sessionContext: nil // Placeholder for now
+            )
+            self.addPerformanceEntry(entry)
+            
+            // Log performance metrics after adding to history (with throttling)
+            var currentTime = Date().timeIntervalSince1970
+            if currentTime - self.lastLogTime >= self.logThrottleInterval {
+                let (average, trend, variance) = self.getPerformanceMetrics()
+                self.dataLogger.logCustomEvent(
+                    eventType: "adm_performance_history",
+                    data: [
+                        "history_size": self.performanceHistory.count,
+                        "performance_average": average,
+                        "performance_trend": trend,
+                        "performance_variance": variance,
+                        "recent_score": performanceScore
+                    ],
+                    description: "ADM performance history metrics"
+                )
+                self.lastLogTime = currentTime
+            }
+            
+            // 4. Modulate DOM targets (this is the most intensive part)
+            self.modulateDOMTargets(overallPerformanceScore: performanceScore)
+            
+            // Log the adaptive difficulty step (with throttling)
+            currentTime = Date().timeIntervalSince1970
+            if currentTime - self.lastLogTime >= self.logThrottleInterval {
+                let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
+                    $0[$1] = self.getCurrentValue(for: $1)
+                }
+                self.dataLogger.logAdaptiveDifficultyStep(
+                    arousalLevel: self.currentArousalLevel,
+                    performanceScore: performanceScore,
+                    normalizedKPIs: normalizedKPIs,
+                    domValues: domValues
+                )
+                self.lastLogTime = currentTime
+            }
+            
+            // Call completion handler on main thread
+            DispatchQueue.main.async {
+                completion()
+            }
+        }
+    }
+    
+    /// Synchronous version (deprecated) - use recordIdentificationPerformanceAsync instead
+    /// This method now calls the async version and blocks until completion
+    @available(*, deprecated, message: "Use recordIdentificationPerformanceAsync instead to avoid blocking the main thread")
     func recordIdentificationPerformance(
         taskSuccess: Bool,
         tfTtfRatio: CGFloat, // Targets Found / Targets To Find
@@ -389,85 +506,21 @@ class AdaptiveDifficultyManager {
         averageTapAccuracy: CGFloat, // In points
         actualTargetsToFindInRound: Int // Needed for normalizing responseDuration
     ) {
-        // TODO: Implement KPI history/averaging if desired
+        // For backward compatibility, call the async version and wait
+        let semaphore = DispatchSemaphore(value: 0)
         
-        // 1. Normalize all relevant KPIs
-        let normalizedKPIs = normalizeAllKPIs(
-            rawTaskSuccess: taskSuccess,
-            rawTfTtfRatio: tfTtfRatio,
-            rawReactionTime: reactionTime,
-            rawResponseDuration: responseDuration,
-            rawAverageTapAccuracy: averageTapAccuracy,
-            actualTargetsToFind: actualTargetsToFindInRound
-        )
-        
-        // 2. Calculate overallPerformanceScore
-        let performanceScore = calculateOverallPerformanceScore(normalizedKPIs: normalizedKPIs)
-        
-        // Phase 5.2: Collect DOM-specific performance data (passive)
-        for domType in DOMTargetType.allCases {
-            let currentValue = getCurrentValue(for: domType)
-            domPerformanceProfiles[domType]?.recordPerformance(
-                domValue: currentValue,
-                performance: performanceScore
-            )
-            
-            // Temporary logging to verify data collection
-            if let profile = domPerformanceProfiles[domType] {
-                print("[ADM DOM Profiling] \(domType): value=\(String(format: "%.3f", currentValue)), performance=\(String(format: "%.3f", performanceScore)), buffer_size=\(profile.performanceByValue.count)")
-            }
+        recordIdentificationPerformanceAsync(
+            taskSuccess: taskSuccess,
+            tfTtfRatio: tfTtfRatio,
+            reactionTime: reactionTime,
+            responseDuration: responseDuration,
+            averageTapAccuracy: averageTapAccuracy,
+            actualTargetsToFindInRound: actualTargetsToFindInRound
+        ) {
+            semaphore.signal()
         }
         
-        // 3. Store performance history
-        let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
-            $0[$1] = getCurrentValue(for: $1)
-        }
-        
-        let entry = PerformanceHistoryEntry(
-            timestamp: CACurrentMediaTime(),
-            overallScore: performanceScore,
-            normalizedKPIs: normalizedKPIs,
-            arousalLevel: currentArousalLevel,
-            currentDOMValues: domValues,
-            sessionContext: nil // Placeholder for now
-        )
-        addPerformanceEntry(entry)
-        
-        // Log performance metrics after adding to history (with throttling)
-        var currentTime = Date().timeIntervalSince1970
-        if currentTime - lastLogTime >= logThrottleInterval {
-            let (average, trend, variance) = getPerformanceMetrics()
-            dataLogger.logCustomEvent(
-                eventType: "adm_performance_history",
-                data: [
-                    "history_size": performanceHistory.count,
-                    "performance_average": average,
-                    "performance_trend": trend,
-                    "performance_variance": variance,
-                    "recent_score": performanceScore
-                ],
-                description: "ADM performance history metrics"
-            )
-            lastLogTime = currentTime
-        }
-        
-        // 4. Modulate DOM targets
-        modulateDOMTargets(overallPerformanceScore: performanceScore)
-        
-        // Log the adaptive difficulty step (with throttling)
-        currentTime = Date().timeIntervalSince1970
-        if currentTime - lastLogTime >= logThrottleInterval {
-            let domValues = DOMTargetType.allCases.reduce(into: [DOMTargetType: CGFloat]()) {
-                $0[$1] = getCurrentValue(for: $1)
-            }
-            dataLogger.logAdaptiveDifficultyStep(
-                arousalLevel: currentArousalLevel,
-                performanceScore: performanceScore,
-                normalizedKPIs: normalizedKPIs,
-                domValues: domValues
-            )
-            lastLogTime = currentTime
-        }
+        semaphore.wait()
     }
 
     // MARK: - Core Logic (Placeholders - to be implemented next)

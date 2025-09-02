@@ -84,8 +84,8 @@ class PreciseAudioPulser {
                  isSyncMode, currentPulses, currentAttackTime, 
                  currentReleaseTime) = self.audioQueue.sync { () -> (Float, Float, Float, Bool, [(startTime: Double, endTime: Double)], Float, Float) in
                 
-                // Clean up expired pulses from the queue
-                self.pulseQueue = self.pulseQueue.filter { $0.endTime > now }
+                // Clean up expired pulses from the queue (real-time safe)
+                self.pulseQueue.removeAll { $0.endTime <= now }
                 
                 return (
                     self.frequency,
@@ -258,11 +258,19 @@ class PreciseAudioPulser {
     func triggerPulse(at scheduledTime: CFTimeInterval) {
         guard syncMode, isRunning else { return }
         
-        // Periodically log that pulses are being triggered
+        // Periodically log that pulses are being triggered (only in debug builds)
         debugPulseCounter += 1
-        if debugPulseCounter % 60 == 0 {
-            print("PreciseAudioPulser: Triggered pulse #\(debugPulseCounter) at \(String(format: "%.3f", scheduledTime)), queue: \(pulseQueue.count)")
+        #if DEBUG
+        if debugPulseCounter % 120 == 0 {
+            // Capture values to avoid self reference in closure
+            let currentPulseCount = debugPulseCounter
+            let currentQueueCount = pulseQueue.count
+            // Use async dispatch to avoid blocking the calling thread
+            DispatchQueue.global(qos: .utility).async {
+                print("PreciseAudioPulser: Triggered pulse #\(currentPulseCount) at \(String(format: "%.3f", scheduledTime)), queue: \(currentQueueCount)")
+            }
         }
+        #endif
         
         // Safe thread access via dispatch queue
         audioQueue.async(flags: .barrier) {

@@ -998,35 +998,39 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 averageTapAccuracyKPI = gameConfiguration.tapAccuracy_WorstExpected_Points
             }
 
-            adm.recordIdentificationPerformance(
+            // Use asynchronous ADM processing to avoid blocking main thread and causing audio cutouts
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: taskSuccessKPI,
                 tfTtfRatio: tfTtfRatioKPI,
                 reactionTime: reactionTimeKPI,
                 responseDuration: responseDurationKPI,
                 averageTapAccuracy: averageTapAccuracyKPI,
                 actualTargetsToFindInRound: actualTargetsInCompletedRound
-            )
-            
-            // MODIFIED: Check for warmup phase transition and handle warmup ramp advancement
-            if sessionMode && isWarmupRampActive && adm.currentPhase == .warmup {
-                advanceWarmupRampRound()
-                print("WARMUP_RAMP: Advanced after identification round (Success: \(success))")
-            } else if sessionMode && isWarmupRampActive && !isFinalWarmupRound {
-                // Check if ADM has transitioned from warmup to standard phase
-                if adm.currentPhase == .standard {
-                    // The warmup phase has just ended - this was the final warmup round
-                    isFinalWarmupRound = true
-                    print("WARMUP_RAMP: Detected end of warmup phase - entering final smoothing period")
+            ) { [weak self] in
+                // This completion handler runs on the main thread after background processing
+                guard let self = self else { return }
+                
+                // MODIFIED: Check for warmup phase transition and handle warmup ramp advancement
+                if self.sessionMode && self.isWarmupRampActive && adm.currentPhase == .warmup {
+                    self.advanceWarmupRampRound()
+                    print("WARMUP_RAMP: Advanced after identification round (Success: \(success))")
+                } else if self.sessionMode && self.isWarmupRampActive && !self.isFinalWarmupRound {
+                    // Check if ADM has transitioned from warmup to standard phase
+                    if adm.currentPhase == .standard {
+                        // The warmup phase has just ended - this was the final warmup round
+                        self.isFinalWarmupRound = true
+                        print("WARMUP_RAMP: Detected end of warmup phase - entering final smoothing period")
+                    }
                 }
+                
+                // Explicitly force a DOM update after recording performance
+                // This ensures that changes to normalized positions are immediately
+                // reflected in the absolute DOM values before the next gameplay phase
+                adm.updateForCurrentArousal()
+                
+                print("GameScene: Sent KPIs to ADM. Success: \(taskSuccessKPI), TF/TTF: \(tfTtfRatioKPI), RT: \(reactionTimeKPI), RD: \(responseDurationKPI), Acc: \(averageTapAccuracyKPI)")
+                print("GameScene: Forced DOM update after identification phase")
             }
-            
-            // Explicitly force a DOM update after recording performance
-            // This ensures that changes to normalized positions are immediately
-            // reflected in the absolute DOM values before the next gameplay phase
-            adm.updateForCurrentArousal()
-            
-            print("GameScene: Sent KPIs to ADM. Success: \(taskSuccessKPI), TF/TTF: \(tfTtfRatioKPI), RT: \(reactionTimeKPI), RD: \(responseDurationKPI), Acc: \(averageTapAccuracyKPI)")
-            print("GameScene: Forced DOM update after identification phase")
         }
         // END ADDED KPI Collection
 

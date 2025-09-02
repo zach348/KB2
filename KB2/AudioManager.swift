@@ -356,14 +356,21 @@ class AudioManager {
             // Calculate the time when the audio pulse should start
             let audioStartTime = visualTickTime + audioOffset
             
-            // Periodically log the timing details (every 120 ticks)
+            // Periodically log the timing details (only in debug builds)
             audioTickCounter += 1
-            if audioTickCounter % 120 == 0 {
-                let currentTime = CACurrentMediaTime()
-                print("AudioManager: Audio tick #\(audioTickCounter) - now: \(String(format: "%.3f", currentTime)), " +
-                      "visualTick: \(String(format: "%.3f", visualTickTime)), " +
-                      "audioStart: \(String(format: "%.3f", audioStartTime))")
+            #if DEBUG
+            if audioTickCounter % 240 == 0 {
+                // Capture counter value to avoid self reference in closure
+                let currentTickCount = audioTickCounter
+                // Use async dispatch to avoid blocking the calling thread
+                DispatchQueue.global(qos: .utility).async {
+                    let currentTime = CACurrentMediaTime()
+                    print("AudioManager: Audio tick #\(currentTickCount) - now: \(String(format: "%.3f", currentTime)), " +
+                          "visualTick: \(String(format: "%.3f", visualTickTime)), " +
+                          "audioStart: \(String(format: "%.3f", audioStartTime))")
+                }
             }
+            #endif
             
             // Trigger pulse at the exact scheduled time
             pulser.triggerPulse(at: audioStartTime)
