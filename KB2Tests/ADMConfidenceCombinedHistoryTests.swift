@@ -99,14 +99,18 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             let taskSuccess = targetScore > 0.75
             let tfTtfRatio = targetScore
             
-            newADM.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Record performance \(i+1)")
+            newADM.recordIdentificationPerformanceAsync(
                 taskSuccess: taskSuccess,
                 tfTtfRatio: tfTtfRatio,
                 reactionTime: 1.2, // Average performance
                 responseDuration: 3.0, // Average performance
                 averageTapAccuracy: 20.0, // Average performance
                 actualTargetsToFindInRound: 4
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // THEN: Verify combined history is used through confidence metrics
@@ -278,14 +282,18 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
             let taskSuccess = targetScore > 0.7
             let tfTtfRatio = targetScore
             
-            newADM.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Record improving performance \(i+1)")
+            newADM.recordIdentificationPerformanceAsync(
                 taskSuccess: taskSuccess,
                 tfTtfRatio: tfTtfRatio,
                 reactionTime: 1.2,
                 responseDuration: 3.0,
                 averageTapAccuracy: 20.0,
                 actualTargetsToFindInRound: 4
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // THEN: Combined trend should reflect both old and new data
@@ -347,14 +355,18 @@ class ADMConfidenceCombinedHistoryTests: XCTestCase {
         )
         
         // WHEN: Recording performance that continues the trend
-        newADM.recordIdentificationPerformance(
+        let expectation = XCTestExpectation(description: "Record trend continuation")
+        newADM.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 0.9,
             reactionTime: 1.0,
             responseDuration: 3.0,
             averageTapAccuracy: 15.0,
             actualTargetsToFindInRound: 4
-        )
+        ) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
         
         // THEN: Direction confidence should remain high
         let confidence = newADM.calculateAdaptationConfidence()

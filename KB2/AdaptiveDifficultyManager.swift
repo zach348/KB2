@@ -83,6 +83,10 @@ class AdaptiveDifficultyManager {
     // MARK: - Thread Safety
     /// Serial queue for protecting ADM state from concurrent access
     private let admQueue = DispatchQueue(label: "com.kalibrate.ADMQueue", qos: .userInitiated)
+    
+    // MARK: - Initialization State
+    /// Flag to prevent intensive calculations during object initialization
+    private var isInitializing: Bool = true
 
     // Current actual values of DOM targets (owned by ADM)
     private(set) var currentDiscriminabilityFactor: CGFloat
@@ -302,6 +306,10 @@ class AdaptiveDifficultyManager {
         print("[ADM] Initial SpeedSD: \(currentBallSpeedSD)")
         print("[ADM] Initial ResponseTime: \(currentResponseTime)")
         print("[ADM] Initial TargetCount: \(currentTargetCount)")
+        
+        // Complete initialization - allow intensive calculations
+        isInitializing = false
+        print("[ADM] === INITIALIZATION COMPLETE ===")
     }
 
     // MARK: - Continuous Arousal Update Methods
@@ -344,6 +352,7 @@ class AdaptiveDifficultyManager {
             setCurrentValue(for: domType, rawValue: absoluteValue)
         }
     }
+    
     
     /// Public method to continuously update DOM targets based on current arousal
     public func updateForCurrentArousal() {
@@ -488,8 +497,11 @@ class AdaptiveDifficultyManager {
                 self.lastLogTime = currentTime
             }
             
-            // Call completion handler on main thread
-            DispatchQueue.main.async {
+            // Update absolute values from normalized positions to ensure all state is current
+            self.updateAbsoluteValuesFromNormalizedPositions()
+            
+            // Call completion handler on main thread synchronously to ensure state is available
+            DispatchQueue.main.sync {
                 completion()
             }
         }
@@ -615,6 +627,11 @@ class AdaptiveDifficultyManager {
     /// 4. Distributes adaptation budget across DOM targets
     /// 5. Updates absolute values from normalized positions
     func modulateDOMTargets(overallPerformanceScore: CGFloat) {
+        guard !isInitializing else { 
+            print("[ADM] Skipping DOM modulation during initialization")
+            return 
+        }
+        
         updateSessionPhase() // Update phase at the start of each round
 
         // Phase 5: Check if DOM-specific profiling should be used
@@ -818,6 +835,7 @@ class AdaptiveDifficultyManager {
     /// Called at the start of each round to check for phase transitions
     private func updateSessionPhase() {
         guard config.enableSessionPhases else { return }
+        guard !isInitializing else { return } // Skip phase updates during initialization
         
         roundsInCurrentPhase += 1
         

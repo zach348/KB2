@@ -152,14 +152,18 @@ class ADMLocalConfidenceTests: XCTestCase {
         testConfig.enableDomSpecificProfiling = false
         
         // Record performance to trigger global adaptation
-        adm.recordIdentificationPerformance(
+        let expectation = XCTestExpectation(description: "Record performance for global adaptation")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 0.8,
             reactionTime: 0.5,
             responseDuration: 1.0,
             averageTapAccuracy: 30.0,
             actualTargetsToFindInRound: 4
-        )
+        ) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
         
         // Positions should have changed via global adaptation
         let positionsAfterGlobal = adm.normalizedPositions

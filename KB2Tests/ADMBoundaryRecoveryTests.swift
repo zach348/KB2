@@ -24,15 +24,19 @@ class ADMBoundaryRecoveryTests: XCTestCase {
         adm.normalizedPositions[.meanBallSpeed] = 0.05
         
         // 2. Simulate consistently good performance
-        for _ in 0..<10 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<10 {
+            let expectation = XCTestExpectation(description: "Good performance round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 1.0,
                 reactionTime: 0.2,
                 responseDuration: 0.5,
                 averageTapAccuracy: 10,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // 3. Check that the DOM position has increased

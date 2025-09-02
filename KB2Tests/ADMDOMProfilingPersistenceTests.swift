@@ -55,15 +55,19 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
             (false, 0.6, 1.8)
         ]
         
-        for (success, tfTtf, reaction) in testData {
-            adm1.recordIdentificationPerformance(
+        for (i, (success, tfTtf, reaction)) in testData.enumerated() {
+            let expectation1 = XCTestExpectation(description: "Record performance data \(i+1)")
+            adm1.recordIdentificationPerformanceAsync(
                 taskSuccess: success,
                 tfTtfRatio: tfTtf,
                 reactionTime: reaction,
                 responseDuration: 3.0,
                 averageTapAccuracy: 50.0,
                 actualTargetsToFindInRound: 4
-            )
+            ) {
+                expectation1.fulfill()
+            }
+            wait(for: [expectation1], timeout: 5.0)
         }
         
         // Verify data was collected
@@ -176,14 +180,18 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         
         // Fill the buffer to capacity
         for i in 0..<200 {
-            adm1.recordIdentificationPerformance(
+            let expectation2 = XCTestExpectation(description: "Record large buffer data \(i+1)")
+            adm1.recordIdentificationPerformanceAsync(
                 taskSuccess: i % 3 != 0,
                 tfTtfRatio: CGFloat(i % 10) / 10.0,
                 reactionTime: 1.0 + Double(i % 5) * 0.2,
                 responseDuration: 2.0 + Double(i % 4),
                 averageTapAccuracy: 30.0 + CGFloat(i % 40),
                 actualTargetsToFindInRound: 3 + i % 3
-            )
+            ) {
+                expectation2.fulfill()
+            }
+            wait(for: [expectation2], timeout: 5.0)
         }
         
         // Verify buffer is at capacity
@@ -237,14 +245,18 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         
         // Record initial data
         for i in 0..<5 {
-            adm1.recordIdentificationPerformance(
+            let expectation3 = XCTestExpectation(description: "Record initial data \(i+1)")
+            adm1.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.8,
                 reactionTime: 1.5,
                 responseDuration: 3.0,
                 averageTapAccuracy: 50.0,
                 actualTargetsToFindInRound: 4
-            )
+            ) {
+                expectation3.fulfill()
+            }
+            wait(for: [expectation3], timeout: 5.0)
         }
         
         // Save state
@@ -264,14 +276,18 @@ class ADMDOMProfilingPersistenceTests: XCTestCase {
         
         // Record additional data
         for i in 0..<3 {
-            adm2.recordIdentificationPerformance(
+            let expectation4 = XCTestExpectation(description: "Record additional data \(i+1)")
+            adm2.recordIdentificationPerformanceAsync(
                 taskSuccess: false,
                 tfTtfRatio: 0.5,
                 reactionTime: 2.0,
                 responseDuration: 4.0,
                 averageTapAccuracy: 70.0,
                 actualTargetsToFindInRound: 5
-            )
+            ) {
+                expectation4.fulfill()
+            }
+            wait(for: [expectation4], timeout: 5.0)
         }
         
         // Verify continuity

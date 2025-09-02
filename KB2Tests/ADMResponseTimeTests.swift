@@ -205,14 +205,18 @@ class ADMResponseTimeTests: XCTestCase {
         let initialAbsoluteValue = adm.currentResponseTime
         
         // Simulate excellent performance (all KPIs maxed out)
-        adm.recordIdentificationPerformance(
+        let expectation = XCTestExpectation(description: "Record excellent performance")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 1.0,
             reactionTime: config.reactionTime_BestExpected,
             responseDuration: config.responseDuration_PerTarget_BestExpected,
             averageTapAccuracy: config.tapAccuracy_BestExpected_Points,
             actualTargetsToFindInRound: 5
-        )
+        ) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
         
         // Verify normalized increased and absolute decreased
         let newNormalizedPosition = adm.normalizedPositions[.responseTime]!
@@ -256,14 +260,18 @@ class ADMResponseTimeTests: XCTestCase {
         }
         
         // Simulate good performance
-        adm.recordIdentificationPerformance(
+        let expectation2 = XCTestExpectation(description: "Record good performance with history")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 1.0,
             reactionTime: config.reactionTime_BestExpected,
             responseDuration: config.responseDuration_PerTarget_BestExpected,
             averageTapAccuracy: config.tapAccuracy_BestExpected_Points,
             actualTargetsToFindInRound: 5
-        )
+        ) {
+            expectation2.fulfill()
+        }
+        wait(for: [expectation2], timeout: 5.0)
         
         // Verify normalized increased and absolute decreased, with a larger change
         // due to the positive performance history

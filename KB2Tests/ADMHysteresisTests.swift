@@ -367,13 +367,17 @@ class ADMHysteresisTests: XCTestCase {
     
     private func simulateFullRound(performanceScore: CGFloat) {
         // Simulate a full identification round
-        adm.recordIdentificationPerformance(
+        let expectation = XCTestExpectation(description: "Simulate full round with score \(performanceScore)")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: performanceScore > 0.5,
             tfTtfRatio: performanceScore,
             reactionTime: 1.0 - Double(performanceScore) * 0.5,
             responseDuration: 3.0 - Double(performanceScore) * 2.0,
             averageTapAccuracy: (1.0 - performanceScore) * 100.0,
             actualTargetsToFindInRound: 3
-        )
+        ) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
     }
 }

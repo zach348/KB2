@@ -160,14 +160,18 @@ class ADMWarmupTests: XCTestCase {
         let initialPositions = adm.normalizedPositions
         
         // Simulate good performance (above 0.60 target)
-        adm.recordIdentificationPerformance(
+        let expectation1 = XCTestExpectation(description: "Record good performance")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 0.9,
             reactionTime: 0.3,
             responseDuration: 1.0,
             averageTapAccuracy: 20.0,
             actualTargetsToFindInRound: 3
-        )
+        ) {
+            expectation1.fulfill()
+        }
+        wait(for: [expectation1], timeout: 5.0)
         
         // At least one DOM should have increased
         var anyIncreased = false
@@ -196,14 +200,18 @@ class ADMWarmupTests: XCTestCase {
         let initialPositions = adm.normalizedPositions
         
         // Simulate poor performance (below 0.60 target)
-        adm.recordIdentificationPerformance(
+        let expectation2 = XCTestExpectation(description: "Record poor performance")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: false,
             tfTtfRatio: 0.3,
             reactionTime: 1.5,
             responseDuration: 6.0,
             averageTapAccuracy: 150.0,
             actualTargetsToFindInRound: 3
-        )
+        ) {
+            expectation2.fulfill()
+        }
+        wait(for: [expectation2], timeout: 5.0)
         
         // At least one DOM should have decreased
         var anyDecreased = false
@@ -246,14 +254,18 @@ class ADMWarmupTests: XCTestCase {
         
         // Simulate rounds with moderate performance
         for round in 0..<(warmupLength + 2) {
-            adm.recordIdentificationPerformance(
+            let expectation3 = XCTestExpectation(description: "Record performance for round \(round)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.65,
                 reactionTime: 0.5,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50.0,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation3.fulfill()
+            }
+            wait(for: [expectation3], timeout: 5.0)
             
             // Capture positions at the end of warmup phase (after last warmup round)
             if round == warmupLength - 1 {

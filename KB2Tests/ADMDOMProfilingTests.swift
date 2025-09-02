@@ -100,15 +100,19 @@ class ADMDOMProfilingTests: XCTestCase {
         adm.normalizedPositions[.meanBallSpeed] = 0.6
         
         // Simulate convergence by recording many rounds with stable performance
-        for _ in 0..<10 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<10 {
+            let expectation = XCTestExpectation(description: "Convergence round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.75,
                 reactionTime: 1.5,
                 responseDuration: 3.0,
                 averageTapAccuracy: 50.0,
                 actualTargetsToFindInRound: 4
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // The new system uses forced exploration nudges instead of random jitter
@@ -117,15 +121,19 @@ class ADMDOMProfilingTests: XCTestCase {
         let initialPosition = adm.normalizedPositions[.meanBallSpeed] ?? 0.6
         
         // Continue with more rounds to potentially trigger forced exploration
-        for _ in 0..<enabledConfig.domConvergenceDuration {
-            adm.recordIdentificationPerformance(
+        for i in 0..<enabledConfig.domConvergenceDuration {
+            let expectation = XCTestExpectation(description: "Exploration round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.75,
                 reactionTime: 1.5,
                 responseDuration: 3.0,
                 averageTapAccuracy: 50.0,
                 actualTargetsToFindInRound: 4
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         let finalPosition = adm.normalizedPositions[.meanBallSpeed] ?? 0.6
@@ -196,15 +204,19 @@ class ADMDOMProfilingTests: XCTestCase {
         XCTAssertLessThanOrEqual(nudgeFactor, 0.1, "Nudge factor should not be too large")
         
         // Simulate rounds to build up performance data
-        for _ in 0..<5 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<5 {
+            let expectation = XCTestExpectation(description: "Performance data round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.75,
                 reactionTime: 1.5,
                 responseDuration: 3.0,
                 averageTapAccuracy: 50.0,
                 actualTargetsToFindInRound: 4
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // The forced exploration system uses deterministic nudges instead of random jitter
@@ -224,14 +236,18 @@ class ADMDOMProfilingTests: XCTestCase {
         )
         
         // Simulate a round
-        adm.recordIdentificationPerformance(
+        let expectation = XCTestExpectation(description: "Data collection test round")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 0.8,
             reactionTime: 1.5,
             responseDuration: 3.0,
             averageTapAccuracy: 50.0,
             actualTargetsToFindInRound: 4
-        )
+        ) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
         
         // Verify data was collected for each DOM
         for domType in DOMTargetType.allCases {
@@ -253,14 +269,18 @@ class ADMDOMProfilingTests: XCTestCase {
     func testPerformanceBufferLimitsSize() {
         // Record many rounds to test buffer limiting
         for i in 0..<210 { // More than the 200 buffer limit
-            adm.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Buffer test round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: i % 2 == 0, // Alternate success/failure
                 tfTtfRatio: CGFloat(i % 10) / 10.0,
                 reactionTime: 1.0 + Double(i % 5) * 0.2,
                 responseDuration: 2.0 + Double(i % 3),
                 averageTapAccuracy: 40.0 + CGFloat(i % 20),
                 actualTargetsToFindInRound: 3 + i % 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Verify buffer is limited to 200 entries

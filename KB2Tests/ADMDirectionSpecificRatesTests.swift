@@ -43,15 +43,19 @@ class ADMDirectionSpecificRatesTests: XCTestCase {
         let warmupLength = Int(CGFloat(expectedRounds) * config.warmupPhaseProportion)
         
         // Simulate warmup rounds to transition to standard phase
-        for _ in 0..<warmupLength {
-            adm.recordIdentificationPerformance(
+        for i in 0..<warmupLength {
+            let expectation = XCTestExpectation(description: "Warmup round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.7,
                 reactionTime: 0.5,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
     }
     
@@ -297,15 +301,19 @@ class ADMDirectionSpecificRatesTests: XCTestCase {
             initialArousal: 0.5
         )
         let warmupLength = Int(CGFloat(expectedRounds) * localConfig.warmupPhaseProportion)
-        for _ in 0..<warmupLength {
-            localADM.recordIdentificationPerformance(
+        for i in 0..<warmupLength {
+            let expectation1 = XCTestExpectation(description: "Per-DOM hardening warmup round \(i+1)")
+            localADM.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.7,
                 reactionTime: 0.5,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation1.fulfill()
+            }
+            wait(for: [expectation1], timeout: 5.0)
         }
         
         // Populate identical "excellent" performance profiles for both DOMs to isolate multiplier effect
@@ -361,15 +369,19 @@ class ADMDirectionSpecificRatesTests: XCTestCase {
             initialArousal: 0.5
         )
         let warmupLength = Int(CGFloat(expectedRounds) * localConfig.warmupPhaseProportion)
-        for _ in 0..<warmupLength {
-            localADM.recordIdentificationPerformance(
+        for i in 0..<warmupLength {
+            let expectation2 = XCTestExpectation(description: "Per-DOM easing warmup round \(i+1)")
+            localADM.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.7,
                 reactionTime: 0.5,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation2.fulfill()
+            }
+            wait(for: [expectation2], timeout: 5.0)
         }
         
         // Populate identical "poor" performance profiles for both DOMs to isolate multiplier effect
