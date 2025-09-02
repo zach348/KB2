@@ -3117,10 +3117,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // This is the final data collection point for the session.
         DataLogger.shared.endSession()
 
-            // Dismiss the EMA view
+            // Dismiss the EMA view and proceed directly to score visualization
             strongRootViewController.dismiss(animated: true) {
-                // Check if we should present the survey based on session count and user preferences
-                self.checkAndPresentSurveyIfNeeded()
+                self.presentEMAScoreVisualization()
             }
         }
 
@@ -3247,9 +3246,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 // Clear the newly unlocked achievements after displaying them
                 AchievementManager.shared.clearNewlyUnlockedAchievements()
                 
-                // Dismiss and return to start
+                // Dismiss and check for survey presentation
                 rootViewController?.dismiss(animated: true) {
-                    self?.transitionToStartScreenAfterEMA()
+                    self?.checkAndPresentSurveyIfNeeded()
                 }
             }
         )
@@ -3286,7 +3285,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         print("DEBUG: Survey eligibility check - Session count: \(sessionCount), Has accepted: \(hasAcceptedSurvey), Last declined version: \(lastDeclinedVersion ?? "none"), Current version: \(currentAppVersion)")
         
         // Check all conditions for survey presentation
-        let meetsSessionThreshold = sessionCount >= 3
+        let meetsSessionThreshold = sessionCount >= 2
         let hasNotAcceptedSurvey = !hasAcceptedSurvey
         let shouldRepromptAfterDecline = lastDeclinedVersion != currentAppVersion
         
@@ -3296,7 +3295,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         } else {
             print("DEBUG: Survey conditions not met - skipping to score visualization")
             if !meetsSessionThreshold {
-                print("  - Session threshold not met (\(sessionCount) < 3)")
+                print("  - Session count (\(sessionCount)) below threshold (2)")
             }
             if !hasNotAcceptedSurvey {
                 print("  - User has already accepted survey")
@@ -3304,7 +3303,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             if !shouldRepromptAfterDecline {
                 print("  - User declined in current app version (\(currentAppVersion))")
             }
-            presentEMAScoreVisualization()
+            transitionToStartScreenAfterEMA()
         }
     }
     

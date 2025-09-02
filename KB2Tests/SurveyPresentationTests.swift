@@ -34,32 +34,40 @@ class SurveyPresentationTests: XCTestCase {
         // When: First session completes
         FirstRunManager.shared.sessionCount = 1
         
-        // Then: Survey should not be presented
+        // Then: Survey should NOT be presented (need 2+ sessions)
         XCTAssertFalse(shouldPresentSurvey(), "Survey should NOT be presented after 1st session")
     }
     
-    func testSurveyNotPresentedOnSecondSession() {
+    func testSurveyPresentedOnSecondSession() {
         // Given: User has completed one session
         FirstRunManager.shared.sessionCount = 2
         
-        // Then: Survey should not be presented
-        XCTAssertFalse(shouldPresentSurvey(), "Survey should NOT be presented after 2nd session")
+        // Then: Survey should be presented (meets threshold)
+        XCTAssertTrue(shouldPresentSurvey(), "Survey SHOULD be presented after 2nd session")
     }
     
     func testSurveyPresentedOnThirdSession() {
         // Given: User has completed two sessions
         FirstRunManager.shared.sessionCount = 3
         
-        // Then: Survey should be presented
+        // Then: Survey should be presented (meets threshold)
         XCTAssertTrue(shouldPresentSurvey(), "Survey SHOULD be presented after 3rd session")
     }
     
-    func testSurveyPresentedOnFourthAndSubsequentSessions() {
-        // Test session 4
+    func testSurveyPresentedOnSecondAndSubsequentSessions() {
+        // Test session 1 - should NOT be presented
+        FirstRunManager.shared.sessionCount = 1
+        XCTAssertFalse(shouldPresentSurvey(), "Survey should NOT be presented after 1st session")
+        
+        // Test session 2 - should be presented
+        FirstRunManager.shared.sessionCount = 2
+        XCTAssertTrue(shouldPresentSurvey(), "Survey SHOULD be presented after 2nd session")
+        
+        // Test session 4 - should be presented
         FirstRunManager.shared.sessionCount = 4
         XCTAssertTrue(shouldPresentSurvey(), "Survey SHOULD be presented after 4th session")
         
-        // Test session 10
+        // Test session 10 - should be presented
         FirstRunManager.shared.sessionCount = 10
         XCTAssertTrue(shouldPresentSurvey(), "Survey SHOULD be presented after 10th session")
     }
@@ -101,7 +109,7 @@ class SurveyPresentationTests: XCTestCase {
     
     func testSurveyRepresentedAfterDeclineInPreviousVersion() {
         // Given: User declined in a previous version but app has been updated
-        FirstRunManager.shared.sessionCount = 3
+        FirstRunManager.shared.sessionCount = 2
         FirstRunManager.shared.surveyLastDeclinedVersion = "1.0"
         
         // Mock current version as different (normally this would be from Bundle.main)
@@ -119,9 +127,9 @@ class SurveyPresentationTests: XCTestCase {
         
         let mockCurrentVersion = "1.1"
         
-        // Then: Survey should be presented again
+        // Then: Survey should be presented again (meets session threshold)
         let shouldPresent = shouldPresentSurveyWithVersion(mockCurrentVersion)
-        XCTAssertTrue(shouldPresent, "Survey SHOULD be re-presented after version update even with many sessions")
+        XCTAssertTrue(shouldPresent, "Survey SHOULD be re-presented after version update when session threshold is met")
     }
     
     // MARK: - Complex Scenario Tests
@@ -142,7 +150,7 @@ class SurveyPresentationTests: XCTestCase {
         // Given: User has many sessions but never interacted with survey
         FirstRunManager.shared.sessionCount = 20
         
-        // Then: Survey should still be presented
+        // Then: Survey should still be presented (meets session threshold)
         XCTAssertTrue(shouldPresentSurvey(), "Survey SHOULD be presented even after many sessions if no interaction")
     }
     
@@ -155,7 +163,8 @@ class SurveyPresentationTests: XCTestCase {
         let lastDeclinedVersion = FirstRunManager.shared.surveyLastDeclinedVersion
         let currentAppVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         
-        let meetsSessionThreshold = sessionCount >= 3
+        // Survey presented after 2nd session and all subsequent sessions until accepted
+        let meetsSessionThreshold = sessionCount >= 2
         let hasNotAcceptedSurvey = !hasAcceptedSurvey
         let shouldRepromptAfterDecline = lastDeclinedVersion != currentAppVersion
         
@@ -168,7 +177,8 @@ class SurveyPresentationTests: XCTestCase {
         let hasAcceptedSurvey = FirstRunManager.shared.hasAcceptedSurvey
         let lastDeclinedVersion = FirstRunManager.shared.surveyLastDeclinedVersion
         
-        let meetsSessionThreshold = sessionCount >= 3
+        // Survey presented after 2nd session and all subsequent sessions until accepted
+        let meetsSessionThreshold = sessionCount >= 2
         let hasNotAcceptedSurvey = !hasAcceptedSurvey
         let shouldRepromptAfterDecline = lastDeclinedVersion != mockCurrentVersion
         
@@ -178,8 +188,8 @@ class SurveyPresentationTests: XCTestCase {
     // MARK: - Integration Tests for Survey Completion Handlers
     
     func testSurveyAcceptanceUpdatesFlags() {
-        // Given: Survey is eligible to be shown
-        FirstRunManager.shared.sessionCount = 3
+        // Given: Survey is eligible to be shown (session count >= 2)
+        FirstRunManager.shared.sessionCount = 2
         XCTAssertFalse(FirstRunManager.shared.hasAcceptedSurvey)
         
         // When: User accepts survey (simulate onConfirm logic)
@@ -193,8 +203,8 @@ class SurveyPresentationTests: XCTestCase {
     }
     
     func testSurveyDeclineUpdatesFlags() {
-        // Given: Survey is eligible to be shown
-        FirstRunManager.shared.sessionCount = 3
+        // Given: Survey is eligible to be shown (session count >= 2)
+        FirstRunManager.shared.sessionCount = 2
         let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         
         // When: User declines survey (simulate onDecline logic)
@@ -216,15 +226,15 @@ class SurveyPresentationTests: XCTestCase {
         // When: Sessions complete
         FirstRunManager.shared.sessionCount += 1
         XCTAssertEqual(FirstRunManager.shared.sessionCount, 1)
+        XCTAssertFalse(shouldPresentSurvey(), "Survey should NOT be eligible after 1st session")
         
         FirstRunManager.shared.sessionCount += 1
         XCTAssertEqual(FirstRunManager.shared.sessionCount, 2)
+        XCTAssertTrue(shouldPresentSurvey(), "Survey should be eligible after 2nd session")
         
         FirstRunManager.shared.sessionCount += 1
         XCTAssertEqual(FirstRunManager.shared.sessionCount, 3)
-        
-        // Then: Survey should be eligible after 3rd session
-        XCTAssertTrue(shouldPresentSurvey(), "Survey should be eligible after session count reaches 3")
+        XCTAssertTrue(shouldPresentSurvey(), "Survey should be eligible after 3rd session")
     }
     
     func testSessionCounterPersistsInUserDefaults() {
@@ -277,7 +287,7 @@ class SurveyPresentationTests: XCTestCase {
         FirstRunManager.shared.sessionCount = 4
         FirstRunManager.shared.surveyLastDeclinedVersion = nil
         
-        // Then: Survey should be presented (nil != any version)
+        // Then: Survey should be presented (nil != any version and meets threshold)
         XCTAssertTrue(shouldPresentSurvey(), "Survey should be presented when no decline history exists")
     }
     
@@ -285,7 +295,7 @@ class SurveyPresentationTests: XCTestCase {
         // Given: No sessions completed
         FirstRunManager.shared.sessionCount = 0
         
-        // Then: Survey should not be presented regardless of other flags
+        // Then: Survey should not be presented (below threshold)
         XCTAssertFalse(shouldPresentSurvey(), "Survey should not be presented with zero sessions")
     }
     
