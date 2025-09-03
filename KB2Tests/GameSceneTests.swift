@@ -157,6 +157,9 @@ class GameSceneTests: XCTestCase {
         gameScene.sessionDuration = 10 // Short duration for testing
         gameScene.initialArousalLevel = 1.0
         
+        // Enable testing mode to bypass throttling and smoothing
+        gameScene.isTesting = true
+        
         // Trigger initialization which sets sessionStartTime
         gameScene.didMove(to: mockView)
         

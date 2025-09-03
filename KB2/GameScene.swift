@@ -128,6 +128,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private var lastArousalUpdateTime: TimeInterval = 0
     private let arousalUpdateInterval: TimeInterval = 0.25 // 4 times per second
     // --- END ADDED ---
+    
+    // --- TESTING: Flag to bypass throttling and smoothing during tests ---
+    internal var isTesting: Bool = false
 
     // --- Core Game State Properties ---
     internal var currentState: GameState = .tracking
@@ -2506,13 +2509,17 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Exit if warmup ramp is active - let it control arousal exclusively
         guard !isWarmupRampActive else { return }
         
-        // Throttle updates to improve performance
         let currentTime = CACurrentMediaTime()
-        // Only update if enough time has passed since the last update
-        guard (currentTime - lastArousalUpdateTime) >= arousalUpdateInterval else { return }
         
-        // Update the timestamp for next check
-        lastArousalUpdateTime = currentTime
+        // TESTING: Skip throttling during tests
+        if !isTesting {
+            // Throttle updates to improve performance
+            // Only update if enough time has passed since the last update
+            guard (currentTime - lastArousalUpdateTime) >= arousalUpdateInterval else { return }
+            
+            // Update the timestamp for next check
+            lastArousalUpdateTime = currentTime
+        }
         
         // For manual profile, only update session progress and check completion
         if sessionProfile == .manual {
@@ -2604,9 +2611,15 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Apply arousal change more smoothly
         let arousalDifference = targetArousal - currentArousalLevel
         if abs(arousalDifference) > 0.001 {
-            // Apply gradual change rather than jumping directly to target
-            let newArousal = currentArousalLevel + (arousalDifference * 0.05)  // 5% step toward target
-            currentArousalLevel = newArousal
+            // TESTING: Skip smoothing during tests
+            if isTesting {
+                // Apply change immediately during tests
+                currentArousalLevel = targetArousal
+            } else {
+                // Apply gradual change rather than jumping directly to target
+                let newArousal = currentArousalLevel + (arousalDifference * 0.05)  // 5% step toward target
+                currentArousalLevel = newArousal
+            }
         }
         
         // Check for challenge phase

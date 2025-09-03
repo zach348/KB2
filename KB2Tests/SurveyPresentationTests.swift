@@ -10,16 +10,28 @@ import XCTest
 @testable import KB2
 
 class SurveyPresentationTests: XCTestCase {
+    private var testUserDefaults: UserDefaults!
+    private var testFirstRunManager: FirstRunManager!
     
     override func setUp() {
         super.setUp()
-        // Reset FirstRunManager state before each test
-        FirstRunManager.shared.resetForDebug()
+        // Create isolated test UserDefaults
+        testUserDefaults = TestHelpers.createTestUserDefaults()
+        
+        // Create FirstRunManager with test UserDefaults
+        testFirstRunManager = FirstRunManager(userDefaults: testUserDefaults)
+        
+        // Replace shared instance for testing
+        FirstRunManager.shared = testFirstRunManager
     }
     
     override func tearDown() {
-        // Clean up after each test
-        FirstRunManager.shared.resetForDebug()
+        // Clean up test UserDefaults
+        TestHelpers.cleanupTestUserDefaults(testUserDefaults)
+        
+        // Restore original shared instance
+        FirstRunManager.shared = FirstRunManager()
+        
         super.tearDown()
     }
     
@@ -241,8 +253,8 @@ class SurveyPresentationTests: XCTestCase {
         // Given: Session count is incremented
         FirstRunManager.shared.sessionCount = 5
         
-        // When: We read the value directly from UserDefaults
-        let storedCount = UserDefaults.standard.integer(forKey: "sessionCount")
+        // When: We read the value directly from test UserDefaults
+        let storedCount = testUserDefaults.integer(forKey: "sessionCount")
         
         // Then: The value should match
         XCTAssertEqual(storedCount, 5, "Session count should persist in UserDefaults")

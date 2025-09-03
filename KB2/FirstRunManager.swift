@@ -2,57 +2,65 @@
 import Foundation
 
 final class FirstRunManager {
-    static let shared = FirstRunManager()
-    private init() {}
-
+    static var shared = FirstRunManager()
+    
+    // MARK: - UserDefaults
+    private let userDefaults: UserDefaults
+    
+    // MARK: - UserDefaults Keys
     private let hasCompletedOnboardingKey = "hasCompletedOnboarding"
     private let hasCompletedTutorialKey = "hasCompletedTutorial"
     private let sessionCountKey = "sessionCount"
     private let hasAcceptedSurveyKey = "hasAcceptedSurvey"
     private let surveyLastDeclinedVersionKey = "surveyLastDeclinedVersion"
+    
+    // MARK: - Initialization
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+    }
 
     var hasCompletedOnboarding: Bool {
         get {
-            UserDefaults.standard.bool(forKey: hasCompletedOnboardingKey)
+            userDefaults.bool(forKey: hasCompletedOnboardingKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: hasCompletedOnboardingKey)
+            userDefaults.set(newValue, forKey: hasCompletedOnboardingKey)
         }
     }
 
     var hasCompletedTutorial: Bool {
         get {
-            UserDefaults.standard.bool(forKey: hasCompletedTutorialKey)
+            userDefaults.bool(forKey: hasCompletedTutorialKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: hasCompletedTutorialKey)
+            userDefaults.set(newValue, forKey: hasCompletedTutorialKey)
         }
     }
     
     var sessionCount: Int {
         get {
-            UserDefaults.standard.integer(forKey: sessionCountKey)
+            userDefaults.integer(forKey: sessionCountKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: sessionCountKey)
+            userDefaults.set(newValue, forKey: sessionCountKey)
         }
     }
     
     var hasAcceptedSurvey: Bool {
         get {
-            UserDefaults.standard.bool(forKey: hasAcceptedSurveyKey)
+            userDefaults.bool(forKey: hasAcceptedSurveyKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: hasAcceptedSurveyKey)
+            userDefaults.set(newValue, forKey: hasAcceptedSurveyKey)
         }
     }
     
     var surveyLastDeclinedVersion: String? {
         get {
-            UserDefaults.standard.string(forKey: surveyLastDeclinedVersionKey)
+            userDefaults.string(forKey: surveyLastDeclinedVersionKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: surveyLastDeclinedVersionKey)
+            userDefaults.set(newValue, forKey: surveyLastDeclinedVersionKey)
         }
     }
     
@@ -60,25 +68,25 @@ final class FirstRunManager {
     private let hasShownSubscriptionOfferKey = "hasShownSubscriptionOffer"
     var hasShownSubscriptionOffer: Bool {
         get {
-            UserDefaults.standard.bool(forKey: hasShownSubscriptionOfferKey)
+            userDefaults.bool(forKey: hasShownSubscriptionOfferKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: hasShownSubscriptionOfferKey)
+            userDefaults.set(newValue, forKey: hasShownSubscriptionOfferKey)
         }
     }
 
     #if DEBUG
     func resetForDebug() {
-        UserDefaults.standard.removeObject(forKey: hasCompletedOnboardingKey)
-        UserDefaults.standard.removeObject(forKey: hasCompletedTutorialKey)
-        UserDefaults.standard.removeObject(forKey: hasShownSubscriptionOfferKey)
-        UserDefaults.standard.removeObject(forKey: sessionCountKey)
-        UserDefaults.standard.removeObject(forKey: hasAcceptedSurveyKey)
-        UserDefaults.standard.removeObject(forKey: surveyLastDeclinedVersionKey)
+        userDefaults.removeObject(forKey: hasCompletedOnboardingKey)
+        userDefaults.removeObject(forKey: hasCompletedTutorialKey)
+        userDefaults.removeObject(forKey: hasShownSubscriptionOfferKey)
+        userDefaults.removeObject(forKey: sessionCountKey)
+        userDefaults.removeObject(forKey: hasAcceptedSurveyKey)
+        userDefaults.removeObject(forKey: surveyLastDeclinedVersionKey)
     }
 
     func resetTutorialForDebug() {
-        UserDefaults.standard.removeObject(forKey: hasCompletedTutorialKey)
+        userDefaults.removeObject(forKey: hasCompletedTutorialKey)
     }
     #endif
     
@@ -90,12 +98,12 @@ final class FirstRunManager {
             return
         }
         
-        UserDefaults.standard.removeObject(forKey: hasCompletedOnboardingKey)
-        UserDefaults.standard.removeObject(forKey: hasCompletedTutorialKey)
-        UserDefaults.standard.removeObject(forKey: hasShownSubscriptionOfferKey)
-        UserDefaults.standard.removeObject(forKey: sessionCountKey)
-        UserDefaults.standard.removeObject(forKey: hasAcceptedSurveyKey)
-        UserDefaults.standard.removeObject(forKey: surveyLastDeclinedVersionKey)
+        userDefaults.removeObject(forKey: hasCompletedOnboardingKey)
+        userDefaults.removeObject(forKey: hasCompletedTutorialKey)
+        userDefaults.removeObject(forKey: hasShownSubscriptionOfferKey)
+        userDefaults.removeObject(forKey: sessionCountKey)
+        userDefaults.removeObject(forKey: hasAcceptedSurveyKey)
+        userDefaults.removeObject(forKey: surveyLastDeclinedVersionKey)
         
         // Reset trial date for fresh TestFlight experience
         let now = Date()
