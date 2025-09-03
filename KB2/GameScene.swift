@@ -3203,16 +3203,16 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 // Open survey URL and dismiss the modal
                 self?.openSurveyURL()
                 rootViewController?.dismiss(animated: true) {
-                    self?.presentEMAScoreVisualization()
+                    self?.transitionToStartScreenAfterEMA()
                 }
             },
             onDecline: { [weak self, weak rootViewController] in
-                // User tapped "No thanks" - no decline tracking in simplified version
-                print("DEBUG: Survey declined - will be presented again next session")
+                // User tapped "No thanks" - transition directly to start screen to break loop
+                print("DEBUG: Survey declined - transitioning to start screen")
                 
-                // Dismiss the modal and go to EMA visualization
+                // Dismiss the modal and go directly to start screen
                 rootViewController?.dismiss(animated: true) {
-                    self?.presentEMAScoreVisualization()
+                    self?.transitionToStartScreenAfterEMA()
                 }
             }
         )
