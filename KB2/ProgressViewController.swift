@@ -161,6 +161,11 @@ class ProgressViewController: UIViewController {
     }
     
     private func setupChartView(_ chartView: LineChartView, title: String, metric: String) {
+        // Hide legend for Focus Quality chart since it only has post-session data
+        if title == "Focus Quality" {
+            chartView.showsLegend = false
+        }
+        
         chartView.configure(
             title: title,
             metric: metric,
@@ -538,6 +543,12 @@ class LineChartView: UIView {
     private var preData: [Double] = []
     private var postData: [Double] = []
     private var dates: [Date] = []
+    
+    var showsLegend: Bool = true {
+        didSet {
+            legendStackView.isHidden = !showsLegend
+        }
+    }
     
     override init(frame: CGRect) {
         super.init(frame: frame)

@@ -13,11 +13,14 @@ import QuartzCore
 class AchievementManager: ObservableObject {
     
     // MARK: - Singleton
-    static let shared = AchievementManager()
+    static var shared = AchievementManager()
     
     // MARK: - Published Properties
     @Published var achievements: [Achievement] = []
     @Published var newlyUnlockedAchievements: [Achievement] = []
+    
+    // MARK: - UserDefaults
+    private let userDefaults: UserDefaults
     
     // MARK: - UserDefaults Keys
     private let achievementsKey = "com.kb2.achievements"
@@ -36,14 +39,15 @@ class AchievementManager: ObservableObject {
     static let achievementUnlockedNotification = Notification.Name("AchievementUnlocked")
     
     // MARK: - Initialization
-    private init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         loadAchievements()
     }
     
     // MARK: - Achievement Loading/Saving
     
     private func loadAchievements() {
-        if let data = UserDefaults.standard.data(forKey: achievementsKey),
+        if let data = userDefaults.data(forKey: achievementsKey),
            let savedAchievements = try? JSONDecoder().decode([Achievement].self, from: data) {
             // Create a dictionary of saved achievements for quick lookup
             let savedDict = Dictionary(uniqueKeysWithValues: savedAchievements.map { ($0.id, $0) })
@@ -65,7 +69,7 @@ class AchievementManager: ObservableObject {
     
     private func saveAchievements() {
         if let data = try? JSONEncoder().encode(achievements) {
-            UserDefaults.standard.set(data, forKey: achievementsKey)
+            userDefaults.set(data, forKey: achievementsKey)
         }
     }
     
@@ -109,9 +113,9 @@ class AchievementManager: ObservableObject {
     
     func endSession(duration: TimeInterval, preSessionEMA: EMAResponse?, postSessionEMA: EMAResponse?) {
         // Update session count
-        let currentCount = UserDefaults.standard.integer(forKey: sessionCountKey)
+        let currentCount = userDefaults.integer(forKey: sessionCountKey)
         let newCount = currentCount + 1
-        UserDefaults.standard.set(newCount, forKey: sessionCountKey)
+        userDefaults.set(newCount, forKey: sessionCountKey)
         
         // Check progression achievements
         checkProgressionAchievements(sessionCount: newCount, sessionDuration: duration)
@@ -159,10 +163,10 @@ class AchievementManager: ObservableObject {
     
     private func checkDailyHabitAchievements() {
         let today = Calendar.current.startOfDay(for: Date())
-        let lastSessionDate = UserDefaults.standard.object(forKey: lastSessionDateKey) as? Date
+        let lastSessionDate = userDefaults.object(forKey: lastSessionDateKey) as? Date
         let lastSessionDayStart = lastSessionDate.map { Calendar.current.startOfDay(for: $0) }
         
-        var consecutiveDays = UserDefaults.standard.integer(forKey: consecutiveDaysKey)
+        var consecutiveDays = userDefaults.integer(forKey: consecutiveDaysKey)
         
         if let lastSessionDayStart = lastSessionDayStart {
             let daysDifference = Calendar.current.dateComponents([.day], from: lastSessionDayStart, to: today).day ?? 0
@@ -182,8 +186,8 @@ class AchievementManager: ObservableObject {
         }
         
         // Save updated values
-        UserDefaults.standard.set(consecutiveDays, forKey: consecutiveDaysKey)
-        UserDefaults.standard.set(Date(), forKey: lastSessionDateKey)
+        userDefaults.set(consecutiveDays, forKey: consecutiveDaysKey)
+        userDefaults.set(Date(), forKey: lastSessionDateKey)
         
         // Check achievements
         if consecutiveDays >= 3 {
@@ -315,10 +319,10 @@ class AchievementManager: ObservableObject {
         }
         
         // Clear related UserDefaults data
-        UserDefaults.standard.removeObject(forKey: achievementsKey)
-        UserDefaults.standard.removeObject(forKey: sessionCountKey)
-        UserDefaults.standard.removeObject(forKey: consecutiveDaysKey)
-        UserDefaults.standard.removeObject(forKey: lastSessionDateKey)
+        userDefaults.removeObject(forKey: achievementsKey)
+        userDefaults.removeObject(forKey: sessionCountKey)
+        userDefaults.removeObject(forKey: consecutiveDaysKey)
+        userDefaults.removeObject(forKey: lastSessionDateKey)
         
         // Clear newly unlocked achievements array
         newlyUnlockedAchievements.removeAll()

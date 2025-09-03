@@ -92,6 +92,27 @@ class TestHelpers {
         }
         return history
     }
+    
+    // MARK: - UserDefaults Test Helpers
+    
+    /// Creates a test-specific UserDefaults instance with a unique suite name
+    /// This ensures test isolation from the app's normal UserDefaults
+    static func createTestUserDefaults() -> UserDefaults {
+        let suiteName = "com.kb2.tests"
+        let testDefaults = UserDefaults(suiteName: suiteName)!
+        
+        // Clear any existing data from previous test runs
+        testDefaults.removePersistentDomain(forName: suiteName)
+        
+        return testDefaults
+    }
+    
+    /// Cleans up test UserDefaults after test completion
+    static func cleanupTestUserDefaults(_ userDefaults: UserDefaults) {
+        // Simple approach: just remove the test suite domain
+        let testSuiteName = "com.kb2.tests"
+        userDefaults.removePersistentDomain(forName: testSuiteName)
+    }
 }
 
 // Safe array subscript extension

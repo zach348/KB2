@@ -11,23 +11,29 @@ import XCTest
 class AchievementTests: XCTestCase {
 
     var achievementManager: AchievementManager!
-    let userDefaults = UserDefaults.standard
+    var testUserDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        // Ensure a clean slate before each test
-        userDefaults.removeObject(forKey: "com.kb2.achievements")
-        userDefaults.removeObject(forKey: "com.kb2.sessionCount")
-        userDefaults.removeObject(forKey: "com.kb2.consecutiveDays")
-        userDefaults.removeObject(forKey: "com.kb2.lastSessionDate")
+        // Create isolated test UserDefaults
+        testUserDefaults = TestHelpers.createTestUserDefaults()
         
-        // Re-initialize the singleton by resetting it
-        achievementManager = AchievementManager.shared
-        achievementManager.resetAchievements()
+        // Create test AchievementManager with isolated UserDefaults
+        achievementManager = AchievementManager(userDefaults: testUserDefaults)
+        
+        // Replace the shared instance for this test
+        AchievementManager.shared = achievementManager
     }
 
     override func tearDown() {
+        // Clean up test UserDefaults
+        TestHelpers.cleanupTestUserDefaults(testUserDefaults)
+        
+        // Reset shared instance to normal (for integration with other parts of the app during testing)
+        AchievementManager.shared = AchievementManager()
+        
         achievementManager = nil
+        testUserDefaults = nil
         super.tearDown()
     }
 
@@ -76,31 +82,31 @@ class AchievementTests: XCTestCase {
         
         // Assert
         assertAchievementUnlocked(id: "dedicated_user_10")
-        XCTAssertEqual(userDefaults.integer(forKey: "com.kb2.sessionCount"), 10)
+        XCTAssertEqual(testUserDefaults.integer(forKey: "com.kb2.sessionCount"), 10)
     }
     
     func testDedicatedUserTier2Achievement() {
         // Arrange - Set session count to 49
-        userDefaults.set(49, forKey: "com.kb2.sessionCount")
+        testUserDefaults.set(49, forKey: "com.kb2.sessionCount")
         
         // Act - Complete one more session to reach 50
         achievementManager.endSession(duration: 300, preSessionEMA: nil, postSessionEMA: nil)
         
         // Assert
         assertAchievementUnlocked(id: "dedicated_user_50")
-        XCTAssertEqual(userDefaults.integer(forKey: "com.kb2.sessionCount"), 50)
+        XCTAssertEqual(testUserDefaults.integer(forKey: "com.kb2.sessionCount"), 50)
     }
     
     func testDedicatedUserTier3Achievement() {
         // Arrange - Set session count to 99
-        userDefaults.set(99, forKey: "com.kb2.sessionCount")
+        testUserDefaults.set(99, forKey: "com.kb2.sessionCount")
         
         // Act - Complete one more session to reach 100
         achievementManager.endSession(duration: 300, preSessionEMA: nil, postSessionEMA: nil)
         
         // Assert
         assertAchievementUnlocked(id: "dedicated_user_100")
-        XCTAssertEqual(userDefaults.integer(forKey: "com.kb2.sessionCount"), 100)
+        XCTAssertEqual(testUserDefaults.integer(forKey: "com.kb2.sessionCount"), 100)
     }
     
     func testMarathonAchievement() {
@@ -284,13 +290,13 @@ class AchievementTests: XCTestCase {
         let twoDaysAgo = Calendar.current.date(byAdding: .day, value: -2, to: today)!
         
         // Simulate session on day 1
-        userDefaults.set(twoDaysAgo, forKey: "com.kb2.lastSessionDate")
-        userDefaults.set(1, forKey: "com.kb2.consecutiveDays")
+        testUserDefaults.set(twoDaysAgo, forKey: "com.kb2.lastSessionDate")
+        testUserDefaults.set(1, forKey: "com.kb2.consecutiveDays")
         achievementManager.endSession(duration: 300, preSessionEMA: nil, postSessionEMA: nil)
         
         // Simulate session on day 2
-        userDefaults.set(yesterday, forKey: "com.kb2.lastSessionDate")
-        userDefaults.set(2, forKey: "com.kb2.consecutiveDays")
+        testUserDefaults.set(yesterday, forKey: "com.kb2.lastSessionDate")
+        testUserDefaults.set(2, forKey: "com.kb2.consecutiveDays")
         achievementManager.endSession(duration: 300, preSessionEMA: nil, postSessionEMA: nil)
         
         // Act - Session on day 3 (today)
@@ -298,7 +304,7 @@ class AchievementTests: XCTestCase {
         
         // Assert
         assertAchievementUnlocked(id: "daily_habit_3")
-        XCTAssertEqual(userDefaults.integer(forKey: "com.kb2.consecutiveDays"), 3)
+        XCTAssertEqual(testUserDefaults.integer(forKey: "com.kb2.consecutiveDays"), 3)
     }
 
     // MARK: - Edge Case and Integration Tests
@@ -366,7 +372,7 @@ class AchievementTests: XCTestCase {
         XCTAssertEqual(achievementManager.getUnlockedAchievementsCount(), 2)
         
         // Verify some UserDefaults were set
-        XCTAssertEqual(userDefaults.integer(forKey: "com.kb2.sessionCount"), 1)
+        XCTAssertEqual(testUserDefaults.integer(forKey: "com.kb2.sessionCount"), 1)
         
         // Act
         achievementManager.resetAchievements()
@@ -378,9 +384,9 @@ class AchievementTests: XCTestCase {
         assertAchievementLocked(id: "session_starter")
         
         // Verify UserDefaults were cleared
-        XCTAssertEqual(userDefaults.integer(forKey: "com.kb2.sessionCount"), 0)
-        XCTAssertNil(userDefaults.object(forKey: "com.kb2.lastSessionDate"))
-        XCTAssertEqual(userDefaults.integer(forKey: "com.kb2.consecutiveDays"), 0)
+        XCTAssertEqual(testUserDefaults.integer(forKey: "com.kb2.sessionCount"), 0)
+        XCTAssertNil(testUserDefaults.object(forKey: "com.kb2.lastSessionDate"))
+        XCTAssertEqual(testUserDefaults.integer(forKey: "com.kb2.consecutiveDays"), 0)
     }
     
     func testAchievementPersistence() {
