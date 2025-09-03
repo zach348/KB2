@@ -12,7 +12,6 @@ final class FirstRunManager {
     private let hasCompletedTutorialKey = "hasCompletedTutorial"
     private let sessionCountKey = "sessionCount"
     private let hasAcceptedSurveyKey = "hasAcceptedSurvey"
-    private let surveyLastDeclinedVersionKey = "surveyLastDeclinedVersion"
     
     // MARK: - Initialization
     init(userDefaults: UserDefaults = .standard) {
@@ -55,15 +54,6 @@ final class FirstRunManager {
         }
     }
     
-    var surveyLastDeclinedVersion: String? {
-        get {
-            userDefaults.string(forKey: surveyLastDeclinedVersionKey)
-        }
-        set {
-            userDefaults.set(newValue, forKey: surveyLastDeclinedVersionKey)
-        }
-    }
-    
     // Tracks whether we've shown the non-blocking subscription offer during trial
     private let hasShownSubscriptionOfferKey = "hasShownSubscriptionOffer"
     var hasShownSubscriptionOffer: Bool {
@@ -82,7 +72,6 @@ final class FirstRunManager {
         userDefaults.removeObject(forKey: hasShownSubscriptionOfferKey)
         userDefaults.removeObject(forKey: sessionCountKey)
         userDefaults.removeObject(forKey: hasAcceptedSurveyKey)
-        userDefaults.removeObject(forKey: surveyLastDeclinedVersionKey)
     }
 
     func resetTutorialForDebug() {
@@ -103,8 +92,6 @@ final class FirstRunManager {
         userDefaults.removeObject(forKey: hasShownSubscriptionOfferKey)
         userDefaults.removeObject(forKey: sessionCountKey)
         userDefaults.removeObject(forKey: hasAcceptedSurveyKey)
-        userDefaults.removeObject(forKey: surveyLastDeclinedVersionKey)
-        
         // Reset trial date for fresh TestFlight experience
         let now = Date()
         _ = KeychainManager.shared.setDate(now, forKey: "trial_start_date")

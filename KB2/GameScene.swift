@@ -3207,10 +3207,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 }
             },
             onDecline: { [weak self, weak rootViewController] in
-                // User tapped "No thanks" - record decline for current version
-                let currentAppVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-                FirstRunManager.shared.surveyLastDeclinedVersion = currentAppVersion
-                print("DEBUG: Survey declined for version \(currentAppVersion) - flag set in FirstRunManager")
+                // User tapped "No thanks" - no decline tracking in simplified version
+                print("DEBUG: Survey declined - will be presented again next session")
                 
                 // Dismiss the modal and go to EMA visualization
                 rootViewController?.dismiss(animated: true) {
@@ -3302,17 +3300,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func checkAndPresentSurveyIfNeeded() {
         let sessionCount = FirstRunManager.shared.sessionCount
         let hasAcceptedSurvey = FirstRunManager.shared.hasAcceptedSurvey
-        let lastDeclinedVersion = FirstRunManager.shared.surveyLastDeclinedVersion
-        let currentAppVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         
-        print("DEBUG: Survey eligibility check - Session count: \(sessionCount), Has accepted: \(hasAcceptedSurvey), Last declined version: \(lastDeclinedVersion ?? "none"), Current version: \(currentAppVersion)")
+        print("DEBUG: Survey eligibility check - Session count: \(sessionCount), Has accepted: \(hasAcceptedSurvey)")
         
-        // Check all conditions for survey presentation
+        // Check conditions for survey presentation
         let meetsSessionThreshold = sessionCount >= 2
         let hasNotAcceptedSurvey = !hasAcceptedSurvey
-        let shouldRepromptAfterDecline = lastDeclinedVersion != currentAppVersion
         
-        if meetsSessionThreshold && hasNotAcceptedSurvey && shouldRepromptAfterDecline {
+        if meetsSessionThreshold && hasNotAcceptedSurvey {
             print("DEBUG: All conditions met - presenting survey")
             presentSurveyModal()
         } else {
@@ -3322,9 +3317,6 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             }
             if !hasNotAcceptedSurvey {
                 print("  - User has already accepted survey")
-            }
-            if !shouldRepromptAfterDecline {
-                print("  - User declined in current app version (\(currentAppVersion))")
             }
             transitionToStartScreenAfterEMA()
         }
