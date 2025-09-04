@@ -352,7 +352,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         setupFeedbackAssets()
         
         if hapticsReady { startHapticEngine() }
-        audioManager.startEngine() // MODIFIED
+        audioManager.startEngine(withFadeIn: true) // Use fade-in on session start
         
         if sessionMode {
             // Initialize achievement tracking for this session

@@ -44,6 +44,13 @@ class PreciseAudioPulser {
     private var maxQueueLength = 4 // Maximum number of queued pulses to prevent memory issues
     private var lastRenderTime: Double = 0.0
     
+    // ADDED: Fade-in functionality
+    private var isFadingIn: Bool = false
+    private var fadeInStartTime: Double = 0.0
+    private var fadeInDuration: Double = 2.0
+    private var fadeInTargetAmplitude: Float = 0.0
+    private var fadeInCurrentMultiplier: Float = 0.0
+    
     // Thread safety - use a concurrent queue instead of a lock for better performance
     private let audioQueue = DispatchQueue(label: "com.kalibrate.AudioQueue", qos: .userInteractive, attributes: .concurrent)
     
@@ -82,7 +89,7 @@ class PreciseAudioPulser {
             // Capture current parameters to avoid lock during sample generation
             let (currentFrequency, currentAmplitude, currentSquareness, 
                  isSyncMode, currentPulses, currentAttackTime, 
-                 currentReleaseTime) = self.audioQueue.sync { () -> (Float, Float, Float, Bool, [(startTime: Double, endTime: Double)], Float, Float) in
+                 currentReleaseTime, fadeInInfo) = self.audioQueue.sync { () -> (Float, Float, Float, Bool, [(startTime: Double, endTime: Double)], Float, Float, (isActive: Bool, startTime: Double, duration: Double, targetAmplitude: Float)) in
                 
                 // Clean up expired pulses from the queue (real-time safe)
                 self.pulseQueue.removeAll { $0.endTime <= now }
@@ -94,7 +101,8 @@ class PreciseAudioPulser {
                     self.syncMode,
                     self.pulseQueue, // Get a copy of the current pulse queue
                     self.attackTime,
-                    self.releaseTime
+                    self.releaseTime,
+                    (self.isFadingIn, self.fadeInStartTime, self.fadeInDuration, self.fadeInTargetAmplitude)
                 )
             }
             
@@ -168,8 +176,36 @@ class PreciseAudioPulser {
                     sample = tanh(sample * (1.0 + currentSquareness * 3.0))
                 }
                 
-                // Apply amplitude with envelope for clicks prevention
-                let finalSample = sample * currentAmplitude * self.pulseEnvelopeValue
+                // Calculate fade-in multiplier if active
+                var amplitudeMultiplier: Float = 1.0
+                if fadeInInfo.isActive {
+                    let frameAbsoluteTime = now + (frameTime - outputTime)
+                    let fadeElapsed = frameAbsoluteTime - fadeInInfo.startTime
+                    
+                    if fadeElapsed >= 0 && fadeElapsed < fadeInInfo.duration {
+                        // Linear fade from 0 to target amplitude over fade duration
+                        amplitudeMultiplier = Float(fadeElapsed / fadeInInfo.duration)
+                        self.audioQueue.async(flags: .barrier) {
+                            self.fadeInCurrentMultiplier = amplitudeMultiplier
+                        }
+                    } else if fadeElapsed >= fadeInInfo.duration {
+                        // Fade complete - disable fade-in
+                        amplitudeMultiplier = 1.0
+                        self.audioQueue.async(flags: .barrier) {
+                            self.isFadingIn = false
+                            self.fadeInCurrentMultiplier = 1.0
+                        }
+                    } else {
+                        // Before fade start time
+                        amplitudeMultiplier = 0.0
+                        self.audioQueue.async(flags: .barrier) {
+                            self.fadeInCurrentMultiplier = 0.0
+                        }
+                    }
+                }
+                
+                // Apply amplitude with envelope and fade-in for clicks prevention
+                let finalSample = sample * currentAmplitude * self.pulseEnvelopeValue * amplitudeMultiplier
                 
                 // Write to all channels
                 for buffer in ablPointer {
@@ -203,6 +239,10 @@ class PreciseAudioPulser {
     
     // MARK: - Control Methods
     func start() -> Bool {
+        return start(withFadeIn: false, fadeInDuration: 0.0)
+    }
+    
+    func start(withFadeIn: Bool, fadeInDuration: TimeInterval = 2.0) -> Bool {
         guard !isRunning, let engine = audioEngine else { return false }
         
         do {
@@ -215,6 +255,21 @@ class PreciseAudioPulser {
             pulseEnvelopeValue = 0.0
             pulseQueue.removeAll()
             
+            // Set up fade-in if requested
+            audioQueue.async(flags: .barrier) {
+                if withFadeIn {
+                    self.isFadingIn = true
+                    self.fadeInStartTime = CACurrentMediaTime()
+                    self.fadeInDuration = max(0.1, fadeInDuration) // Minimum 100ms fade
+                    self.fadeInTargetAmplitude = self.amplitude
+                    self.fadeInCurrentMultiplier = 0.0
+                    print("PreciseAudioPulser: Fade-in enabled for \(self.fadeInDuration)s")
+                } else {
+                    self.isFadingIn = false
+                    self.fadeInCurrentMultiplier = 1.0
+                }
+            }
+            
             // Optimize audio session
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setPreferredIOBufferDuration(0.005) // 5ms buffer for lower latency
@@ -226,7 +281,8 @@ class PreciseAudioPulser {
             // Set up audio session interruption handling for resilience
             setupAudioSessionObservers()
             
-            print("PreciseAudioPulser: Started successfully in \(syncMode ? "external sync" : "internal timing") mode")
+            let fadeMsg = withFadeIn ? " with \(fadeInDuration)s fade-in" : ""
+            print("PreciseAudioPulser: Started successfully in \(syncMode ? "external sync" : "internal timing") mode\(fadeMsg)")
             return true
         } catch {
             print("ERROR: Failed to start PreciseAudioPulser: \(error.localizedDescription)")

@@ -271,16 +271,28 @@ class AudioManager {
     }
 
     func startEngine() {
+        startEngine(withFadeIn: false)
+    }
+    
+    func startEngine(withFadeIn: Bool) {
         if !audioReady {
             print("AudioManager: StartEngine called but audio not ready. Engine not starting.")
             return
         }
 
         if usingPreciseAudio {
-            if let startResult = audioPulser?.start(), !startResult {
-                print("AudioManager WARNING: PreciseAudioPulser failed to start")
+            if withFadeIn {
+                let fadeInDuration = gameConfiguration.audioFadeInDuration
+                if let startResult = audioPulser?.start(withFadeIn: true, fadeInDuration: fadeInDuration), !startResult {
+                    print("AudioManager WARNING: PreciseAudioPulser failed to start with fade-in")
+                }
+            } else {
+                if let startResult = audioPulser?.start(), !startResult {
+                    print("AudioManager WARNING: PreciseAudioPulser failed to start")
+                }
             }
         } else {
+            // Traditional audio doesn't support fade-in currently
             guard let engine = customAudioEngine, audioReady else {
                 print("AudioManager: StartEngine (traditional) - Aborted. Engine nil or not ready.")
                 return
@@ -294,7 +306,9 @@ class AudioManager {
                 }
             }
         }
-        print("AudioManager: Engine start process completed (usingPreciseAudio: \(usingPreciseAudio)).")
+        
+        let fadeMsg = withFadeIn ? " with fade-in" : ""
+        print("AudioManager: Engine start process completed (usingPreciseAudio: \(usingPreciseAudio))\(fadeMsg).")
     }
 
     func stopEngine() {

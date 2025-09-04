@@ -183,6 +183,7 @@ struct GameConfiguration {
     let audioMaxAmplitude: Float = 0.325   // Max amplitude for audio pulse
     let audioPulseRateFactor: Double = 0.8 // Factor to derive pulser rate from timer frequency
     let audioLowPassCutoff: Float = 2000.0 // Cutoff frequency in Hz for the low-pass filter. Lower values = warmer/muffled sound.
+    let audioFadeInDuration: TimeInterval = 10.0 // Duration for audio fade-in on session start (seconds)
 
     // --- Visuals ---
     let visualPulseOnDurationRatio: Double = 0.2
