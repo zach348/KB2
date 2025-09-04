@@ -136,6 +136,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private let arousalUpdateInterval: TimeInterval = 0.25 // 4 times per second
     // --- END ADDED ---
     
+    // --- ADDED: Throttling properties for ADM updates ---
+    private var lastADMUpdateTime: TimeInterval = 0
+    private let admUpdateInterval: TimeInterval = 0.25 // 4 times per second
+    // --- END ADDED ---
+    
     // --- TESTING: Flag to bypass throttling and smoothing during tests ---
     internal var isTesting: Bool = false
 
@@ -2813,15 +2818,26 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             MotionController.applyCorrections(balls: self.balls, settings: self.motionSettings, scene: self)
         }
         
-        // Add continuous update for AdaptiveDifficultyManager
+        // Add throttled update for AdaptiveDifficultyManager
         let updateADM = SKAction.run { [weak self] in
             guard let self = self, let adm = self.adaptiveDifficultyManager else { return }
             
-            // Continuously update DOM targets based on current arousal
-            adm.updateForCurrentArousal()
+            // Safety check: ensure we're in a valid state for ADM updates
+            guard self.currentState == .tracking,
+                  !self.balls.isEmpty else { return }
             
-            // Recalculate colors based on the updated DF from ADM
-            self.updateColorsFromCurrentDiscriminabilityFactor()
+            let currentTime = CACurrentMediaTime()
+            
+            // TESTING: Skip throttling during tests
+            let shouldUpdate = self.isTesting || (currentTime - self.lastADMUpdateTime) >= self.admUpdateInterval
+            
+            guard shouldUpdate else { return }
+            
+            // Update the timestamp for next check
+            self.lastADMUpdateTime = currentTime
+            
+            // Update DOM targets based on current arousal
+            adm.updateForCurrentArousal()
             
             // Update speed parameters from ADM
             self.updateSpeedParametersFromADM()
@@ -2832,12 +2848,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Update identification duration from ADM's response time
             self.updateResponseTimeFromADM()
             
-            // If we're in tracking state, update ball appearances to reflect any DF changes
-            if self.currentState == .tracking {
-                for ball in self.balls {
-                    ball.updateAppearance(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
-                }
-            }
+            // Note: Color updates and ball appearance updates are now handled
+            // only when colors actually change in updateColorsFromCurrentDiscriminabilityFactor()
         }
         
         let sequence = SKAction.sequence([wait, update, updateADM])
