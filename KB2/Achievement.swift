@@ -131,7 +131,9 @@ extension Achievement {
             title: "Marathon",
             description: "Complete a session of 15 minutes or longer",
             sfSymbolName: "stopwatch.fill",
-            category: .progression
+            category: .progression,
+            tier: 1,
+            requiredValue: 900
         ),
         
         Achievement(
@@ -139,7 +141,9 @@ extension Achievement {
             title: "Super Marathon",
             description: "Complete a session of 25 minutes or longer",
             sfSymbolName: "timer",
-            category: .progression
+            category: .progression,
+            tier: 2,
+            requiredValue: 1500
         ),
         
         // Performance & Skill (Focus Quality)
@@ -172,6 +176,16 @@ extension Achievement {
         ),
         
         Achievement(
+            id: "perfect_streak_15",
+            title: "Focus Prodigy",
+            description: "Achieve 100% focus quality on 15 identification rounds in a row",
+            sfSymbolName: "brain.head.profile",
+            category: .performance,
+            tier: 3,
+            requiredValue: 15
+        ),
+        
+        Achievement(
             id: "flawless_session",
             title: "Flawless Session",
             description: "Complete an entire session with 100% focus quality on all rounds",
@@ -181,19 +195,51 @@ extension Achievement {
         
         // Mastery
         Achievement(
-            id: "zen_master",
-            title: "Zen Master",
-            description: "Spend over 4 minutes in the breathing state during a single session",
-            sfSymbolName: "lungs.fill",
-            category: .mastery
+            id: "beginner_zen",
+            title: "Beginner Zen",
+            description: "Spend over 3 minutes in the breathing state during a single session",
+            sfSymbolName: "lungs",
+            category: .mastery,
+            tier: 1,
+            requiredValue: 180
         ),
         
         Achievement(
-            id: "comeback_kid",
-            title: "Comeback Kid",
+            id: "zen_apprentice",
+            title: "Zen Apprentice",
+            description: "Spend over 5 minutes in the breathing state during a single session",
+            sfSymbolName: "lungs.fill",
+            category: .mastery,
+            tier: 2,
+            requiredValue: 300
+        ),
+        
+        Achievement(
+            id: "zen_master",
+            title: "Zen Master",
+            description: "Spend over 7 minutes in the breathing state during a single session",
+            sfSymbolName: "wind",
+            category: .mastery,
+            tier: 3,
+            requiredValue: 420
+        ),
+        
+        Achievement(
+            id: "resilient_rebound",
+            title: "Resilient Rebound",
             description: "Show significant stress reduction from pre to post session",
             sfSymbolName: "arrow.up.heart.fill",
-            category: .mastery
+            category: .mastery,
+            tier: 1
+        ),
+        
+        Achievement(
+            id: "recovery_rockstar",
+            title: "Recovery Rockstar",
+            description: "Show exceptional stress reduction from pre to post session",
+            sfSymbolName: "bolt.heart.fill",
+            category: .mastery,
+            tier: 2
         )
     ]
 }

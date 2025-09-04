@@ -12,14 +12,18 @@ class AchievementTests: XCTestCase {
 
     var achievementManager: AchievementManager!
     var testUserDefaults: UserDefaults!
+    var mockTimeProvider: MockTimeProvider!
 
     override func setUp() {
         super.setUp()
         // Create isolated test UserDefaults
         testUserDefaults = TestHelpers.createTestUserDefaults()
         
-        // Create test AchievementManager with isolated UserDefaults
-        achievementManager = AchievementManager(userDefaults: testUserDefaults)
+        // Create mock time provider for deterministic testing
+        mockTimeProvider = MockTimeProvider()
+        
+        // Create test AchievementManager with isolated UserDefaults and mock time provider
+        achievementManager = AchievementManager(userDefaults: testUserDefaults, timeProvider: mockTimeProvider)
         
         // Replace the shared instance for this test
         AchievementManager.shared = achievementManager
@@ -34,6 +38,7 @@ class AchievementTests: XCTestCase {
         
         achievementManager = nil
         testUserDefaults = nil
+        mockTimeProvider = nil
         super.tearDown()
     }
 
@@ -162,6 +167,21 @@ class AchievementTests: XCTestCase {
         assertAchievementUnlocked(id: "perfect_streak_10")
     }
     
+    func testPerfectStreak15Achievement() {
+        // Arrange
+        achievementManager.startSession()
+        
+        // Act - Record 15 successful rounds
+        for _ in 1...15 {
+            achievementManager.recordIdentificationRoundEnd(success: true)
+        }
+        
+        // Assert - All three streak achievements should be unlocked
+        assertAchievementUnlocked(id: "perfect_streak_5")
+        assertAchievementUnlocked(id: "perfect_streak_10")
+        assertAchievementUnlocked(id: "perfect_streak_15")
+    }
+    
     func testPerfectStreakBrokenAchievement() {
         // Arrange
         achievementManager.startSession()
@@ -217,7 +237,69 @@ class AchievementTests: XCTestCase {
         assertAchievementLocked(id: "flawless_session")
     }
     
-    func testComebackKidAchievement() {
+    // MARK: - Breathing Achievement Tests
+    
+    func testBeginnerZenAchievement() {
+        // Arrange
+        achievementManager.startSession()
+        mockTimeProvider.setCurrentTime(0)
+        
+        // Act - Simulate breathing session with mock time to reach 180+ seconds
+        // Single long breathing session
+        achievementManager.recordBreathingStateEntered()
+        mockTimeProvider.advanceTime(by: 180.0) // Advance exactly 3 minutes
+        achievementManager.recordBreathingStateExited()
+        
+        achievementManager.endSession(duration: 300, preSessionEMA: nil, postSessionEMA: nil)
+        
+        // Assert
+        assertAchievementUnlocked(id: "beginner_zen")
+    }
+    
+    func testZenApprenticeAchievement() {
+        // Arrange
+        achievementManager.startSession()
+        mockTimeProvider.setCurrentTime(0)
+        
+        // Act - Simulate breathing session with mock time to reach 300+ seconds
+        // Multiple breathing segments totaling over 5 minutes
+        achievementManager.recordBreathingStateEntered()
+        mockTimeProvider.advanceTime(by: 200.0) // 3 minutes 20 seconds
+        achievementManager.recordBreathingStateExited()
+        
+        achievementManager.recordBreathingStateEntered()
+        mockTimeProvider.advanceTime(by: 100.0) // Additional 1 minute 40 seconds (total: 5 minutes)
+        achievementManager.recordBreathingStateExited()
+        
+        achievementManager.endSession(duration: 600, preSessionEMA: nil, postSessionEMA: nil)
+        
+        // Assert - Should unlock both beginner_zen and zen_apprentice
+        assertAchievementUnlocked(id: "beginner_zen")
+        assertAchievementUnlocked(id: "zen_apprentice")
+    }
+    
+    func testZenMasterAchievement() {
+        // Arrange
+        achievementManager.startSession()
+        mockTimeProvider.setCurrentTime(0)
+        
+        // Act - Simulate breathing session with mock time to reach 420+ seconds
+        // Single long breathing session over 7 minutes
+        achievementManager.recordBreathingStateEntered()
+        mockTimeProvider.advanceTime(by: 420.0) // Advance exactly 7 minutes
+        achievementManager.recordBreathingStateExited()
+        
+        achievementManager.endSession(duration: 800, preSessionEMA: nil, postSessionEMA: nil)
+        
+        // Assert - Should unlock all three breathing achievements
+        assertAchievementUnlocked(id: "beginner_zen")
+        assertAchievementUnlocked(id: "zen_apprentice")
+        assertAchievementUnlocked(id: "zen_master")
+    }
+    
+    // MARK: - EMA Recovery Achievement Tests
+    
+    func testResilientReboundAchievement() {
         // Arrange - Create EMA responses with significant stress reduction
         let preEMA = EMAResponse(
             stressLevel: 80,
@@ -236,10 +318,10 @@ class AchievementTests: XCTestCase {
         achievementManager.endSession(duration: 300, preSessionEMA: preEMA, postSessionEMA: postEMA)
         
         // Assert
-        assertAchievementUnlocked(id: "comeback_kid")
+        assertAchievementUnlocked(id: "resilient_rebound")
     }
     
-    func testComebackKidAchievementWithJitteryReduction() {
+    func testResilientReboundAchievementWithJitteryReduction() {
         // Arrange - Test with jittery reduction meeting threshold
         let preEMA = EMAResponse(
             stressLevel: 60,
@@ -258,10 +340,33 @@ class AchievementTests: XCTestCase {
         achievementManager.endSession(duration: 300, preSessionEMA: preEMA, postSessionEMA: postEMA)
         
         // Assert
-        assertAchievementUnlocked(id: "comeback_kid")
+        assertAchievementUnlocked(id: "resilient_rebound")
     }
     
-    func testComebackKidAchievementNotUnlockedWithSmallReduction() {
+    func testRecoveryRockstarAchievement() {
+        // Arrange - Create EMA responses with exceptional stress reduction
+        let preEMA = EMAResponse(
+            stressLevel: 90,
+            calmJitteryLevel: 85,
+            completionTime: 30,
+            emaType: .preSession
+        )
+        let postEMA = EMAResponse(
+            stressLevel: 50, // 40 point reduction (>35 required)
+            calmJitteryLevel: 55, // 30 point reduction (>25 required for both)
+            completionTime: 30,
+            emaType: .postSession
+        )
+        
+        // Act
+        achievementManager.endSession(duration: 300, preSessionEMA: preEMA, postSessionEMA: postEMA)
+        
+        // Assert - Should unlock both resilient_rebound and recovery_rockstar
+        assertAchievementUnlocked(id: "resilient_rebound")
+        assertAchievementUnlocked(id: "recovery_rockstar")
+    }
+    
+    func testResilientReboundAchievementNotUnlockedWithSmallReduction() {
         // Arrange - Create EMA responses with insufficient stress reduction
         let preEMA = EMAResponse(
             stressLevel: 60,
@@ -280,7 +385,8 @@ class AchievementTests: XCTestCase {
         achievementManager.endSession(duration: 300, preSessionEMA: preEMA, postSessionEMA: postEMA)
         
         // Assert
-        assertAchievementLocked(id: "comeback_kid")
+        assertAchievementLocked(id: "resilient_rebound")
+        assertAchievementLocked(id: "recovery_rockstar")
     }
 
     func testDailyHabit3Achievement() {
@@ -358,11 +464,11 @@ class AchievementTests: XCTestCase {
         achievementManager.endSession(duration: 24 * 60 + 59, preSessionEMA: nil, postSessionEMA: nil) // 24:59
         assertAchievementLocked(id: "super_marathon")
         
-        // Test insufficient stress reduction for Comeback Kid
+        // Test insufficient stress reduction for Resilient Rebound
         let preEMA = EMAResponse(stressLevel: 60, calmJitteryLevel: 60, completionTime: 30, emaType: .preSession)
         let postEMA = EMAResponse(stressLevel: 45, calmJitteryLevel: 46, completionTime: 30, emaType: .postSession) // 15 & 14 point reductions
         achievementManager.endSession(duration: 300, preSessionEMA: preEMA, postSessionEMA: postEMA)
-        assertAchievementLocked(id: "comeback_kid")
+        assertAchievementLocked(id: "resilient_rebound")
     }
     
     func testResetAchievements() {

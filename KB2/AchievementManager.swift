@@ -19,8 +19,9 @@ class AchievementManager: ObservableObject {
     @Published var achievements: [Achievement] = []
     @Published var newlyUnlockedAchievements: [Achievement] = []
     
-    // MARK: - UserDefaults
+    // MARK: - Dependencies
     private let userDefaults: UserDefaults
+    private let timeProvider: TimeProvider
     
     // MARK: - UserDefaults Keys
     private let achievementsKey = "com.kb2.achievements"
@@ -39,8 +40,9 @@ class AchievementManager: ObservableObject {
     static let achievementUnlockedNotification = Notification.Name("AchievementUnlocked")
     
     // MARK: - Initialization
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults = .standard, timeProvider: TimeProvider = SystemTimeProvider()) {
         self.userDefaults = userDefaults
+        self.timeProvider = timeProvider
         loadAchievements()
     }
     
@@ -214,24 +216,39 @@ class AchievementManager: ObservableObject {
         if currentSessionPerfectStreakCount >= 10 {
             unlockAchievement(withId: "perfect_streak_10")
         }
+        if currentSessionPerfectStreakCount >= 15 {
+            unlockAchievement(withId: "perfect_streak_15")
+        }
     }
     
     private func checkMasteryAchievements(preSessionEMA: EMAResponse?, postSessionEMA: EMAResponse?) {
-        // Zen Master - 4+ minutes in breathing state
-        if currentSessionBreathingTime >= 240.0 { // 4 minutes
+        // Breathing achievements - 3 tiers
+        if currentSessionBreathingTime >= 180.0 { // 3 minutes
+            unlockAchievement(withId: "beginner_zen")
+        }
+        if currentSessionBreathingTime >= 300.0 { // 5 minutes
+            unlockAchievement(withId: "zen_apprentice")
+        }
+        if currentSessionBreathingTime >= 420.0 { // 7 minutes
             unlockAchievement(withId: "zen_master")
         }
         
-        // Comeback Kid - significant stress reduction
+        // EMA recovery achievements - 2 tiers
         if let preEMA = preSessionEMA,
            let postEMA = postSessionEMA {
             let stressReduction = preEMA.stressLevel - postEMA.stressLevel
             let jitteryReduction = preEMA.calmJitteryLevel - postEMA.calmJitteryLevel
             
-            // Significant reduction: at least 20 points on either scale, or 15 points on both
+            // Resilient Rebound (Tier 1): at least 20 points on either scale, or 15 points on both
             if stressReduction >= 20.0 || jitteryReduction >= 20.0 || 
                (stressReduction >= 15.0 && jitteryReduction >= 15.0) {
-                unlockAchievement(withId: "comeback_kid")
+                unlockAchievement(withId: "resilient_rebound")
+            }
+            
+            // Recovery Rockstar (Tier 2): at least 35 points on either scale, or 25 points on both
+            if stressReduction >= 35.0 || jitteryReduction >= 35.0 || 
+               (stressReduction >= 25.0 && jitteryReduction >= 25.0) {
+                unlockAchievement(withId: "recovery_rockstar")
             }
         }
     }
@@ -261,6 +278,9 @@ class AchievementManager: ObservableObject {
             if currentSessionPerfectStreakCount >= 10 {
                 unlockAchievement(withId: "perfect_streak_10")
             }
+            if currentSessionPerfectStreakCount >= 15 {
+                unlockAchievement(withId: "perfect_streak_15")
+            }
         } else {
             // Streak broken
             currentSessionPerfectStreakCount = 0
@@ -268,12 +288,12 @@ class AchievementManager: ObservableObject {
     }
     
     func recordBreathingStateEntered() {
-        breathingStartTime = CACurrentMediaTime()
+        breathingStartTime = timeProvider.currentTime()
     }
     
     func recordBreathingStateExited() {
         if let startTime = breathingStartTime {
-            let duration = CACurrentMediaTime() - startTime
+            let duration = timeProvider.currentTime() - startTime
             currentSessionBreathingTime += duration
             breathingStartTime = nil
         }
