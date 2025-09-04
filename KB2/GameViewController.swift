@@ -17,6 +17,9 @@ class GameViewController: UIViewController {
     // Achievement tracking properties
     private var currentSessionDuration: TimeInterval = 0
     private var sessionStartTime: TimeInterval = 0
+    
+    // Reference to the active GameScene for VHA control
+    private weak var activeGameScene: GameScene?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -253,11 +256,28 @@ class GameViewController: UIViewController {
             // Initialize ArousalEstimator with the value from StartScreen/EMA
             gameScene.arousalEstimator = ArousalEstimator(initialArousal: initialArousalForEstimator)
             
+            // Track the active GameScene for VHA control
+            activeGameScene = gameScene
+            
             gameScene.scaleMode = .aspectFill
             view.presentScene(gameScene, transition: SKTransition.fade(withDuration: 0.5))
         } else {
             print("Error: GameViewController's view is not an SKView. Cannot present GameScene.")
         }
+    }
+    
+    // MARK: - VHA Control
+    
+    /// Suspends VHA stimulation by forwarding to the active GameScene
+    func suspendVHA() {
+        print("GameViewController: Suspending VHA stimulation...")
+        activeGameScene?.suspendVHA()
+    }
+    
+    /// Resumes VHA stimulation by forwarding to the active GameScene
+    func resumeVHA() {
+        print("GameViewController: Resuming VHA stimulation...")
+        activeGameScene?.resumeVHA()
     }
     
     // MARK: - Achievement Integration

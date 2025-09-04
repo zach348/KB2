@@ -76,14 +76,42 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         // Phase 4.5: Save ADM state when entering background
         NotificationCenter.default.post(name: Notification.Name("SaveADMState"), object: nil)
+        
+        // Suspend VHA stimulation when app enters background
+        suspendVHAStimulation()
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
+        
+        // Resume VHA stimulation when app enters foreground
+        resumeVHAStimulation()
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+    }
+
+    // MARK: - VHA Control Helper Methods
+    
+    /// Suspends VHA stimulation by forwarding to the GameViewController
+    private func suspendVHAStimulation() {
+        print("AppDelegate: Suspending VHA stimulation...")
+        if let gameViewController = window?.rootViewController as? GameViewController {
+            gameViewController.suspendVHA()
+        } else {
+            print("AppDelegate: Warning - Could not access GameViewController for VHA suspension")
+        }
+    }
+    
+    /// Resumes VHA stimulation by forwarding to the GameViewController
+    private func resumeVHAStimulation() {
+        print("AppDelegate: Resuming VHA stimulation...")
+        if let gameViewController = window?.rootViewController as? GameViewController {
+            gameViewController.resumeVHA()
+        } else {
+            print("AppDelegate: Warning - Could not access GameViewController for VHA resumption")
+        }
     }
 
 

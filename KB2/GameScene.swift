@@ -3384,6 +3384,41 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         }
     }
     
+    // MARK: - VHA Control
+    /// Suspends all VHA (Visual, Haptic, Audio) stimulation components gracefully
+    func suspendVHA() {
+        print("GameScene: Suspending VHA stimulation...")
+        
+        // Stop precision timer first - this halts all synchronized VHA events
+        precisionTimer?.stop()
+        
+        // Stop audio engine
+        audioManager?.stopEngine()
+        
+        // Stop haptic engine
+        stopHapticEngine()
+        
+        print("GameScene: VHA stimulation suspended.")
+    }
+    
+    /// Resumes all VHA (Visual, Haptic, Audio) stimulation components with proper synchronization
+    func resumeVHA() {
+        print("GameScene: Resuming VHA stimulation...")
+        
+        // Restart haptic engine first
+        if hapticsReady {
+            startHapticEngine()
+        }
+        
+        // Restart audio engine
+        audioManager?.startEngine()
+        
+        // Restart precision timer last - this re-establishes synchronized VHA pulses
+        precisionTimer?.start()
+        
+        print("GameScene: VHA stimulation resumed.")
+    }
+    
     // MARK: - Tutorial Cleanup
     /// Explicitly stops all audio and haptic components for clean tutorial exit
     func stopTutorialAudioAndHaptics() {
