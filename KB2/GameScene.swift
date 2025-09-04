@@ -105,6 +105,13 @@ var sessionProfile: SessionProfile = .standard // Default profile
 var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
 var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point
 
+// --- EMA-Based Session Customization ---
+var preSessionEMA: EMAResponse? // Pre-session EMA data for dynamic session structure
+
+// --- Breathing Pacing Properties ---
+internal var initialBreathingPacingArousal: CGFloat = 0.35 // Initial effective arousal for breathing pace
+internal var arousalAtBreathingStart: CGFloat = 0.35 // System arousal level when breathing phase began
+
     // --- ADDED: Warmup Ramp Properties ---
     private var isWarmupRampActive: Bool = false
     private var warmupRoundTargetArousal: CGFloat = 0.0
@@ -219,7 +226,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     internal var currentBreathingHoldAfterExhaleDuration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
     private var needsHapticPatternUpdate: Bool = false
     // --- ADDED: Flag for deferred visual duration update ---
-    private var needsVisualDurationUpdate: Bool = false
+    internal var needsVisualDurationUpdate: Bool = false // Made internal for testing
     // --- END ADDED ---
     
     // Add a variable to track if first breathing cycle is completed
@@ -362,9 +369,25 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             initialArousalLevel = targetArousalForWarmup
             sessionStartTime = CACurrentMediaTime()
             
-            // Randomly determine when the breathing state should begin (40-60% range)
-            breathingTransitionPoint = Double.random(in: 
-                gameConfiguration.breathingStateTargetRangeMin...gameConfiguration.breathingStateTargetRangeMax)
+            // Determine breathing transition point based on pre-session EMA jitteriness or use random fallback
+            if let emaResponse = preSessionEMA {
+            // Use jitteriness level to determine interactive phase duration
+            // Higher jitteriness (more restless) = longer interactive phase = later breathing transition
+            let clampedJitteriness = max(0.0, min(emaResponse.calmJitteryLevel, 100.0)) // Clamp to 0-100
+            let normalizedJitteriness = clampedJitteriness / 100.0 // Convert 0-100 to 0.0-1.0
+            breathingTransitionPoint = gameConfiguration.emaJitterinessTransitionPointMin + 
+                (normalizedJitteriness * (gameConfiguration.emaJitterinessTransitionPointMax - gameConfiguration.emaJitterinessTransitionPointMin))
+                
+                print("DIAGNOSTIC: EMA-based breathing transition calculation:")
+                print("  ├─ Jitteriness: \(Int(emaResponse.calmJitteryLevel)) → \(String(format: "%.3f", normalizedJitteriness))")
+                print("  ├─ Transition range: [\(String(format: "%.1f", gameConfiguration.emaJitterinessTransitionPointMin * 100))%, \(String(format: "%.1f", gameConfiguration.emaJitterinessTransitionPointMax * 100))%]")
+                print("  └─ Calculated transition point: \(String(format: "%.1f", breathingTransitionPoint * 100))%")
+            } else {
+                // Fallback to original random calculation if no EMA data
+                breathingTransitionPoint = Double.random(in: 
+                    gameConfiguration.breathingStateTargetRangeMin...gameConfiguration.breathingStateTargetRangeMax)
+                print("DIAGNOSTIC: No EMA data available - using random breathing transition: \(Int(breathingTransitionPoint * 100))%")
+            }
             
             print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
             print("DIAGNOSTIC: Breathing transition target point: \(Int(breathingTransitionPoint * 100))% of session")
@@ -1652,6 +1675,30 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Stop throttled motion control
         stopThrottledMotionControl()
         
+        // --- ADDED: Calculate stress-based breathing pacing arousal ---
+        if let emaResponse = preSessionEMA {
+            // Use stress level to determine initial breathing pacing arousal
+            // Higher stress = higher initial pacing arousal (0.15-0.35 range)
+            let clampedStress = max(0.0, min(emaResponse.stressLevel, 100.0)) // Clamp to 0-100
+            let normalizedStress = clampedStress / 100.0 // Convert 0-100 to 0.0-1.0
+            initialBreathingPacingArousal = gameConfiguration.emaStressPacingArousalMin + 
+                (normalizedStress * (gameConfiguration.emaStressPacingArousalMax - gameConfiguration.emaStressPacingArousalMin))
+                
+            print("DIAGNOSTIC: EMA-based breathing pacing calculation:")
+            print("  ├─ Stress: \(Int(emaResponse.stressLevel)) → \(String(format: "%.3f", normalizedStress))")
+            print("  ├─ Pacing range: [\(String(format: "%.2f", gameConfiguration.emaStressPacingArousalMin)), \(String(format: "%.2f", gameConfiguration.emaStressPacingArousalMax))]")
+            print("  └─ Initial pacing arousal: \(String(format: "%.3f", initialBreathingPacingArousal))")
+        } else {
+            // Fallback to current configuration default if no EMA data
+            initialBreathingPacingArousal = 0.35
+            print("DIAGNOSTIC: No EMA data available - using default initial pacing arousal: \(String(format: "%.3f", initialBreathingPacingArousal))")
+        }
+        
+        // Store system arousal level when breathing phase begins for proportional decay calculation
+        arousalAtBreathingStart = currentArousalLevel
+        print("DIAGNOSTIC: Stored arousal at breathing start: \(String(format: "%.3f", arousalAtBreathingStart))")
+        // --- END ADDED ---
+        
         print("--- Transitioning to Breathing State (Arousal: \(String(format: "%.2f", currentArousalLevel))) ---")
         var calculatedMaxDuration: TimeInterval = 0.5
         if currentState == .tracking && !balls.isEmpty {
@@ -2144,11 +2191,29 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func updateDynamicBreathingParameters() {
         guard currentState == .breathing else { return }
 
-        // Normalize arousal within the breathing range [0.0, thresholdLow]
+        // Calculate effective pacing arousal using proportional decay mapping to avoid negative values
+        // This creates a separate interpolation that starts at stress-determined value and decays proportionally
+        guard arousalAtBreathingStart > 0 else { 
+            print("WARNING: arousalAtBreathingStart is zero - cannot calculate breathing decay")
+            return 
+        }
+        
+        // Calculate how much the system arousal has decayed since breathing began
+        let breathingDecayProgress = max(0.0, min(1.0, (arousalAtBreathingStart - currentArousalLevel) / arousalAtBreathingStart))
+        
+        // Calculate effective pacing arousal that decays proportionally with system arousal
+        let effectivePacingArousal = initialBreathingPacingArousal * (1.0 - breathingDecayProgress)
+        
+        // Normalize the effective pacing arousal within the breathing threshold range
         let breathingArousalRange = gameConfiguration.trackingArousalThresholdLow
         guard breathingArousalRange > 0 else { return } // Avoid division by zero
-        let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
-        let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange // Range 0.0 to 1.0
+        let normalizedBreathingArousal = min(1.0, effectivePacingArousal / breathingArousalRange)
+
+        print("DIAGNOSTIC: Breathing pacing calculation:")
+        print("  ├─ System arousal: \(String(format: "%.3f", currentArousalLevel)) (started at \(String(format: "%.3f", arousalAtBreathingStart)))")
+        print("  ├─ Decay progress: \(String(format: "%.1f", breathingDecayProgress * 100))%")
+        print("  ├─ Effective pacing arousal: \(String(format: "%.3f", effectivePacingArousal)) (from \(String(format: "%.3f", initialBreathingPacingArousal)))")
+        print("  └─ Normalized for breathing: \(String(format: "%.3f", normalizedBreathingArousal))")
 
         // Define target duration ranges using GameConfiguration
         let minInhale = gameConfiguration.dynamicBreathingMinInhaleDuration
@@ -2156,17 +2221,17 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let minExhale = gameConfiguration.dynamicBreathingMinExhaleDuration
         let maxExhale = gameConfiguration.dynamicBreathingMaxExhaleDuration
 
-        // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
+        // Interpolate using the effective pacing arousal: Low pacing -> Long exhale; High pacing -> Balanced
         let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
         let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
 
-        // Calculate proportional hold durations
-        // Hold after inhale: 30% at low arousal -> 5% at high arousal
+        // Calculate proportional hold durations based on effective pacing
+        // Hold after inhale: 30% at low pacing -> 5% at high pacing
         let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportionLowArousal +
             (gameConfiguration.holdAfterInhaleProportionHighArousal - gameConfiguration.holdAfterInhaleProportionLowArousal) * normalizedBreathingArousal
         let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
         
-        // Hold after exhale: 50% at low arousal -> 20% at high arousal
+        // Hold after exhale: 50% at low pacing -> 20% at high pacing
         let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportionLowArousal +
             (gameConfiguration.holdAfterExhaleProportionHighArousal - gameConfiguration.holdAfterExhaleProportionLowArousal) * normalizedBreathingArousal
         let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)

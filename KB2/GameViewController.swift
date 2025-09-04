@@ -253,6 +253,9 @@ class GameViewController: UIViewController {
             // NEW: Pass the target arousal for warmup ramp
             gameScene.targetArousalForWarmup = systemInitialArousal
             
+            // ADDED: Pass pre-session EMA data for dynamic session structure
+            gameScene.preSessionEMA = self.preSessionEMA
+            
             // Initialize ArousalEstimator with the value from StartScreen/EMA
             gameScene.arousalEstimator = ArousalEstimator(initialArousal: initialArousalForEstimator)
             

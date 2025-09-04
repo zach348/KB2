@@ -364,10 +364,28 @@ struct GameConfiguration {
     // --- EMA-Based Initial Arousal Configuration ---
     
     /// The minimum arousal level that can be set from the pre-session EMA.
-    let emaArousalTargetMin: CGFloat = 0.65
+    let emaArousalTargetMin: CGFloat = 0.7
     
     /// The maximum arousal level that can be set from the pre-session EMA.
     let emaArousalTargetMax: CGFloat = 1.0
+    
+    // --- EMA-Based Session Structure Configuration ---
+    
+    /// The breathing transition point for users with the lowest jitteriness score (earliest transition - shortest interactive phase).
+    /// This results in more time in the breathing phase.
+    let emaJitterinessTransitionPointMin: Double = 0.40
+    
+    /// The breathing transition point for users with the highest jitteriness score (latest transition - longest interactive phase).
+    /// This results in less time in the breathing phase, allowing more time for down-regulation.
+    let emaJitterinessTransitionPointMax: Double = 0.70
+    
+    /// The effective arousal value used for breathing pace calculation for users with the lowest stress score.
+    /// This results in a slower, gentler breathing pattern from the start.
+    let emaStressPacingArousalMin: CGFloat = 0.15
+    
+    /// The effective arousal value used for breathing pace calculation for users with the highest stress score.
+    /// This preserves the current "on-ramp" approach for highly stressed users.
+    let emaStressPacingArousalMax: CGFloat = 0.35
     
     /// Multiplier to determine the starting arousal for the warmup ramp (e.g., 0.85 means start at 85% of the EMA-calculated target arousal).
     let warmupArousalStartMultiplier: CGFloat = 0.8
