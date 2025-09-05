@@ -51,7 +51,7 @@ struct OnboardingView: View {
         }
         
         // Page 3
-        var page3 = AttributedString("We use gentle pulses of light, sound, and vibration to help you relax. For the best experience, try using headphones.")
+        var page3 = AttributedString("We use pulses of light, sound, and vibration to help you focus and then relax. For the best experience, try using headphones.")
         page3.font = baseFont
         if let range1 = page3.range(of: "pulses of light, sound, and vibration") {
             page3[range1].font = boldFont
@@ -71,7 +71,7 @@ struct OnboardingView: View {
         }
         
         // Page 5
-        var page5 = AttributedString("Your score isn't what's important—it's all about how you feel. Just follow along and have fun. Ready to start?")
+        var page5 = AttributedString("Your score isn't what's important—it's all about how you feel, and your focus quality will get better with practice. Just follow along and have fun. Ready to start?")
         page5.font = baseFont
         if let range1 = page5.range(of: "Your score isn't what's important") {
             page5[range1].font = boldFont

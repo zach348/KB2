@@ -77,7 +77,7 @@ struct GameConfiguration {
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
-    let breathingFadeOutThreshold: CGFloat = 0.035
+    let breathingFadeOutThreshold: CGFloat = 0.005
     // MODIFIED: Expanded arousal steps for finer control (0.025 increment)
     let arousalSteps: [CGFloat] = stride(from: 0.0, through: 1.0, by: 0.025).map { $0 }
     // Generates [0.0, 0.025, 0.05, 0.075, ..., 0.975, 1.0]

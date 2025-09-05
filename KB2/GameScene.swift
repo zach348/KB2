@@ -587,7 +587,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
     // --- UI Update ---
     private func updateUI() {
-        scoreLabel.text = "Score: \(score)/\(totalIterations)"
+        scoreLabel.text = "Focus: \(score)/\(totalIterations)"
         
         // Display both system and user arousal if estimator is available - remove for release build
         if let estimator = arousalEstimator {
@@ -1372,9 +1372,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             t: dfFromADM
         )
                 
-        // 6. Update ball appearances if in tracking state
+        // 6. Update ball appearances if in tracking state - safely iterate over copy
         if currentState == .tracking { 
-            for ball in balls { 
+            let ballsCopy = Array(balls) // Create a copy to prevent race conditions
+            for ball in ballsCopy { 
+                guard ball.parent == self else { continue } // Skip balls that have been removed
                 ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor) 
             } 
         }
@@ -2839,6 +2841,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Update DOM targets based on current arousal
             adm.updateForCurrentArousal()
             
+            // Recalculate colors based on the updated DF from ADM
+            self.updateColorsFromCurrentDiscriminabilityFactor()
+            
             // Update speed parameters from ADM
             self.updateSpeedParametersFromADM()
             
@@ -2847,9 +2852,6 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             
             // Update identification duration from ADM's response time
             self.updateResponseTimeFromADM()
-            
-            // Note: Color updates and ball appearance updates are now handled
-            // only when colors actually change in updateColorsFromCurrentDiscriminabilityFactor()
         }
         
         let sequence = SKAction.sequence([wait, update, updateADM])
