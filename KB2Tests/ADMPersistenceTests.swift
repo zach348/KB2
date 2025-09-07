@@ -267,14 +267,18 @@ class ADMPersistenceTests: XCTestCase {
         adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.6, sessionDuration: 600)
         
         // Add some performance history
-        adm.recordIdentificationPerformance(
+        let expectation = XCTestExpectation(description: "Record performance for save state test")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 0.8,
             reactionTime: 1.5,
             responseDuration: 3.0,
             averageTapAccuracy: 50.0,
             actualTargetsToFindInRound: 3
-        )
+        ) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
         
         // Save state
         adm.saveState()
@@ -332,14 +336,18 @@ class ADMPersistenceTests: XCTestCase {
         adm = AdaptiveDifficultyManager(configuration: config, initialArousal: 0.5, sessionDuration: 600)
         
         // Add some test data
-        adm.recordIdentificationPerformance(
+        let expectation2 = XCTestExpectation(description: "Record performance for notification test")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: false,
             tfTtfRatio: 0.5,
             reactionTime: 2.0,
             responseDuration: 4.0,
             averageTapAccuracy: 75.0,
             actualTargetsToFindInRound: 4
-        )
+        ) {
+            expectation2.fulfill()
+        }
+        wait(for: [expectation2], timeout: 5.0)
         
         // Clear any existing saved state
         ADMPersistenceManager.clearState(for: adm.userId)
@@ -501,14 +509,18 @@ class ADMPersistenceTests: XCTestCase {
         
         // Simulate several identification rounds with good performance
         for i in 0..<5 {
-            adm1.recordIdentificationPerformance(
+            let expectation3 = XCTestExpectation(description: "Initial session round \(i+1)")
+            adm1.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.9 - (Double(i) * 0.05), // Gradually declining
                 reactionTime: 1.0 + (Double(i) * 0.1), // Getting slower
                 responseDuration: 2.0 + (Double(i) * 0.2),
                 averageTapAccuracy: 30.0 + (Double(i) * 5.0),
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation3.fulfill()
+            }
+            wait(for: [expectation3], timeout: 5.0)
         }
         
         // Check final state of first session
@@ -568,14 +580,18 @@ class ADMPersistenceTests: XCTestCase {
         XCTAssertLessThan(confidence.history, 0.5, "History confidence should be reduced due to aged data")
         
         // Simulate a performance round with different performance
-        adm2.recordIdentificationPerformance(
+        let expectation4 = XCTestExpectation(description: "Poor performance with aged data")
+        adm2.recordIdentificationPerformanceAsync(
             taskSuccess: false,
             tfTtfRatio: 0.4,
             reactionTime: 3.0,
             responseDuration: 6.0,
             averageTapAccuracy: 100.0,
             actualTargetsToFindInRound: 5
-        )
+        ) {
+            expectation4.fulfill()
+        }
+        wait(for: [expectation4], timeout: 5.0)
         
         // Check that adaptation is more cautious due to low confidence
         let positions2 = adm2.normalizedPositions
@@ -590,14 +606,18 @@ class ADMPersistenceTests: XCTestCase {
         
         // Add more recent performance data
         for i in 0..<3 {
-            adm2.recordIdentificationPerformance(
+            let expectation5 = XCTestExpectation(description: "Rebuild confidence round \(i+1)")
+            adm2.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.6,
                 reactionTime: 2.0,
                 responseDuration: 4.0,
                 averageTapAccuracy: 60.0,
                 actualTargetsToFindInRound: 4
-            )
+            ) {
+                expectation5.fulfill()
+            }
+            wait(for: [expectation5], timeout: 5.0)
         }
         
         // Check confidence has improved with fresh data

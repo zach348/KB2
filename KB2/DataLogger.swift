@@ -787,6 +787,39 @@ class DataLogger {
         print("DATA_LOG: Enhanced arousal data - Level: \(String(format: "%.3f", currentLevel)), History: \(historyCount) records")
     }
     
+    /// Log session performance summary including Focus Quality (accuracy)
+    func logSessionPerformanceSummary(
+        totalRounds: Int,
+        correctRounds: Int,
+        accuracy: Double,
+        avgReactionTime: TimeInterval?
+    ) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        var event: [String: Any] = [
+            "type": "session_performance_summary",
+            "timestamp": timestamp,
+            "total_rounds": totalRounds,
+            "correct_rounds": correctRounds,
+            "focus_quality": accuracy, // Store as focus_quality for historical tracking
+            "accuracy": accuracy // Keep accuracy for backward compatibility
+        ]
+        
+        if let reactionTime = avgReactionTime {
+            event["avg_reaction_time"] = reactionTime
+        }
+        
+        dataProcessingQueue.async { [weak self] in
+            self?.events.append(event)
+        }
+        addToStreamingBuffer(event)
+        
+        print("DATA_LOG: Session performance summary - Total rounds: \(totalRounds), Correct: \(correctRounds), Focus Quality: \(String(format: "%.1f", accuracy * 100))%")
+        if let rt = avgReactionTime {
+            print("DATA_LOG: - Average reaction time: \(String(format: "%.2f", rt))s")
+        }
+    }
+
     /// Log custom events with flexible structure
     func logCustomEvent(eventType: String, data: [String: Any], description: String = "") {
         let timestamp = Date().timeIntervalSince1970
@@ -1728,8 +1761,9 @@ class DataLogger {
         var sessionStartTime: Date?
         var preSessionEMA: [String: Any] = [:]
         var postSessionEMA: [String: Any] = [:]
+        var focusQuality: Double?
         
-        // Parse events to find session start and EMA responses
+        // Parse events to find session start, EMA responses, and performance summary
         for event in events {
             guard let eventType = event["type"] as? String,
                   let timestamp = event["timestamp"] as? TimeInterval else { continue }
@@ -1748,11 +1782,22 @@ class DataLogger {
                     postSessionEMA[questionId] = response
                 }
             }
+            else if eventType == "session_performance_summary" {
+                // Extract focus quality from session performance summary
+                if let accuracy = event["focus_quality"] as? Double {
+                    focusQuality = accuracy
+                }
+            }
         }
         
         guard let sessionDate = sessionStartTime else {
             print("DATA_LOG: No session start found in: \(fileURL.lastPathComponent)")
             return nil
+        }
+        
+        // Add focus quality to post session data if available
+        if let quality = focusQuality {
+            postSessionEMA["focus_quality"] = quality
         }
         
         return HistoricalSessionData(

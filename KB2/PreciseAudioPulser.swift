@@ -10,12 +10,14 @@ class PreciseAudioPulser {
     private var audioEngine: AVAudioEngine?
     private var sourceNode: AVAudioSourceNode?
     private var mainMixer: AVAudioMixerNode?
+    private var lowPassFilter: AVAudioUnitEQ?
     
     // Audio parameters
     private(set) var frequency: Float = 440.0
     private(set) var amplitude: Float = 0.5
     private(set) var squarenessFactor: Float = 0.5
     private(set) var pulseRate: Double = 5.0
+    private(set) var lowPassCutoff: Float = 2000.0 // Default cutoff at 2kHz for warmer sound
     private(set) var isRunning: Bool = false
     
     // Sample tracking
@@ -41,6 +43,13 @@ class PreciseAudioPulser {
     private var pulseQueue: [(startTime: Double, endTime: Double)] = [] // Queue for upcoming pulses
     private var maxQueueLength = 4 // Maximum number of queued pulses to prevent memory issues
     private var lastRenderTime: Double = 0.0
+    
+    // ADDED: Fade-in functionality
+    private var isFadingIn: Bool = false
+    private var fadeInStartTime: Double = 0.0
+    private var fadeInDuration: Double = 2.0
+    private var fadeInTargetAmplitude: Float = 0.0
+    private var fadeInCurrentMultiplier: Float = 0.0
     
     // Thread safety - use a concurrent queue instead of a lock for better performance
     private let audioQueue = DispatchQueue(label: "com.kalibrate.AudioQueue", qos: .userInteractive, attributes: .concurrent)
@@ -80,10 +89,10 @@ class PreciseAudioPulser {
             // Capture current parameters to avoid lock during sample generation
             let (currentFrequency, currentAmplitude, currentSquareness, 
                  isSyncMode, currentPulses, currentAttackTime, 
-                 currentReleaseTime) = self.audioQueue.sync { () -> (Float, Float, Float, Bool, [(startTime: Double, endTime: Double)], Float, Float) in
+                 currentReleaseTime, fadeInInfo) = self.audioQueue.sync { () -> (Float, Float, Float, Bool, [(startTime: Double, endTime: Double)], Float, Float, (isActive: Bool, startTime: Double, duration: Double, targetAmplitude: Float)) in
                 
-                // Clean up expired pulses from the queue
-                self.pulseQueue = self.pulseQueue.filter { $0.endTime > now }
+                // Clean up expired pulses from the queue (real-time safe)
+                self.pulseQueue.removeAll { $0.endTime <= now }
                 
                 return (
                     self.frequency,
@@ -92,7 +101,8 @@ class PreciseAudioPulser {
                     self.syncMode,
                     self.pulseQueue, // Get a copy of the current pulse queue
                     self.attackTime,
-                    self.releaseTime
+                    self.releaseTime,
+                    (self.isFadingIn, self.fadeInStartTime, self.fadeInDuration, self.fadeInTargetAmplitude)
                 )
             }
             
@@ -166,8 +176,36 @@ class PreciseAudioPulser {
                     sample = tanh(sample * (1.0 + currentSquareness * 3.0))
                 }
                 
-                // Apply amplitude with envelope for clicks prevention
-                let finalSample = sample * currentAmplitude * self.pulseEnvelopeValue
+                // Calculate fade-in multiplier if active
+                var amplitudeMultiplier: Float = 1.0
+                if fadeInInfo.isActive {
+                    let frameAbsoluteTime = now + (frameTime - outputTime)
+                    let fadeElapsed = frameAbsoluteTime - fadeInInfo.startTime
+                    
+                    if fadeElapsed >= 0 && fadeElapsed < fadeInInfo.duration {
+                        // Linear fade from 0 to target amplitude over fade duration
+                        amplitudeMultiplier = Float(fadeElapsed / fadeInInfo.duration)
+                        self.audioQueue.async(flags: .barrier) {
+                            self.fadeInCurrentMultiplier = amplitudeMultiplier
+                        }
+                    } else if fadeElapsed >= fadeInInfo.duration {
+                        // Fade complete - disable fade-in
+                        amplitudeMultiplier = 1.0
+                        self.audioQueue.async(flags: .barrier) {
+                            self.isFadingIn = false
+                            self.fadeInCurrentMultiplier = 1.0
+                        }
+                    } else {
+                        // Before fade start time
+                        amplitudeMultiplier = 0.0
+                        self.audioQueue.async(flags: .barrier) {
+                            self.fadeInCurrentMultiplier = 0.0
+                        }
+                    }
+                }
+                
+                // Apply amplitude with envelope and fade-in for clicks prevention
+                let finalSample = sample * currentAmplitude * self.pulseEnvelopeValue * amplitudeMultiplier
                 
                 // Write to all channels
                 for buffer in ablPointer {
@@ -182,10 +220,17 @@ class PreciseAudioPulser {
             return noErr
         }
         
-        // Connect source node to mixer
-        if let sourceNode = sourceNode, let format = format {
+        // Set up low-pass filter for smoother audio
+        setupLowPassFilter()
+        
+        // Connect source node through filter to mixer
+        if let sourceNode = sourceNode, let format = format, let filter = lowPassFilter {
             engine.attach(sourceNode)
-            engine.connect(sourceNode, to: engine.mainMixerNode, format: format)
+            engine.attach(filter)
+            
+            // Route: sourceNode -> lowPassFilter -> mainMixer
+            engine.connect(sourceNode, to: filter, format: format)
+            engine.connect(filter, to: engine.mainMixerNode, format: format)
             
             // Save sample rate from current format
             sampleRate = Float(format.sampleRate)
@@ -194,6 +239,10 @@ class PreciseAudioPulser {
     
     // MARK: - Control Methods
     func start() -> Bool {
+        return start(withFadeIn: false, fadeInDuration: 0.0)
+    }
+    
+    func start(withFadeIn: Bool, fadeInDuration: TimeInterval = 2.0) -> Bool {
         guard !isRunning, let engine = audioEngine else { return false }
         
         do {
@@ -206,6 +255,21 @@ class PreciseAudioPulser {
             pulseEnvelopeValue = 0.0
             pulseQueue.removeAll()
             
+            // Set up fade-in if requested
+            audioQueue.async(flags: .barrier) {
+                if withFadeIn {
+                    self.isFadingIn = true
+                    self.fadeInStartTime = CACurrentMediaTime()
+                    self.fadeInDuration = max(0.1, fadeInDuration) // Minimum 100ms fade
+                    self.fadeInTargetAmplitude = self.amplitude
+                    self.fadeInCurrentMultiplier = 0.0
+                    print("PreciseAudioPulser: Fade-in enabled for \(self.fadeInDuration)s")
+                } else {
+                    self.isFadingIn = false
+                    self.fadeInCurrentMultiplier = 1.0
+                }
+            }
+            
             // Optimize audio session
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setPreferredIOBufferDuration(0.005) // 5ms buffer for lower latency
@@ -217,7 +281,8 @@ class PreciseAudioPulser {
             // Set up audio session interruption handling for resilience
             setupAudioSessionObservers()
             
-            print("PreciseAudioPulser: Started successfully in \(syncMode ? "external sync" : "internal timing") mode")
+            let fadeMsg = withFadeIn ? " with \(fadeInDuration)s fade-in" : ""
+            print("PreciseAudioPulser: Started successfully in \(syncMode ? "external sync" : "internal timing") mode\(fadeMsg)")
             return true
         } catch {
             print("ERROR: Failed to start PreciseAudioPulser: \(error.localizedDescription)")
@@ -249,11 +314,19 @@ class PreciseAudioPulser {
     func triggerPulse(at scheduledTime: CFTimeInterval) {
         guard syncMode, isRunning else { return }
         
-        // Periodically log that pulses are being triggered
+        // Periodically log that pulses are being triggered (only in debug builds)
         debugPulseCounter += 1
-        if debugPulseCounter % 60 == 0 {
-            print("PreciseAudioPulser: Triggered pulse #\(debugPulseCounter) at \(String(format: "%.3f", scheduledTime)), queue: \(pulseQueue.count)")
+        #if DEBUG
+        if debugPulseCounter % 120 == 0 {
+            // Capture values to avoid self reference in closure
+            let currentPulseCount = debugPulseCounter
+            let currentQueueCount = pulseQueue.count
+            // Use async dispatch to avoid blocking the calling thread
+            DispatchQueue.global(qos: .utility).async {
+                print("PreciseAudioPulser: Triggered pulse #\(currentPulseCount) at \(String(format: "%.3f", scheduledTime)), queue: \(currentQueueCount)")
+            }
         }
+        #endif
         
         // Safe thread access via dispatch queue
         audioQueue.async(flags: .barrier) {
@@ -315,7 +388,7 @@ class PreciseAudioPulser {
     }
     
     // Update all parameters at once to avoid multiple queue operations
-    func updateParameters(frequency: Float, amplitude: Float, squarenessFactor: Float, pulseRate: Double) {
+    func updateParameters(frequency: Float, amplitude: Float, squarenessFactor: Float, pulseRate: Double, lowPassCutoff: Float) {
         audioQueue.async(flags: .barrier) {
             self.frequency = max(20.0, min(frequency, 20000.0))
             self.amplitude = max(0.0, min(amplitude, 1.0))
@@ -327,6 +400,43 @@ class PreciseAudioPulser {
             let maxTransitionTime = Float(self.pulseDuration * 0.2)
             self.attackTime = min(0.01, maxTransitionTime * 0.3)
             self.releaseTime = min(0.02, maxTransitionTime * 0.7)
+            
+            // Update low-pass filter cutoff
+            self.lowPassCutoff = max(200.0, min(lowPassCutoff, 20000.0))
+            if let filter = self.lowPassFilter {
+                filter.bands[0].frequency = self.lowPassCutoff
+            }
+        }
+    }
+    
+    // MARK: - Low-Pass Filter Setup
+    
+    private func setupLowPassFilter() {
+        // Create EQ unit configured as a low-pass filter
+        lowPassFilter = AVAudioUnitEQ(numberOfBands: 1)
+        
+        if let filter = lowPassFilter {
+            // Configure the single band as a low-pass filter
+            let band = filter.bands[0]
+            band.filterType = .lowPass
+            band.frequency = lowPassCutoff
+            band.bandwidth = 0.5 // Q factor - not critical for low-pass
+            band.gain = 0.0 // No gain boost/cut
+            band.bypass = false
+            
+            print("PreciseAudioPulser: Low-pass filter configured at \(lowPassCutoff)Hz")
+        }
+    }
+    
+    // Method to update the low-pass filter cutoff frequency
+    func setLowPassCutoff(_ newCutoff: Float) {
+        audioQueue.async(flags: .barrier) {
+            self.lowPassCutoff = max(200.0, min(newCutoff, 20000.0))
+            
+            // Update the filter if it exists
+            if let filter = self.lowPassFilter {
+                filter.bands[0].frequency = self.lowPassCutoff
+            }
         }
     }
     

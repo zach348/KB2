@@ -13,6 +13,13 @@ class GameViewController: UIViewController {
     
     // Store session parameters while tutorial is running
     private var pendingSessionParameters: (duration: TimeInterval, profile: SessionProfile, initialArousal: CGFloat)?
+    
+    // Achievement tracking properties
+    private var currentSessionDuration: TimeInterval = 0
+    private var sessionStartTime: TimeInterval = 0
+    
+    // Reference to the active GameScene for VHA control
+    private weak var activeGameScene: GameScene?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -145,16 +152,7 @@ class GameViewController: UIViewController {
             context: contextString
         )
         
-        DataLogger.shared.logEMAResponse(
-            questionId: "ema_\(contextString)_energy",
-            questionText: "How energetic or drained do you feel right now?",
-            response: response.energyLevel,
-            responseType: "VAS",
-            completionTime: response.completionTime,
-            context: contextString
-        )
-        
-        print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel)), Energy=\(Int(response.energyLevel))")
+        print("Pre-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel))")
     }
     
     /// Calculates the initial arousal level based on EMA responses
@@ -241,6 +239,10 @@ class GameViewController: UIViewController {
     private func presentGameScene(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalForEstimator: CGFloat, systemInitialArousal: CGFloat) {
         if let view = self.view as? SKView {
             view.presentScene(nil) // Clear existing scene
+            
+            // Track session start time and duration for achievements
+            currentSessionDuration = sessionDuration
+            sessionStartTime = CACurrentMediaTime()
 
             let gameScene = GameScene(size: view.bounds.size)
             gameScene.sessionMode = true
@@ -251,14 +253,51 @@ class GameViewController: UIViewController {
             // NEW: Pass the target arousal for warmup ramp
             gameScene.targetArousalForWarmup = systemInitialArousal
             
+            // ADDED: Pass pre-session EMA data for dynamic session structure
+            gameScene.preSessionEMA = self.preSessionEMA
+            
             // Initialize ArousalEstimator with the value from StartScreen/EMA
             gameScene.arousalEstimator = ArousalEstimator(initialArousal: initialArousalForEstimator)
+            
+            // Track the active GameScene for VHA control
+            activeGameScene = gameScene
             
             gameScene.scaleMode = .aspectFill
             view.presentScene(gameScene, transition: SKTransition.fade(withDuration: 0.5))
         } else {
             print("Error: GameViewController's view is not an SKView. Cannot present GameScene.")
         }
+    }
+    
+    // MARK: - VHA Control
+    
+    /// Suspends VHA stimulation by forwarding to the active GameScene
+    func suspendVHA() {
+        print("GameViewController: Suspending VHA stimulation...")
+        activeGameScene?.suspendVHA()
+    }
+    
+    /// Resumes VHA stimulation by forwarding to the active GameScene
+    func resumeVHA() {
+        print("GameViewController: Resuming VHA stimulation...")
+        activeGameScene?.resumeVHA()
+    }
+    
+    // MARK: - Achievement Integration
+    
+    /// Called by GameScene when post-session EMA is completed to finalize achievement processing
+    func completeAchievementSession(postSessionEMA: EMAResponse) {
+        // Calculate actual session duration
+        let actualDuration = CACurrentMediaTime() - sessionStartTime
+        
+        // Call AchievementManager with complete session data
+        AchievementManager.shared.endSession(
+            duration: actualDuration,
+            preSessionEMA: preSessionEMA,
+            postSessionEMA: postSessionEMA
+        )
+        
+        print("GameViewController: Achievement session completed with duration \(String(format: "%.1f", actualDuration))s")
     }
     
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {

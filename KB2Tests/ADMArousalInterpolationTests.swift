@@ -196,14 +196,18 @@ class ADMArousalInterpolationTests: XCTestCase {
         let positionsBefore = adm.normalizedPositions
         
         // Trigger PD controller by recording performance
-        adm.recordIdentificationPerformance(
+        let expectation = XCTestExpectation(description: "Record performance to trigger PD controller")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 0.8,
             reactionTime: 1.0,
             responseDuration: 5.0,
             averageTapAccuracy: 20.0,
             actualTargetsToFindInRound: 5
-        )
+        ) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
         
         // Check that positions changed (PD controller ran)
         let positionsAfter = adm.normalizedPositions

@@ -20,8 +20,7 @@ struct SessionData {
     let postStress: Double?
     let preCalm: Double?
     let postCalm: Double?
-    let preEnergy: Double?
-    let postEnergy: Double?
+    let focusQuality: Double?
 }
 
 class ProgressViewController: UIViewController {
@@ -43,7 +42,7 @@ class ProgressViewController: UIViewController {
     private let timeGranularityControl = UISegmentedControl(items: TimeGranularity.allCases.map { $0.displayName })
     private let stressChartView = LineChartView()
     private let calmChartView = LineChartView()
-    private let energyChartView = LineChartView()
+    private let focusQualityChartView = LineChartView()
     private let noDataLabel = UILabel()
     private let doneButton = UIButton(type: .system)
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
@@ -112,7 +111,7 @@ class ProgressViewController: UIViewController {
         // Chart setup
         setupChartView(stressChartView, title: "Stress Level", metric: "Lower is better")
         setupChartView(calmChartView, title: "Calm ↔ Jittery", metric: "Lower is better")
-        setupChartView(energyChartView, title: "Energy Level", metric: "Higher is better")
+        setupChartView(focusQualityChartView, title: "Focus Quality", metric: "Higher is better")
         
         // No data label (initially hidden)
         noDataLabel.text = "Complete a few sessions to see your progress trends.\n\nYour pre and post-session assessments will be tracked here to show your improvement over time."
@@ -144,7 +143,7 @@ class ProgressViewController: UIViewController {
         
         mainStackView.addArrangedSubview(stressChartView)
         mainStackView.addArrangedSubview(calmChartView)
-        mainStackView.addArrangedSubview(energyChartView)
+        mainStackView.addArrangedSubview(focusQualityChartView)
         mainStackView.addArrangedSubview(noDataLabel)
         
         // Add spacing before done button
@@ -162,6 +161,11 @@ class ProgressViewController: UIViewController {
     }
     
     private func setupChartView(_ chartView: LineChartView, title: String, metric: String) {
+        // Hide legend for Focus Quality chart since it only has post-session data
+        if title == "Focus Quality" {
+            chartView.showsLegend = false
+        }
+        
         chartView.configure(
             title: title,
             metric: metric,
@@ -265,8 +269,12 @@ class ProgressViewController: UIViewController {
             let postStress = extractEMAValue(from: session.postSessionEMA, questionId: "stress", sessionType: "post")
             let preCalm = extractEMAValue(from: session.preSessionEMA, questionId: "calm", sessionType: "pre")
             let postCalm = extractEMAValue(from: session.postSessionEMA, questionId: "calm", sessionType: "post")
-            let preEnergy = extractEMAValue(from: session.preSessionEMA, questionId: "energy", sessionType: "pre")
-            let postEnergy = extractEMAValue(from: session.postSessionEMA, questionId: "energy", sessionType: "post")
+            
+            // Extract focus quality from post-session EMA data (stored as both 'focus_quality' and 'accuracy')
+            let focusQuality = extractFocusQuality(from: session.postSessionEMA)
+            
+            // FOCUS QUALITY DEBUG: Log extracted value
+            print("PROGRESS_VIEW: [FOCUS_QUALITY_DEBUG] Session \(session.sessionDate) - Extracted focusQuality: \(focusQuality?.description ?? "nil")")
             
             return SessionData(
                 date: session.sessionDate,
@@ -274,8 +282,7 @@ class ProgressViewController: UIViewController {
                 postStress: postStress,
                 preCalm: preCalm,
                 postCalm: postCalm,
-                preEnergy: preEnergy,
-                postEnergy: postEnergy
+                focusQuality: focusQuality
             )
         }
     }
@@ -289,9 +296,7 @@ class ProgressViewController: UIViewController {
         case "stress":
             fullKey = "\(keyBase)_stress"
         case "calm":
-            fullKey = "\(keyBase)_calm_agitation"  // Special case: calm maps to calm_agitation
-        case "energy":
-            fullKey = "\(keyBase)_energy"
+            fullKey = "\(keyBase)_calm_jittery"  // Fixed: calm maps to calm_jittery
         default:
             print("PROGRESS_VIEW: Unknown question ID '\(questionId)'")
             return nil
@@ -317,18 +322,51 @@ class ProgressViewController: UIViewController {
         return nil
     }
     
+    private func extractFocusQuality(from emaData: [String: Any]) -> Double? {
+        // Focus quality data is stored in post-session EMA under both 'focus_quality' and 'accuracy' keys
+        print("PROGRESS_VIEW: extractFocusQuality called")
+        print("PROGRESS_VIEW: Available keys: \(Array(emaData.keys))")
+        
+        // First try 'focus_quality' key (newer format)
+        if let value = emaData["focus_quality"] as? Double {
+            print("PROGRESS_VIEW: Found focus_quality as Double: \(value)")
+            return value
+        } else if let value = emaData["focus_quality"] as? Int {
+            print("PROGRESS_VIEW: Found focus_quality as Int: \(value)")
+            return Double(value)
+        } else if let value = emaData["focus_quality"] as? String, let doubleValue = Double(value) {
+            print("PROGRESS_VIEW: Found focus_quality as String: \(value) -> \(doubleValue)")
+            return doubleValue
+        }
+        
+        // Fallback to 'accuracy' key (backward compatibility)
+        if let value = emaData["accuracy"] as? Double {
+            print("PROGRESS_VIEW: Found accuracy as Double: \(value)")
+            return value
+        } else if let value = emaData["accuracy"] as? Int {
+            print("PROGRESS_VIEW: Found accuracy as Int: \(value)")
+            return Double(value)
+        } else if let value = emaData["accuracy"] as? String, let doubleValue = Double(value) {
+            print("PROGRESS_VIEW: Found accuracy as String: \(value) -> \(doubleValue)")
+            return doubleValue
+        }
+        
+        print("PROGRESS_VIEW: No focus quality found in EMA data")
+        return nil
+    }
+    
     private func updateUI() {
         if sessionData.isEmpty {
             // Show no data state
             stressChartView.isHidden = true
             calmChartView.isHidden = true
-            energyChartView.isHidden = true
+            focusQualityChartView.isHidden = true
             noDataLabel.isHidden = false
         } else {
             // Show charts with data
             stressChartView.isHidden = false
             calmChartView.isHidden = false
-            energyChartView.isHidden = false
+            focusQualityChartView.isHidden = false
             noDataLabel.isHidden = true
             
             // Update charts with current granularity
@@ -340,9 +378,17 @@ class ProgressViewController: UIViewController {
             let calmPostData = sessionData.compactMap { $0.postCalm }
             calmChartView.updateData(preData: calmPreData, postData: calmPostData, dates: sessionData.map { $0.date }, granularity: currentGranularity)
             
-            let energyPreData = sessionData.compactMap { $0.preEnergy }
-            let energyPostData = sessionData.compactMap { $0.postEnergy }
-            energyChartView.updateData(preData: energyPreData, postData: energyPostData, dates: sessionData.map { $0.date }, granularity: currentGranularity)
+            // Focus quality chart uses empty arrays for pre-data since focus quality is only measured post-session
+            // Convert from decimal (0.0-1.0) to percentage (0-100) for proper chart display
+            let focusQualityData = sessionData.compactMap { $0.focusQuality }.map { $0 * 100 }
+            let emptyPreData: [Double] = []
+            
+            // FOCUS QUALITY DEBUG: Log final data being passed to chart
+            print("PROGRESS_VIEW: [FOCUS_QUALITY_DEBUG] updateUI - Final focusQualityData: \(focusQualityData)")
+            print("PROGRESS_VIEW: [FOCUS_QUALITY_DEBUG] updateUI - sessionData count: \(sessionData.count)")
+            print("PROGRESS_VIEW: [FOCUS_QUALITY_DEBUG] updateUI - dates count: \(sessionData.map { $0.date }.count)")
+            
+            focusQualityChartView.updateData(preData: emptyPreData, postData: focusQualityData, dates: sessionData.map { $0.date }, granularity: currentGranularity)
         }
     }
     
@@ -433,17 +479,21 @@ class ProgressViewController: UIViewController {
             let postStressValues = sessions.compactMap { $0.postStress }
             let preCalmValues = sessions.compactMap { $0.preCalm }
             let postCalmValues = sessions.compactMap { $0.postCalm }
-            let preEnergyValues = sessions.compactMap { $0.preEnergy }
-            let postEnergyValues = sessions.compactMap { $0.postEnergy }
+            let focusQualityValues = sessions.compactMap { $0.focusQuality }
+            
+            // FOCUS QUALITY DEBUG: Log focus quality values before averaging
+            print("PROGRESS_VIEW: [FOCUS_QUALITY_DEBUG] Group \(key) - focusQualityValues: \(focusQualityValues)")
             
             let avgPreStress = preStressValues.isEmpty ? nil : preStressValues.reduce(0, +) / Double(preStressValues.count)
             let avgPostStress = postStressValues.isEmpty ? nil : postStressValues.reduce(0, +) / Double(postStressValues.count)
             let avgPreCalm = preCalmValues.isEmpty ? nil : preCalmValues.reduce(0, +) / Double(preCalmValues.count)
             let avgPostCalm = postCalmValues.isEmpty ? nil : postCalmValues.reduce(0, +) / Double(postCalmValues.count)
-            let avgPreEnergy = preEnergyValues.isEmpty ? nil : preEnergyValues.reduce(0, +) / Double(preEnergyValues.count)
-            let avgPostEnergy = postEnergyValues.isEmpty ? nil : postEnergyValues.reduce(0, +) / Double(postEnergyValues.count)
+            let avgFocusQuality = focusQualityValues.isEmpty ? nil : focusQualityValues.reduce(0, +) / Double(focusQualityValues.count)
             
-            print("PROGRESS_VIEW: Averages for \(key) - Stress: \(avgPreStress ?? 0)/\(avgPostStress ?? 0), Calm: \(avgPreCalm ?? 0)/\(avgPostCalm ?? 0), Energy: \(avgPreEnergy ?? 0)/\(avgPostEnergy ?? 0)")
+            // FOCUS QUALITY DEBUG: Log averaged focus quality value
+            print("PROGRESS_VIEW: [FOCUS_QUALITY_DEBUG] Group \(key) - avgFocusQuality: \(avgFocusQuality?.description ?? "nil")")
+            
+            print("PROGRESS_VIEW: Averages for \(key) - Stress: \(avgPreStress ?? 0)/\(avgPostStress ?? 0), Calm: \(avgPreCalm ?? 0)/\(avgPostCalm ?? 0), Focus Quality: \(avgFocusQuality ?? 0)")
             
             let averagedSession = SessionData(
                 date: representativeDate,
@@ -451,8 +501,7 @@ class ProgressViewController: UIViewController {
                 postStress: avgPostStress,
                 preCalm: avgPreCalm,
                 postCalm: avgPostCalm,
-                preEnergy: avgPreEnergy,
-                postEnergy: avgPostEnergy
+                focusQuality: avgFocusQuality
             )
             
             averagedData.append(averagedSession)
@@ -494,6 +543,12 @@ class LineChartView: UIView {
     private var preData: [Double] = []
     private var postData: [Double] = []
     private var dates: [Date] = []
+    
+    var showsLegend: Bool = true {
+        didSet {
+            legendStackView.isHidden = !showsLegend
+        }
+    }
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -602,9 +657,21 @@ class LineChartView: UIView {
     func updateData(preData: [Double], postData: [Double], dates: [Date], granularity: TimeGranularity) {
         self.preData = preData
         self.postData = postData
-        self.dates = dates
         
-        // Absolutely minimal approach - no cleanup at all, just overdraw
+        // Filter dates to only include those with corresponding data points
+        // This ensures proper alignment between data and dates, especially for post-session-only metrics
+        let dataPointCount = max(preData.count, postData.count)
+        self.dates = Array(dates.prefix(dataPointCount))
+        
+        print("CHART: updateData - preData: \(preData.count), postData: \(postData.count), dates: \(self.dates.count)")
+        
+        // FOCUS QUALITY DEBUG: Add chart-specific logging
+        if titleLabel.text == "Focus Quality" {
+            print("CHART: [FOCUS_QUALITY_DEBUG] LineChartView.updateData called for Focus Quality chart")
+            print("CHART: [FOCUS_QUALITY_DEBUG] Received postData: \(postData)")
+            print("CHART: [FOCUS_QUALITY_DEBUG] Chart container bounds: \(chartContainerView.bounds)")
+        }
+        
         // Clear only the drawing layers synchronously, avoid any subview access
         chartContainerView.layer.sublayers = []
         
@@ -615,9 +682,16 @@ class LineChartView: UIView {
     
     private func drawChart() {
         // Allow drawing even if only one dataset has data, but require at least one non-empty dataset
-        guard (!preData.isEmpty || !postData.isEmpty) && preData.count == postData.count else { 
-            print("CHART: Cannot draw - preData: \(preData.count), postData: \(postData.count)")
+        guard !preData.isEmpty || !postData.isEmpty else { 
+            print("CHART: Cannot draw - no data available")
             return 
+        }
+        
+        // For charts with only post-data (like Focus Quality), use post-data count for layout
+        let dataPointCount = max(preData.count, postData.count)
+        guard dataPointCount > 0 else {
+            print("CHART: Cannot draw - no data points")
+            return
         }
         
         let chartBounds = chartContainerView.bounds
@@ -650,11 +724,11 @@ class LineChartView: UIView {
         // Helper function to convert data point to screen coordinates
         func pointForData(index: Int, value: Double) -> CGPoint {
             let x: CGFloat
-            if preData.count == 1 {
+            if dataPointCount == 1 {
                 // Center single point horizontally
                 x = drawingRect.minX + drawingRect.width / 2
             } else {
-                x = drawingRect.minX + (CGFloat(index) / CGFloat(preData.count - 1)) * drawingRect.width
+                x = drawingRect.minX + (CGFloat(index) / CGFloat(dataPointCount - 1)) * drawingRect.width
             }
             let normalizedValue = valueRange > 0 ? (value - minValue) / valueRange : 0.5
             let y = drawingRect.maxY - CGFloat(normalizedValue) * drawingRect.height
@@ -748,7 +822,8 @@ class LineChartView: UIView {
         }
         
         // Draw vertical grid lines
-        let stepCount = min(preData.count - 1, 6)
+        let dataPointCount = max(preData.count, postData.count)
+        let stepCount = min(dataPointCount - 1, 6)
         if stepCount > 0 {
             for i in 0...stepCount {
                 let x = rect.minX + (CGFloat(i) / CGFloat(stepCount)) * rect.width
@@ -767,7 +842,7 @@ class LineChartView: UIView {
     }
     
     private func addAxisLabels(granularity: TimeGranularity) {
-        guard !dates.isEmpty && !preData.isEmpty else { return }
+        guard !dates.isEmpty && (!preData.isEmpty || !postData.isEmpty) else { return }
         
         let chartBounds = chartContainerView.bounds
         let margin: CGFloat = 20

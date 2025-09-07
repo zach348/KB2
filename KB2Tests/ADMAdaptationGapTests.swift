@@ -19,15 +19,19 @@ class ADMAdaptationGapTests: XCTestCase {
         )
         
         // Skip warmup phase by recording 2 rounds (assuming ~10 total rounds, 10% = 1 round)
-        for _ in 0..<2 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<2 {
+            let expectation = XCTestExpectation(description: "Warmup round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.8,
                 reactionTime: 1.5,
                 responseDuration: 4.0,
                 averageTapAccuracy: 30.0,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Now in standard phase, but not enough data for PD controller
@@ -37,15 +41,19 @@ class ADMAdaptationGapTests: XCTestCase {
         )
         
         // Simulate poor performance to trigger adaptation
-        for _ in 0..<5 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<5 {
+            let expectation = XCTestExpectation(description: "Poor performance round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: false,
                 tfTtfRatio: 0.3,
                 reactionTime: 3.0,
                 responseDuration: 8.0,
                 averageTapAccuracy: 50.0,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Verify that positions changed (global adaptation occurred)
@@ -81,14 +89,18 @@ class ADMAdaptationGapTests: XCTestCase {
         for i in 0..<10 {
             // Vary performance to create diverse data
             let performance = CGFloat(i) / 10.0
-            adm.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Data collection round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: performance > 0.5,
                 tfTtfRatio: performance,
                 reactionTime: 2.0 - Double(performance),
                 responseDuration: 5.0 - Double(performance * 2),
                 averageTapAccuracy: 40.0 - (performance * 20),
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Verify PD controller has sufficient data
@@ -122,15 +134,19 @@ class ADMAdaptationGapTests: XCTestCase {
         )
         
         // Skip warmup: simulate warmup rounds to enter standard phase
-        for _ in 0..<2 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<2 {
+            let expectation = XCTestExpectation(description: "Warmup transition round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.7,
                 reactionTime: 1.5,
                 responseDuration: 4.0,
                 averageTapAccuracy: 30.0,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         var transitionOccurred = false
@@ -142,14 +158,18 @@ class ADMAdaptationGapTests: XCTestCase {
             // Check data count before recording
             let dataCountBefore = adm.domPerformanceProfiles[.discriminatoryLoad]?.performanceByValue.count ?? 0
             
-            adm.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Data accumulation round \(round+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.6,
                 reactionTime: 2.0,
                 responseDuration: 5.0,
                 averageTapAccuracy: 35.0,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
             
             let dataCountAfter = adm.domPerformanceProfiles[.discriminatoryLoad]?.performanceByValue.count ?? 0
             

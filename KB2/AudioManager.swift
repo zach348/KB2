@@ -229,7 +229,8 @@ class AudioManager {
             frequency: targetAudioFrequency,
             amplitude: calculatedAmplitude,
             squarenessFactor: squareness,
-            pulseRate: pulseRate
+            pulseRate: pulseRate,
+            lowPassCutoff: gameConfiguration.audioLowPassCutoff
         )
     }
 
@@ -270,16 +271,28 @@ class AudioManager {
     }
 
     func startEngine() {
+        startEngine(withFadeIn: false)
+    }
+    
+    func startEngine(withFadeIn: Bool) {
         if !audioReady {
             print("AudioManager: StartEngine called but audio not ready. Engine not starting.")
             return
         }
 
         if usingPreciseAudio {
-            if let startResult = audioPulser?.start(), !startResult {
-                print("AudioManager WARNING: PreciseAudioPulser failed to start")
+            if withFadeIn {
+                let fadeInDuration = gameConfiguration.audioFadeInDuration
+                if let startResult = audioPulser?.start(withFadeIn: true, fadeInDuration: fadeInDuration), !startResult {
+                    print("AudioManager WARNING: PreciseAudioPulser failed to start with fade-in")
+                }
+            } else {
+                if let startResult = audioPulser?.start(), !startResult {
+                    print("AudioManager WARNING: PreciseAudioPulser failed to start")
+                }
             }
         } else {
+            // Traditional audio doesn't support fade-in currently
             guard let engine = customAudioEngine, audioReady else {
                 print("AudioManager: StartEngine (traditional) - Aborted. Engine nil or not ready.")
                 return
@@ -293,7 +306,9 @@ class AudioManager {
                 }
             }
         }
-        print("AudioManager: Engine start process completed (usingPreciseAudio: \(usingPreciseAudio)).")
+        
+        let fadeMsg = withFadeIn ? " with fade-in" : ""
+        print("AudioManager: Engine start process completed (usingPreciseAudio: \(usingPreciseAudio))\(fadeMsg).")
     }
 
     func stopEngine() {
@@ -355,14 +370,21 @@ class AudioManager {
             // Calculate the time when the audio pulse should start
             let audioStartTime = visualTickTime + audioOffset
             
-            // Periodically log the timing details (every 120 ticks)
+            // Periodically log the timing details (only in debug builds)
             audioTickCounter += 1
-            if audioTickCounter % 120 == 0 {
-                let currentTime = CACurrentMediaTime()
-                print("AudioManager: Audio tick #\(audioTickCounter) - now: \(String(format: "%.3f", currentTime)), " +
-                      "visualTick: \(String(format: "%.3f", visualTickTime)), " +
-                      "audioStart: \(String(format: "%.3f", audioStartTime))")
+            #if DEBUG
+            if audioTickCounter % 240 == 0 {
+                // Capture counter value to avoid self reference in closure
+                let currentTickCount = audioTickCounter
+                // Use async dispatch to avoid blocking the calling thread
+                DispatchQueue.global(qos: .utility).async {
+                    let currentTime = CACurrentMediaTime()
+                    print("AudioManager: Audio tick #\(currentTickCount) - now: \(String(format: "%.3f", currentTime)), " +
+                          "visualTick: \(String(format: "%.3f", visualTickTime)), " +
+                          "audioStart: \(String(format: "%.3f", audioStartTime))")
+                }
             }
+            #endif
             
             // Trigger pulse at the exact scheduled time
             pulser.triggerPulse(at: audioStartTime)
@@ -431,4 +453,4 @@ extension GameConfiguration {
     var audioMaxAmplitude: Float { return 0.7 }
     var audioPulseRateFactor: Double { return 0.8 }
 }
-*/ 
+*/

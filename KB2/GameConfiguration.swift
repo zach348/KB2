@@ -77,7 +77,7 @@ struct GameConfiguration {
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
-    let breathingFadeOutThreshold: CGFloat = 0.035
+    let breathingFadeOutThreshold: CGFloat = 0.005
     // MODIFIED: Expanded arousal steps for finer control (0.025 increment)
     let arousalSteps: [CGFloat] = stride(from: 0.0, through: 1.0, by: 0.025).map { $0 }
     // Generates [0.0, 0.025, 0.05, 0.075, ..., 0.975, 1.0]
@@ -182,6 +182,8 @@ struct GameConfiguration {
     let audioMinAmplitude: Float = 0.15   // Min amplitude for audio pulse
     let audioMaxAmplitude: Float = 0.325   // Max amplitude for audio pulse
     let audioPulseRateFactor: Double = 0.8 // Factor to derive pulser rate from timer frequency
+    let audioLowPassCutoff: Float = 2000.0 // Cutoff frequency in Hz for the low-pass filter. Lower values = warmer/muffled sound.
+    let audioFadeInDuration: TimeInterval = 10.0 // Duration for audio fade-in on session start (seconds)
 
     // --- Visuals ---
     let visualPulseOnDurationRatio: Double = 0.2
@@ -362,10 +364,28 @@ struct GameConfiguration {
     // --- EMA-Based Initial Arousal Configuration ---
     
     /// The minimum arousal level that can be set from the pre-session EMA.
-    let emaArousalTargetMin: CGFloat = 0.65
+    let emaArousalTargetMin: CGFloat = 0.7
     
     /// The maximum arousal level that can be set from the pre-session EMA.
     let emaArousalTargetMax: CGFloat = 1.0
+    
+    // --- EMA-Based Session Structure Configuration ---
+    
+    /// The breathing transition point for users with the lowest jitteriness score (earliest transition - shortest interactive phase).
+    /// This results in more time in the breathing phase.
+    let emaJitterinessTransitionPointMin: Double = 0.40
+    
+    /// The breathing transition point for users with the highest jitteriness score (latest transition - longest interactive phase).
+    /// This results in less time in the breathing phase, allowing more time for down-regulation.
+    let emaJitterinessTransitionPointMax: Double = 0.70
+    
+    /// The effective arousal value used for breathing pace calculation for users with the lowest stress score.
+    /// This results in a slower, gentler breathing pattern from the start.
+    let emaStressPacingArousalMin: CGFloat = 0.15
+    
+    /// The effective arousal value used for breathing pace calculation for users with the highest stress score.
+    /// This preserves the current "on-ramp" approach for highly stressed users.
+    let emaStressPacingArousalMax: CGFloat = 0.35
     
     /// Multiplier to determine the starting arousal for the warmup ramp (e.g., 0.85 means start at 85% of the EMA-calculated target arousal).
     let warmupArousalStartMultiplier: CGFloat = 0.8
@@ -387,7 +407,7 @@ struct GameConfiguration {
     /// Initial difficulty multiplier applied during warmup phase
     /// Default: 0.85 (85% of normal difficulty)
     /// This ensures players start at a comfortable level while the system recalibrates
-    let warmupInitialDifficultyMultiplier: CGFloat = 1.0
+    let warmupInitialDifficultyMultiplier: CGFloat = 0.9
     
     /// Performance target during warmup phase (0.0-1.0)
     /// Default: 0.60 (vs 0.50 in standard phase)
@@ -416,7 +436,7 @@ struct GameConfiguration {
     /// Dampening factor for the derivative term in the PD controller
     /// Default: 10.0
     /// Higher values reduce the impact of performance trend slope on adaptation
-    let domSlopeDampeningFactor: CGFloat = 40.0
+    let domSlopeDampeningFactor: CGFloat = 50.0
     
     /// Half-life in hours for recency weighting of historical performance data
     /// Default: 0.25 (15 minutes) - provides responsive adaptation to recent performance changes

@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 
 class SettingsViewController: UIViewController {
     
@@ -17,6 +18,7 @@ class SettingsViewController: UIViewController {
     private let titleLabel = UILabel()
     private let subscriptionStatusLabel = UILabel()
     private let viewProgressButton = UIButton(type: .system)
+    private let achievementsButton = UIButton(type: .system)
     private let restoreButton = UIButton(type: .system)
     private let manageSubscriptionButton = UIButton(type: .system)
     private let clearHistoryButton = UIButton(type: .system)
@@ -75,6 +77,9 @@ class SettingsViewController: UIViewController {
         setupButton(viewProgressButton, title: "View Progress", isPrimary: false)
         viewProgressButton.addTarget(self, action: #selector(viewProgressButtonTapped), for: .touchUpInside)
         
+        setupButton(achievementsButton, title: "Achievements", isPrimary: false)
+        achievementsButton.addTarget(self, action: #selector(achievementsButtonTapped), for: .touchUpInside)
+        
         setupButton(restoreButton, title: "Restore Purchases", isPrimary: false)
         restoreButton.addTarget(self, action: #selector(restoreButtonTapped), for: .touchUpInside)
         
@@ -109,6 +114,7 @@ class SettingsViewController: UIViewController {
         mainStackView.addArrangedSubview(spacer2)
         
         mainStackView.addArrangedSubview(viewProgressButton)
+        mainStackView.addArrangedSubview(achievementsButton)
         mainStackView.addArrangedSubview(restoreButton)
         mainStackView.addArrangedSubview(manageSubscriptionButton)
         mainStackView.addArrangedSubview(clearHistoryButton)
@@ -218,6 +224,13 @@ class SettingsViewController: UIViewController {
         present(progressViewController, animated: true)
     }
     
+    @objc private func achievementsButtonTapped() {
+        let achievementsView = AchievementsView()
+        let hostingController = UIHostingController(rootView: achievementsView)
+        hostingController.modalPresentationStyle = .fullScreen
+        present(hostingController, animated: true)
+    }
+    
     @objc private func restoreButtonTapped() {
         guard #available(iOS 15.0, *) else {
             showAlert(title: "Not Available", message: "Restore purchases requires iOS 15 or later.")
@@ -282,6 +295,9 @@ class SettingsViewController: UIViewController {
             
             // Clear ADM state
             ADMPersistenceManager.clearState(for: userId)
+            
+            // Clear achievements
+            AchievementManager.shared.resetAchievements()
             
             DispatchQueue.main.async {
                 self.showLoading(false)

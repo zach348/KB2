@@ -129,7 +129,7 @@ class GameSceneTests: XCTestCase {
         // Verify initial state
         XCTAssertTrue(gameScene.sessionMode)
         XCTAssertEqual(gameScene.sessionDuration, 300)
-        XCTAssertEqual(gameScene.currentArousalLevel, 1.0, accuracy: 0.01)
+        XCTAssertEqual(gameScene.currentArousalLevel, 0.8, accuracy: 0.01)
     }
 
     func testArousalPowerCurve() {
@@ -156,6 +156,9 @@ class GameSceneTests: XCTestCase {
         gameScene.sessionMode = true
         gameScene.sessionDuration = 10 // Short duration for testing
         gameScene.initialArousalLevel = 1.0
+        
+        // Enable testing mode to bypass throttling and smoothing
+        gameScene.isTesting = true
         
         // Trigger initialization which sets sessionStartTime
         gameScene.didMove(to: mockView)
@@ -495,7 +498,7 @@ class GameSceneTests: XCTestCase {
     func testTargetCountCalculation() {
         gameScene.didMove(to: mockView)
         
-        // Target count is now managed by ADM, which starts with normalized position 0.25
+        // Target count is now managed by ADM, which starts with normalized position 0.5
         // and uses smoothing. Setting currentArousalLevel triggers updateParametersFromArousal
         // which internally updates ADM and target count.
         
@@ -503,16 +506,16 @@ class GameSceneTests: XCTestCase {
         gameScene.currentArousalLevel = gameScene.gameConfiguration.trackingArousalThresholdHigh
         
         let highArousalTargetCount = gameScene.currentTargetCount
-        // ADM manages target count with initial position 0.25, so it may not exactly match min/max
+        // ADM manages target count with initial position 0.5, allowing range 1-7 targets
         XCTAssertGreaterThanOrEqual(highArousalTargetCount, gameScene.gameConfiguration.minTargetsAtHighTrackingArousal)
-        XCTAssertLessThanOrEqual(highArousalTargetCount, gameScene.gameConfiguration.maxTargetsAtLowTrackingArousal)
+        XCTAssertLessThanOrEqual(highArousalTargetCount, 7) // Updated to match ADM config
         
         // Test target count at low arousal
         gameScene.currentArousalLevel = gameScene.gameConfiguration.trackingArousalThresholdLow
         
         let lowArousalTargetCount = gameScene.currentTargetCount
         XCTAssertGreaterThanOrEqual(lowArousalTargetCount, gameScene.gameConfiguration.minTargetsAtHighTrackingArousal)
-        XCTAssertLessThanOrEqual(lowArousalTargetCount, gameScene.gameConfiguration.maxTargetsAtLowTrackingArousal)
+        XCTAssertLessThanOrEqual(lowArousalTargetCount, 7) // Updated to match ADM config
         
         // Verify that low arousal produces more targets than high arousal (general trend)
         // Note: Due to ADM's initial position and smoothing, exact values may vary
@@ -523,9 +526,9 @@ class GameSceneTests: XCTestCase {
                          gameScene.gameConfiguration.trackingArousalThresholdLow) / 2
         gameScene.currentArousalLevel = midArousal
         
-        // Expect a value between min and max
+        // Expect a value between min and max ADM range
         XCTAssertGreaterThanOrEqual(gameScene.currentTargetCount, gameScene.gameConfiguration.minTargetsAtHighTrackingArousal)
-        XCTAssertLessThanOrEqual(gameScene.currentTargetCount, gameScene.gameConfiguration.maxTargetsAtLowTrackingArousal)
+        XCTAssertLessThanOrEqual(gameScene.currentTargetCount, 7) // Updated to match ADM config
     }
     
     func testTargetFlashSequence() {

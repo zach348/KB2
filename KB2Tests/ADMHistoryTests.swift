@@ -173,14 +173,18 @@ class ADMHistoryTests: XCTestCase {
 
         // 2. Action
         // This will trigger the logging inside recordIdentificationPerformance
-        adm.recordIdentificationPerformance(
+        let expectation = XCTestExpectation(description: "Record identification performance")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 1.0,
             reactionTime: 0.3,
             responseDuration: 1.2,
             averageTapAccuracy: 10.0,
             actualTargetsToFindInRound: 5
-        )
+        ) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5.0)
 
         // 3. Assert
         XCTAssertEqual(mockLogger.loggedEvents.count, 1, "One custom event should have been logged.")

@@ -23,30 +23,38 @@ class ADMSignalClampingTests: XCTestCase {
     func testSignalClampingPreventsLargeJumps() {
         // Populate DOM profiles with extreme performance gap data
         // This should generate a large unclamped signal
-        for _ in 0..<10 {
+        for i in 0..<10 {
             // Record very poor performance (0.1) when target is 0.8
-            adm.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Poor performance setup round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: false,
                 tfTtfRatio: 0.1,
                 reactionTime: 1.5,
                 responseDuration: 7.0,
                 averageTapAccuracy: 200,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Check that all DOM positions changed by at most 15%
         let initialPositions = adm.normalizedPositions
         
         // Record another poor performance to trigger adaptation
-        adm.recordIdentificationPerformance(
+        let triggerExpectation = XCTestExpectation(description: "Trigger adaptation")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: false,
             tfTtfRatio: 0.1,
             reactionTime: 1.5,
             responseDuration: 7.0,
             averageTapAccuracy: 200,
             actualTargetsToFindInRound: 3
-        )
+        ) {
+            triggerExpectation.fulfill()
+        }
+        wait(for: [triggerExpectation], timeout: 5.0)
         
         // Verify clamping
         for (domType, initialPos) in initialPositions {
@@ -60,29 +68,37 @@ class ADMSignalClampingTests: XCTestCase {
     
     func testSignalClampingWithHighPerformanceGap() {
         // Test with very high performance when difficulty should increase
-        for _ in 0..<10 {
+        for i in 0..<10 {
             // Record perfect performance (1.0) when target is 0.8
-            adm.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Perfect performance round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 1.0,
                 reactionTime: 0.2,
                 responseDuration: 0.6,
                 averageTapAccuracy: 0,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         let initialPositions = adm.normalizedPositions
         
         // Trigger another adaptation
-        adm.recordIdentificationPerformance(
+        let triggerExpectation2 = XCTestExpectation(description: "Trigger adaptation for high performance")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: true,
             tfTtfRatio: 1.0,
             reactionTime: 0.2,
             responseDuration: 0.6,
             averageTapAccuracy: 0,
             actualTargetsToFindInRound: 3
-        )
+        ) {
+            triggerExpectation2.fulfill()
+        }
+        wait(for: [triggerExpectation2], timeout: 5.0)
         
         // Verify clamping in positive direction
         for (domType, initialPos) in initialPositions {
@@ -98,40 +114,52 @@ class ADMSignalClampingTests: XCTestCase {
     
     func testSignalClampingRespectsBidirectionalLimits() {
         // Set up a DOM profile with moderate performance
-        for _ in 0..<10 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<10 {
+            let expectation = XCTestExpectation(description: "Moderate performance setup round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.8,
                 reactionTime: 0.5,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Now simulate a sudden performance drop
-        for _ in 0..<5 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<5 {
+            let expectation = XCTestExpectation(description: "Performance drop round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: false,
                 tfTtfRatio: 0.2,
                 reactionTime: 1.5,
                 responseDuration: 6.0,
                 averageTapAccuracy: 180,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         let preAdaptPositions = adm.normalizedPositions
         
         // Trigger adaptation with poor performance
-        adm.recordIdentificationPerformance(
+        let triggerExpectation3 = XCTestExpectation(description: "Trigger adaptation with poor performance")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: false,
             tfTtfRatio: 0.1,
             reactionTime: 1.7,
             responseDuration: 7.0,
             averageTapAccuracy: 200,
             actualTargetsToFindInRound: 3
-        )
+        ) {
+            triggerExpectation3.fulfill()
+        }
+        wait(for: [triggerExpectation3], timeout: 5.0)
         
         // Check negative direction clamping (easing)
         for (domType, prePos) in preAdaptPositions {
@@ -155,28 +183,36 @@ class ADMSignalClampingTests: XCTestCase {
         )
         
         // Create extreme performance gap
-        for _ in 0..<10 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<10 {
+            let expectation = XCTestExpectation(description: "Extreme performance gap round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: false,
                 tfTtfRatio: 0.05,
                 reactionTime: 1.8,
                 responseDuration: 8.0,
                 averageTapAccuracy: 225,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         let initialPositions = adm.normalizedPositions
         
         // Trigger adaptation
-        adm.recordIdentificationPerformance(
+        let triggerExpectation4 = XCTestExpectation(description: "Trigger custom limit adaptation")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: false,
             tfTtfRatio: 0.05,
             reactionTime: 1.8,
             responseDuration: 8.0,
             averageTapAccuracy: 225,
             actualTargetsToFindInRound: 3
-        )
+        ) {
+            triggerExpectation4.fulfill()
+        }
+        wait(for: [triggerExpectation4], timeout: 5.0)
         
         // Verify stricter clamping
         for (domType, initialPos) in initialPositions {
@@ -202,14 +238,18 @@ class ADMSignalClampingTests: XCTestCase {
         
         // Get past warmup phase - need at least 10% of expected rounds
         for i in 0..<15 {
-            adm.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Warmup phase round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.7,
                 reactionTime: 0.6,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // No direct way to verify warmup completion without accessing private properties
@@ -217,40 +257,52 @@ class ADMSignalClampingTests: XCTestCase {
         
         // Create a situation that would generate a very large signal
         // First establish a baseline with moderate performance
-        for _ in 0..<10 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<10 {
+            let expectation = XCTestExpectation(description: "Baseline moderate performance round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.7,
                 reactionTime: 0.6,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Now record consistently terrible performance
-        for _ in 0..<10 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<10 {
+            let expectation = XCTestExpectation(description: "Terrible performance setup round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: false,
                 tfTtfRatio: 0.0,
                 reactionTime: 2.0,
                 responseDuration: 10.0,
                 averageTapAccuracy: 250,
                 actualTargetsToFindInRound: 5
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         let prePositions = adm.normalizedPositions
         
         // This should trigger significant adaptation (likely clamped)
-        adm.recordIdentificationPerformance(
+        let triggerAdaptationExpectation = XCTestExpectation(description: "Trigger significant adaptation")
+        adm.recordIdentificationPerformanceAsync(
             taskSuccess: false,
             tfTtfRatio: 0.0,
             reactionTime: 2.0,
             responseDuration: 10.0,
             averageTapAccuracy: 250,
             actualTargetsToFindInRound: 5
-        )
+        ) {
+            triggerAdaptationExpectation.fulfill()
+        }
+        wait(for: [triggerAdaptationExpectation], timeout: 5.0)
         
         // Verify that no DOM changed by more than the clamp limit
         var maxChange: CGFloat = 0.0
@@ -317,15 +369,19 @@ class ADMSignalClampingTests: XCTestCase {
         )
         
         // Set up stable performance to trigger convergence
-        for _ in 0..<20 {
-            adm.recordIdentificationPerformance(
+        for i in 0..<20 {
+            let expectation = XCTestExpectation(description: "Stable performance round \(i+1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.8,
                 reactionTime: 0.4,
                 responseDuration: 1.5,
                 averageTapAccuracy: 30,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Note: Exploration nudges bypass the PD controller signal clamping
@@ -355,52 +411,68 @@ class ADMSignalClampingTests: XCTestCase {
         )
         
         // Get past warmup phase
-        for _ in 0..<15 {
-            testADM.recordIdentificationPerformance(
+        for i in 0..<15 {
+            let expectation = XCTestExpectation(description: "Warmup phase round \(i+1)")
+            testADM.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.7,
                 reactionTime: 0.6,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Establish baseline
-        for _ in 0..<10 {
-            testADM.recordIdentificationPerformance(
+        for i in 0..<10 {
+            let expectation = XCTestExpectation(description: "Baseline round \(i+1)")
+            testADM.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.7,
                 reactionTime: 0.6,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         // Create terrible performance
-        for _ in 0..<10 {
-            testADM.recordIdentificationPerformance(
+        for i in 0..<10 {
+            let expectation = XCTestExpectation(description: "Terrible performance round \(i+1)")
+            testADM.recordIdentificationPerformanceAsync(
                 taskSuccess: false,
                 tfTtfRatio: 0.0,
                 reactionTime: 2.0,
                 responseDuration: 10.0,
                 averageTapAccuracy: 250,
                 actualTargetsToFindInRound: 5
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
         }
         
         let prePositions = testADM.normalizedPositions
         
         // Trigger adaptation
-        testADM.recordIdentificationPerformance(
+        let triggerExpectation = XCTestExpectation(description: "Trigger adaptation")
+        testADM.recordIdentificationPerformanceAsync(
             taskSuccess: false,
             tfTtfRatio: 0.0,
             reactionTime: 2.0,
             responseDuration: 10.0,
             averageTapAccuracy: 250,
             actualTargetsToFindInRound: 5
-        )
+        ) {
+            triggerExpectation.fulfill()
+        }
+        wait(for: [triggerExpectation], timeout: 5.0)
         
         // Verify behavior with default threshold
         var maxChange: CGFloat = 0.0

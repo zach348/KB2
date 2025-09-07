@@ -39,14 +39,18 @@ class ADMWarmupDebugTests: XCTestCase {
             
             let positionsBefore = adm.normalizedPositions
             
-            adm.recordIdentificationPerformance(
+            let expectation = XCTestExpectation(description: "Record performance round \(round + 1)")
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: true,
                 tfTtfRatio: 0.65,
                 reactionTime: 0.5,
                 responseDuration: 2.0,
                 averageTapAccuracy: 50.0,
                 actualTargetsToFindInRound: 3
-            )
+            ) {
+                expectation.fulfill()
+            }
+            wait(for: [expectation], timeout: 5.0)
             
             roundPositions.append(adm.normalizedPositions)
             

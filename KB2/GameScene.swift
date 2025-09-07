@@ -105,13 +105,20 @@ var sessionProfile: SessionProfile = .standard // Default profile
 var challengePhases: [SessionChallengePhase] = [] // Challenge phases for this session
 var breathingTransitionPoint: Double = 0.5  // Add this variable to store the randomized transition point
 
-// --- ADDED: Warmup Ramp Properties ---
-private var isWarmupRampActive: Bool = false
-private var warmupRoundTargetArousal: CGFloat = 0.0
-private var warmupRampIncrement: CGFloat = 0.0
-private var warmupStartingArousal: CGFloat = 0.0
-private var isFinalWarmupRound: Bool = false
-// --- END ADDED ---
+// --- EMA-Based Session Customization ---
+var preSessionEMA: EMAResponse? // Pre-session EMA data for dynamic session structure
+
+// --- Breathing Pacing Properties ---
+internal var initialBreathingPacingArousal: CGFloat = 0.35 // Initial effective arousal for breathing pace
+internal var arousalAtBreathingStart: CGFloat = 0.35 // System arousal level when breathing phase began
+
+    // --- ADDED: Warmup Ramp Properties ---
+    private var isWarmupRampActive: Bool = false
+    private var warmupRoundTargetArousal: CGFloat = 0.0
+    private var warmupRampIncrement: CGFloat = 0.0
+    private var warmupStartingArousal: CGFloat = 0.0
+    private var warmupSmoothingTargetArousal: CGFloat = 0.0
+    // --- END ADDED ---
 
 // --- User Arousal Estimation ---
 var arousalEstimator: ArousalEstimator? // Tracks the user's estimated arousal level
@@ -128,6 +135,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private var lastArousalUpdateTime: TimeInterval = 0
     private let arousalUpdateInterval: TimeInterval = 0.25 // 4 times per second
     // --- END ADDED ---
+    
+    // --- ADDED: Throttling properties for ADM updates ---
+    private var lastADMUpdateTime: TimeInterval = 0
+    private let admUpdateInterval: TimeInterval = 0.25 // 4 times per second
+    // --- END ADDED ---
+    
+    // --- TESTING: Flag to bypass throttling and smoothing during tests ---
+    internal var isTesting: Bool = false
 
     // --- Core Game State Properties ---
     internal var currentState: GameState = .tracking
@@ -216,7 +231,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     internal var currentBreathingHoldAfterExhaleDuration: TimeInterval = GameConfiguration().breathingHoldAfterExhaleDuration
     private var needsHapticPatternUpdate: Bool = false
     // --- ADDED: Flag for deferred visual duration update ---
-    private var needsVisualDurationUpdate: Bool = false
+    internal var needsVisualDurationUpdate: Bool = false // Made internal for testing
     // --- END ADDED ---
     
     // Add a variable to track if first breathing cycle is completed
@@ -349,16 +364,35 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         setupFeedbackAssets()
         
         if hapticsReady { startHapticEngine() }
-        audioManager.startEngine() // MODIFIED
+        audioManager.startEngine(withFadeIn: true) // Use fade-in on session start
         
         if sessionMode {
+            // Initialize achievement tracking for this session
+            AchievementManager.shared.startSession()
+            
             // Ensure session target is correct for arousal calculations
             initialArousalLevel = targetArousalForWarmup
             sessionStartTime = CACurrentMediaTime()
             
-            // Randomly determine when the breathing state should begin (40-60% range)
-            breathingTransitionPoint = Double.random(in: 
-                gameConfiguration.breathingStateTargetRangeMin...gameConfiguration.breathingStateTargetRangeMax)
+            // Determine breathing transition point based on pre-session EMA jitteriness or use random fallback
+            if let emaResponse = preSessionEMA {
+            // Use jitteriness level to determine interactive phase duration
+            // Higher jitteriness (more restless) = longer interactive phase = later breathing transition
+            let clampedJitteriness = max(0.0, min(emaResponse.calmJitteryLevel, 100.0)) // Clamp to 0-100
+            let normalizedJitteriness = clampedJitteriness / 100.0 // Convert 0-100 to 0.0-1.0
+            breathingTransitionPoint = gameConfiguration.emaJitterinessTransitionPointMin + 
+                (normalizedJitteriness * (gameConfiguration.emaJitterinessTransitionPointMax - gameConfiguration.emaJitterinessTransitionPointMin))
+                
+                print("DIAGNOSTIC: EMA-based breathing transition calculation:")
+                print("  ├─ Jitteriness: \(Int(emaResponse.calmJitteryLevel)) → \(String(format: "%.3f", normalizedJitteriness))")
+                print("  ├─ Transition range: [\(String(format: "%.1f", gameConfiguration.emaJitterinessTransitionPointMin * 100))%, \(String(format: "%.1f", gameConfiguration.emaJitterinessTransitionPointMax * 100))%]")
+                print("  └─ Calculated transition point: \(String(format: "%.1f", breathingTransitionPoint * 100))%")
+            } else {
+                // Fallback to original random calculation if no EMA data
+                breathingTransitionPoint = Double.random(in: 
+                    gameConfiguration.breathingStateTargetRangeMin...gameConfiguration.breathingStateTargetRangeMax)
+                print("DIAGNOSTIC: No EMA data available - using random breathing transition: \(Int(breathingTransitionPoint * 100))%")
+            }
             
             print("DIAGNOSTIC: Session started with duration \(sessionDuration) seconds, initial arousal \(initialArousalLevel)")
             print("DIAGNOSTIC: Breathing transition target point: \(Int(breathingTransitionPoint * 100))% of session")
@@ -553,7 +587,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
     // --- UI Update ---
     private func updateUI() {
-        scoreLabel.text = "Score: \(score)/\(totalIterations)"
+        scoreLabel.text = "Focus: \(score)/\(totalIterations)"
         
         // Display both system and user arousal if estimator is available - remove for release build
         if let estimator = arousalEstimator {
@@ -812,6 +846,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     internal func startIdentificationPhase(isTutorial: Bool = false) {
         isEndingIdentification = false
         totalIterations += 1
+        
+        // Record identification round start for achievements (skip for tutorial)
+        if !isTutorial && sessionMode {
+            AchievementManager.shared.recordIdentificationRoundStart()
+        }
+        
         currentState = .identifying; updateUI()
         
         // TUTORIAL FIX: Stop any ongoing flash animations to prevent race condition
@@ -989,39 +1029,49 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 averageTapAccuracyKPI = gameConfiguration.tapAccuracy_WorstExpected_Points
             }
 
-            adm.recordIdentificationPerformance(
+            // Use asynchronous ADM processing to avoid blocking main thread and causing audio cutouts
+            adm.recordIdentificationPerformanceAsync(
                 taskSuccess: taskSuccessKPI,
                 tfTtfRatio: tfTtfRatioKPI,
                 reactionTime: reactionTimeKPI,
                 responseDuration: responseDurationKPI,
                 averageTapAccuracy: averageTapAccuracyKPI,
                 actualTargetsToFindInRound: actualTargetsInCompletedRound
-            )
-            
-            // MODIFIED: Check for warmup phase transition and handle warmup ramp advancement
-            if sessionMode && isWarmupRampActive && adm.currentPhase == .warmup {
-                advanceWarmupRampRound()
-                print("WARMUP_RAMP: Advanced after identification round (Success: \(success))")
-            } else if sessionMode && isWarmupRampActive && !isFinalWarmupRound {
-                // Check if ADM has transitioned from warmup to standard phase
-                if adm.currentPhase == .standard {
-                    // The warmup phase has just ended - this was the final warmup round
-                    isFinalWarmupRound = true
-                    print("WARMUP_RAMP: Detected end of warmup phase - entering final smoothing period")
+            ) { [weak self] in
+                // This completion handler runs on the main thread after background processing
+                guard let self = self else { return }
+                
+                // MODIFIED: Use ADM phase as source of truth for warmup ramp management
+                if self.sessionMode && self.isWarmupRampActive {
+                    if adm.currentPhase == .warmup {
+                        // Still in warmup phase - advance to next round target
+                        self.advanceWarmupRampRound()
+                        print("WARMUP_RAMP: Advanced after identification round (Success: \(success))")
+                    } else if adm.currentPhase == .standard {
+                        // ADM has transitioned to standard phase - begin final smoothing to session target
+                        self.warmupSmoothingTargetArousal = self.targetArousalForWarmup
+                        print("WARMUP_RAMP: ADM phase changed to standard - smoothing to target \(String(format: "%.3f", self.warmupSmoothingTargetArousal))")
+                    }
                 }
+                
+                // Explicitly force a DOM update after recording performance
+                // This ensures that changes to normalized positions are immediately
+                // reflected in the absolute DOM values before the next gameplay phase
+                adm.updateForCurrentArousal()
+                
+                print("GameScene: Sent KPIs to ADM. Success: \(taskSuccessKPI), TF/TTF: \(tfTtfRatioKPI), RT: \(reactionTimeKPI), RD: \(responseDurationKPI), Acc: \(averageTapAccuracyKPI)")
+                print("GameScene: Forced DOM update after identification phase")
             }
-            
-            // Explicitly force a DOM update after recording performance
-            // This ensures that changes to normalized positions are immediately
-            // reflected in the absolute DOM values before the next gameplay phase
-            adm.updateForCurrentArousal()
-            
-            print("GameScene: Sent KPIs to ADM. Success: \(taskSuccessKPI), TF/TTF: \(tfTtfRatioKPI), RT: \(reactionTimeKPI), RD: \(responseDurationKPI), Acc: \(averageTapAccuracyKPI)")
-            print("GameScene: Forced DOM update after identification phase")
         }
         // END ADDED KPI Collection
 
         if success { score += 1 } 
+        
+        // Record identification round completion for achievements (skip for tutorial)
+        if !tutorialMode && sessionMode {
+            AchievementManager.shared.recordIdentificationRoundEnd(success: success)
+        }
+        
         balls.forEach { $0.revealIdentity(targetColor: activeTargetColor, distractorColor: activeDistractorColor) }
         
         // --- MODIFIED: Delay motion resumption ---
@@ -1322,9 +1372,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             t: dfFromADM
         )
                 
-        // 6. Update ball appearances if in tracking state
+        // 6. Update ball appearances if in tracking state - safely iterate over copy
         if currentState == .tracking { 
-            for ball in balls { 
+            let ballsCopy = Array(balls) // Create a copy to prevent race conditions
+            for ball in ballsCopy { 
+                guard ball.parent == self else { continue } // Skip balls that have been removed
                 ball.updateAppearance(targetColor: activeTargetColor, distractorColor: activeDistractorColor) 
             } 
         }
@@ -1473,8 +1525,18 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     /// Updates arousal smoothly toward the current round target - called per-frame during warmup
     private func updateWarmupRampSmoothing(deltaTime: TimeInterval) {
         guard isWarmupRampActive else { return }
+        guard let adm = adaptiveDifficultyManager else { return }
         
-        let arousalDifference = warmupRoundTargetArousal - currentArousalLevel
+        let targetArousal: CGFloat
+        if adm.currentPhase == .warmup {
+            // Still in warmup - smooth toward round target
+            targetArousal = warmupRoundTargetArousal
+        } else {
+            // Transitioned to standard phase - smooth toward final session target
+            targetArousal = warmupSmoothingTargetArousal
+        }
+        
+        let arousalDifference = targetArousal - currentArousalLevel
         
         // Only apply smoothing if there's a meaningful difference
         if abs(arousalDifference) > 0.001 {
@@ -1620,6 +1682,30 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Stop throttled motion control
         stopThrottledMotionControl()
         
+        // --- ADDED: Calculate stress-based breathing pacing arousal ---
+        if let emaResponse = preSessionEMA {
+            // Use stress level to determine initial breathing pacing arousal
+            // Higher stress = higher initial pacing arousal (0.15-0.35 range)
+            let clampedStress = max(0.0, min(emaResponse.stressLevel, 100.0)) // Clamp to 0-100
+            let normalizedStress = clampedStress / 100.0 // Convert 0-100 to 0.0-1.0
+            initialBreathingPacingArousal = gameConfiguration.emaStressPacingArousalMin + 
+                (normalizedStress * (gameConfiguration.emaStressPacingArousalMax - gameConfiguration.emaStressPacingArousalMin))
+                
+            print("DIAGNOSTIC: EMA-based breathing pacing calculation:")
+            print("  ├─ Stress: \(Int(emaResponse.stressLevel)) → \(String(format: "%.3f", normalizedStress))")
+            print("  ├─ Pacing range: [\(String(format: "%.2f", gameConfiguration.emaStressPacingArousalMin)), \(String(format: "%.2f", gameConfiguration.emaStressPacingArousalMax))]")
+            print("  └─ Initial pacing arousal: \(String(format: "%.3f", initialBreathingPacingArousal))")
+        } else {
+            // Fallback to current configuration default if no EMA data
+            initialBreathingPacingArousal = 0.35
+            print("DIAGNOSTIC: No EMA data available - using default initial pacing arousal: \(String(format: "%.3f", initialBreathingPacingArousal))")
+        }
+        
+        // Store system arousal level when breathing phase begins for proportional decay calculation
+        arousalAtBreathingStart = currentArousalLevel
+        print("DIAGNOSTIC: Stored arousal at breathing start: \(String(format: "%.3f", arousalAtBreathingStart))")
+        // --- END ADDED ---
+        
         print("--- Transitioning to Breathing State (Arousal: \(String(format: "%.2f", currentArousalLevel))) ---")
         var calculatedMaxDuration: TimeInterval = 0.5
         if currentState == .tracking && !balls.isEmpty {
@@ -1645,6 +1731,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         self.removeAction(forKey: "targetShiftSoundSequence") // Stop shift sound sequence if running
 
         currentState = .breathing; currentBreathingPhase = .idle
+        
+        // Record breathing state entry for achievements (skip for tutorial)
+        if sessionMode {
+            AchievementManager.shared.recordBreathingStateEntered()
+        }
+        
         updateParametersFromArousal(); updateUI(); breathingVisualsFaded = false
 
         let centerPoint = CGPoint(x: frame.midX, y: frame.midY)
@@ -1678,6 +1770,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     
     private func transitionToTrackingState() {
         guard currentState == .breathing else { return }
+        
+        // Record breathing state exit for achievements (skip for tutorial)
+        if sessionMode {
+            AchievementManager.shared.recordBreathingStateExited()
+        }
+        
         stopBreathingAnimation();
         currentState = .tracking; currentBreathingPhase = .idle
         fadeInBreathingVisuals()
@@ -2100,11 +2198,29 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func updateDynamicBreathingParameters() {
         guard currentState == .breathing else { return }
 
-        // Normalize arousal within the breathing range [0.0, thresholdLow]
+        // Calculate effective pacing arousal using proportional decay mapping to avoid negative values
+        // This creates a separate interpolation that starts at stress-determined value and decays proportionally
+        guard arousalAtBreathingStart > 0 else { 
+            print("WARNING: arousalAtBreathingStart is zero - cannot calculate breathing decay")
+            return 
+        }
+        
+        // Calculate how much the system arousal has decayed since breathing began
+        let breathingDecayProgress = max(0.0, min(1.0, (arousalAtBreathingStart - currentArousalLevel) / arousalAtBreathingStart))
+        
+        // Calculate effective pacing arousal that decays proportionally with system arousal
+        let effectivePacingArousal = initialBreathingPacingArousal * (1.0 - breathingDecayProgress)
+        
+        // Normalize the effective pacing arousal within the breathing threshold range
         let breathingArousalRange = gameConfiguration.trackingArousalThresholdLow
         guard breathingArousalRange > 0 else { return } // Avoid division by zero
-        let clampedBreathingArousal = max(0.0, min(currentArousalLevel, breathingArousalRange))
-        let normalizedBreathingArousal = clampedBreathingArousal / breathingArousalRange // Range 0.0 to 1.0
+        let normalizedBreathingArousal = min(1.0, effectivePacingArousal / breathingArousalRange)
+
+        print("DIAGNOSTIC: Breathing pacing calculation:")
+        print("  ├─ System arousal: \(String(format: "%.3f", currentArousalLevel)) (started at \(String(format: "%.3f", arousalAtBreathingStart)))")
+        print("  ├─ Decay progress: \(String(format: "%.1f", breathingDecayProgress * 100))%")
+        print("  ├─ Effective pacing arousal: \(String(format: "%.3f", effectivePacingArousal)) (from \(String(format: "%.3f", initialBreathingPacingArousal)))")
+        print("  └─ Normalized for breathing: \(String(format: "%.3f", normalizedBreathingArousal))")
 
         // Define target duration ranges using GameConfiguration
         let minInhale = gameConfiguration.dynamicBreathingMinInhaleDuration
@@ -2112,17 +2228,17 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let minExhale = gameConfiguration.dynamicBreathingMinExhaleDuration
         let maxExhale = gameConfiguration.dynamicBreathingMaxExhaleDuration
 
-        // Interpolate: Low arousal (norm=0.0) -> Long exhale; High arousal (norm=1.0) -> Balanced
+        // Interpolate using the effective pacing arousal: Low pacing -> Long exhale; High pacing -> Balanced
         let targetInhaleDuration = minInhale + (maxInhale - minInhale) * normalizedBreathingArousal
         let targetExhaleDuration = maxExhale + (minExhale - maxExhale) * normalizedBreathingArousal
 
-        // Calculate proportional hold durations
-        // Hold after inhale: 30% at low arousal -> 5% at high arousal
+        // Calculate proportional hold durations based on effective pacing
+        // Hold after inhale: 30% at low pacing -> 5% at high pacing
         let holdAfterInhaleProportion = gameConfiguration.holdAfterInhaleProportionLowArousal +
             (gameConfiguration.holdAfterInhaleProportionHighArousal - gameConfiguration.holdAfterInhaleProportionLowArousal) * normalizedBreathingArousal
         let targetHoldAfterInhaleDuration = targetInhaleDuration * TimeInterval(holdAfterInhaleProportion)
         
-        // Hold after exhale: 50% at low arousal -> 20% at high arousal
+        // Hold after exhale: 50% at low pacing -> 20% at high pacing
         let holdAfterExhaleProportion = gameConfiguration.holdAfterExhaleProportionLowArousal +
             (gameConfiguration.holdAfterExhaleProportionHighArousal - gameConfiguration.holdAfterExhaleProportionLowArousal) * normalizedBreathingArousal
         let targetHoldAfterExhaleDuration = targetExhaleDuration * TimeInterval(holdAfterExhaleProportion)
@@ -2239,9 +2355,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             updateWarmupRampSmoothing(deltaTime: dt)
             
             // Check if final warmup smoothing is complete
-            if isFinalWarmupRound && abs(currentArousalLevel - targetArousalForWarmup) < 0.005 {
+            if let adm = adaptiveDifficultyManager, adm.currentPhase == .standard && 
+               abs(currentArousalLevel - warmupSmoothingTargetArousal) < 0.005 {
                 isWarmupRampActive = false
-                isFinalWarmupRound = false
                 print("WARMUP_RAMP: Smoothing complete. Handoff to main session arousal logic.")
             }
         }
@@ -2465,13 +2581,17 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Exit if warmup ramp is active - let it control arousal exclusively
         guard !isWarmupRampActive else { return }
         
-        // Throttle updates to improve performance
         let currentTime = CACurrentMediaTime()
-        // Only update if enough time has passed since the last update
-        guard (currentTime - lastArousalUpdateTime) >= arousalUpdateInterval else { return }
         
-        // Update the timestamp for next check
-        lastArousalUpdateTime = currentTime
+        // TESTING: Skip throttling during tests
+        if !isTesting {
+            // Throttle updates to improve performance
+            // Only update if enough time has passed since the last update
+            guard (currentTime - lastArousalUpdateTime) >= arousalUpdateInterval else { return }
+            
+            // Update the timestamp for next check
+            lastArousalUpdateTime = currentTime
+        }
         
         // For manual profile, only update session progress and check completion
         if sessionProfile == .manual {
@@ -2563,9 +2683,15 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Apply arousal change more smoothly
         let arousalDifference = targetArousal - currentArousalLevel
         if abs(arousalDifference) > 0.001 {
-            // Apply gradual change rather than jumping directly to target
-            let newArousal = currentArousalLevel + (arousalDifference * 0.05)  // 5% step toward target
-            currentArousalLevel = newArousal
+            // TESTING: Skip smoothing during tests
+            if isTesting {
+                // Apply change immediately during tests
+                currentArousalLevel = targetArousal
+            } else {
+                // Apply gradual change rather than jumping directly to target
+                let newArousal = currentArousalLevel + (arousalDifference * 0.05)  // 5% step toward target
+                currentArousalLevel = newArousal
+            }
         }
         
         // Check for challenge phase
@@ -2694,11 +2820,25 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             MotionController.applyCorrections(balls: self.balls, settings: self.motionSettings, scene: self)
         }
         
-        // Add continuous update for AdaptiveDifficultyManager
+        // Add throttled update for AdaptiveDifficultyManager
         let updateADM = SKAction.run { [weak self] in
             guard let self = self, let adm = self.adaptiveDifficultyManager else { return }
             
-            // Continuously update DOM targets based on current arousal
+            // Safety check: ensure we're in a valid state for ADM updates
+            guard self.currentState == .tracking,
+                  !self.balls.isEmpty else { return }
+            
+            let currentTime = CACurrentMediaTime()
+            
+            // TESTING: Skip throttling during tests
+            let shouldUpdate = self.isTesting || (currentTime - self.lastADMUpdateTime) >= self.admUpdateInterval
+            
+            guard shouldUpdate else { return }
+            
+            // Update the timestamp for next check
+            self.lastADMUpdateTime = currentTime
+            
+            // Update DOM targets based on current arousal
             adm.updateForCurrentArousal()
             
             // Recalculate colors based on the updated DF from ADM
@@ -2712,13 +2852,6 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             
             // Update identification duration from ADM's response time
             self.updateResponseTimeFromADM()
-            
-            // If we're in tracking state, update ball appearances to reflect any DF changes
-            if self.currentState == .tracking {
-                for ball in self.balls {
-                    ball.updateAppearance(targetColor: self.activeTargetColor, distractorColor: self.activeDistractorColor)
-                }
-            }
         }
         
         let sequence = SKAction.sequence([wait, update, updateADM])
@@ -3054,14 +3187,41 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             // Capture post-session EMA for later visualization
             self.postSessionEMA = response
 
-            // End the session and trigger the cloud upload.
-            // This is the final data collection point for the session.
-            DataLogger.shared.endSession()
+            // Complete achievement session tracking via GameViewController
+            if self.sessionMode, let gameViewController = strongRootViewController as? GameViewController {
+                gameViewController.completeAchievementSession(postSessionEMA: response)
+            }
 
-            // Dismiss the EMA view
+        // Log session performance summary for historical tracking
+        let totalRounds = self.totalIterations
+        let correctRounds = self.score
+        let accuracy = totalRounds > 0 ? Double(correctRounds) / Double(totalRounds) : 0.0
+        
+        // Get average reaction time from arousal estimator if available
+        let avgReactionTime: TimeInterval? = {
+            guard let estimator = self.arousalEstimator,
+                  !estimator.recentPerformanceHistory.isEmpty else { return nil }
+            
+            let validReactionTimes = estimator.recentPerformanceHistory.compactMap { $0.reactionTime }
+            return validReactionTimes.isEmpty ? nil : validReactionTimes.reduce(0, +) / Double(validReactionTimes.count)
+        }()
+        
+        DataLogger.shared.logSessionPerformanceSummary(
+            totalRounds: totalRounds,
+            correctRounds: correctRounds,
+            accuracy: accuracy,
+            avgReactionTime: avgReactionTime
+        )
+        
+        print("Session performance logged: \(correctRounds)/\(totalRounds) rounds (\(String(format: "%.1f", accuracy * 100))% accuracy)")
+
+        // End the session and trigger the cloud upload.
+        // This is the final data collection point for the session.
+        DataLogger.shared.endSession()
+
+            // Dismiss the EMA view and proceed directly to score visualization
             strongRootViewController.dismiss(animated: true) {
-                // Check if we should present the survey based on session count and user preferences
-                self.checkAndPresentSurveyIfNeeded()
+                self.presentEMAScoreVisualization()
             }
         }
 
@@ -3100,16 +3260,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             context: contextString
         )
         
-        DataLogger.shared.logEMAResponse(
-            questionId: "ema_\(contextString)_energy",
-            questionText: "How energetic or drained do you feel right now?",
-            response: response.energyLevel,
-            responseType: "VAS",
-            completionTime: response.completionTime,
-            context: contextString
-        )
-        
-        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel)), Energy=\(Int(response.energyLevel))")
+        print("Post-session EMA logged: Stress=\(Int(response.stressLevel)), Calm/Jittery=\(Int(response.calmJitteryLevel))")
     }
 
     private func presentSurveyModal() {
@@ -3131,18 +3282,16 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 // Open survey URL and dismiss the modal
                 self?.openSurveyURL()
                 rootViewController?.dismiss(animated: true) {
-                    self?.presentEMAScoreVisualization()
+                    self?.transitionToStartScreenAfterEMA()
                 }
             },
             onDecline: { [weak self, weak rootViewController] in
-                // User tapped "No thanks" - record decline for current version
-                let currentAppVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-                FirstRunManager.shared.surveyLastDeclinedVersion = currentAppVersion
-                print("DEBUG: Survey declined for version \(currentAppVersion) - flag set in FirstRunManager")
+                // User tapped "No thanks" - transition directly to start screen to break loop
+                print("DEBUG: Survey declined - transitioning to start screen")
                 
-                // Dismiss the modal and go to EMA visualization
+                // Dismiss the modal and go directly to start screen
                 rootViewController?.dismiss(animated: true) {
-                    self?.presentEMAScoreVisualization()
+                    self?.transitionToStartScreenAfterEMA()
                 }
             }
         )
@@ -3185,14 +3334,21 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let preEMA = (rootViewController as? GameViewController)?.preSessionEMA
         let postEMA = self.postSessionEMA
 
+        // Get newly unlocked achievements from this session
+        let newlyUnlockedAchievements = AchievementManager.shared.getNewlyUnlockedAchievements()
+
         let vizView = EMAScoreVisualizationView(
             preEMA: preEMA,
             postEMA: postEMA,
             summary: summary,
+            newlyUnlockedAchievements: newlyUnlockedAchievements,
             onDone: { [weak self, weak rootViewController] in
-                // Dismiss and return to start
+                // Clear the newly unlocked achievements after displaying them
+                AchievementManager.shared.clearNewlyUnlockedAchievements()
+                
+                // Dismiss and check for survey presentation
                 rootViewController?.dismiss(animated: true) {
-                    self?.transitionToStartScreenAfterEMA()
+                    self?.checkAndPresentSurveyIfNeeded()
                 }
             }
         )
@@ -3223,31 +3379,25 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func checkAndPresentSurveyIfNeeded() {
         let sessionCount = FirstRunManager.shared.sessionCount
         let hasAcceptedSurvey = FirstRunManager.shared.hasAcceptedSurvey
-        let lastDeclinedVersion = FirstRunManager.shared.surveyLastDeclinedVersion
-        let currentAppVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         
-        print("DEBUG: Survey eligibility check - Session count: \(sessionCount), Has accepted: \(hasAcceptedSurvey), Last declined version: \(lastDeclinedVersion ?? "none"), Current version: \(currentAppVersion)")
+        print("DEBUG: Survey eligibility check - Session count: \(sessionCount), Has accepted: \(hasAcceptedSurvey)")
         
-        // Check all conditions for survey presentation
-        let meetsSessionThreshold = sessionCount >= 3
+        // Check conditions for survey presentation
+        let meetsSessionThreshold = sessionCount >= 2
         let hasNotAcceptedSurvey = !hasAcceptedSurvey
-        let shouldRepromptAfterDecline = lastDeclinedVersion != currentAppVersion
         
-        if meetsSessionThreshold && hasNotAcceptedSurvey && shouldRepromptAfterDecline {
+        if meetsSessionThreshold && hasNotAcceptedSurvey {
             print("DEBUG: All conditions met - presenting survey")
             presentSurveyModal()
         } else {
             print("DEBUG: Survey conditions not met - skipping to score visualization")
             if !meetsSessionThreshold {
-                print("  - Session threshold not met (\(sessionCount) < 3)")
+                print("  - Session count (\(sessionCount)) below threshold (2)")
             }
             if !hasNotAcceptedSurvey {
                 print("  - User has already accepted survey")
             }
-            if !shouldRepromptAfterDecline {
-                print("  - User declined in current app version (\(currentAppVersion))")
-            }
-            presentEMAScoreVisualization()
+            transitionToStartScreenAfterEMA()
         }
     }
     
@@ -3311,6 +3461,41 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 ball.hideIdentity(hiddenColor: activeDistractorColor)
             }
         }
+    }
+    
+    // MARK: - VHA Control
+    /// Suspends all VHA (Visual, Haptic, Audio) stimulation components gracefully
+    func suspendVHA() {
+        print("GameScene: Suspending VHA stimulation...")
+        
+        // Stop precision timer first - this halts all synchronized VHA events
+        precisionTimer?.stop()
+        
+        // Stop audio engine
+        audioManager?.stopEngine()
+        
+        // Stop haptic engine
+        stopHapticEngine()
+        
+        print("GameScene: VHA stimulation suspended.")
+    }
+    
+    /// Resumes all VHA (Visual, Haptic, Audio) stimulation components with proper synchronization
+    func resumeVHA() {
+        print("GameScene: Resuming VHA stimulation...")
+        
+        // Restart haptic engine first
+        if hapticsReady {
+            startHapticEngine()
+        }
+        
+        // Restart audio engine
+        audioManager?.startEngine()
+        
+        // Restart precision timer last - this re-establishes synchronized VHA pulses
+        precisionTimer?.start()
+        
+        print("GameScene: VHA stimulation resumed.")
     }
     
     // MARK: - Tutorial Cleanup
