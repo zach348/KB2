@@ -86,6 +86,25 @@ class GameViewController: UIViewController {
 
     // This method will be called by StartScreen
     func presentPreSessionEMAAndStartGame(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalFromStartScreen: CGFloat) {
+        // Check if this is the second session
+        if FirstRunManager.shared.sessionCount == 1 {
+            // Present the prompt view first
+            let promptView = SecondSessionPromptView { [weak self] in
+                self?.dismiss(animated: true) {
+                    self?.proceedToPreSessionEMA(sessionDuration: sessionDuration, sessionProfile: sessionProfile, initialArousalFromStartScreen: initialArousalFromStartScreen)
+                }
+            }
+            let hostingController = UIHostingController(rootView: promptView)
+            hostingController.modalPresentationStyle = .fullScreen
+            hostingController.overrideUserInterfaceStyle = .dark
+            self.present(hostingController, animated: true)
+        } else {
+            // Otherwise, proceed as normal
+            proceedToPreSessionEMA(sessionDuration: sessionDuration, sessionProfile: sessionProfile, initialArousalFromStartScreen: initialArousalFromStartScreen)
+        }
+    }
+
+    private func proceedToPreSessionEMA(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalFromStartScreen: CGFloat) {
         let config = GameConfiguration()
         let shouldForceTutorial = config.forceShowTutorial
         let shouldShowTutorial = shouldForceTutorial || !FirstRunManager.shared.hasCompletedTutorial
