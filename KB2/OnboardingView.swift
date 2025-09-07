@@ -30,6 +30,13 @@ struct OnboardingView: View {
             }
         }()
         
+        // Beta Page
+        var betaPage = AttributedString("Greetings! Thank you for beta testing Kalibrate! After you complete your second session, you'll be prompted to take a brief survey. We'd be grateful if you could take a moment to share your thoughts  - your feedback will directly shape the future of Kalibrate.")
+        betaPage.font = baseFont
+        if let range1 = betaPage.range(of: "Thank you for beta testing Kalibrate!") {
+            betaPage[range1].font = boldFont
+        }
+
         // Page 1
         var page1 = AttributedString("Welcome to Kalibrate! Here's a cool secret: what you do changes how you feel. And how you feel changes what you're ready to do.")
         page1.font = baseFont
@@ -81,6 +88,7 @@ struct OnboardingView: View {
         }
         
         return [
+            (text: betaPage, icon: "ladybug.fill"),
             (text: page1, icon: "hand.wave.fill"),
             (text: page2, icon: "brain.head.profile"),
             (text: page3, icon: "headphones"),
