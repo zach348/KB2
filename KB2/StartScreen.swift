@@ -378,6 +378,14 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
             self.presentEntitlementGate()
         }))
         
+        // Survey prompts toggle
+        let surveysDisabled = FirstRunManager.shared.surveyPromptsDisabled
+        let surveyToggleTitle = surveysDisabled ? "Disable Survey Prompts: ON → OFF" : "Disable Survey Prompts: OFF → ON"
+        alert.addAction(UIAlertAction(title: surveyToggleTitle, style: .default, handler: { _ in
+            FirstRunManager.shared.surveyPromptsDisabled.toggle()
+            self.presentDebugSheet()
+        }))
+        
         // TestFlight reset available in both DEBUG and RELEASE for testing
         alert.addAction(UIAlertAction(title: "🧪 Reset for TestFlight", style: .destructive, handler: { _ in
             let confirmAlert = UIAlertController(title: "Reset App State", message: "This will reset all onboarding progress and start a fresh trial. Use this for TestFlight testing only.", preferredStyle: .alert)

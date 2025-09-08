@@ -12,6 +12,8 @@ final class FirstRunManager {
     private let hasCompletedTutorialKey = "hasCompletedTutorial"
     private let sessionCountKey = "sessionCount"
     private let hasAcceptedSurveyKey = "hasAcceptedSurvey"
+    private let surveyPromptsDisabledKey = "surveyPromptsDisabled"
+    private let surveyWallDismissalCountKey = "surveyWallDismissalCount"
     
     // MARK: - Initialization
     init(userDefaults: UserDefaults = .standard) {
@@ -54,6 +56,24 @@ final class FirstRunManager {
         }
     }
     
+    var surveyPromptsDisabled: Bool {
+        get {
+            userDefaults.bool(forKey: surveyPromptsDisabledKey)
+        }
+        set {
+            userDefaults.set(newValue, forKey: surveyPromptsDisabledKey)
+        }
+    }
+    
+    var surveyWallDismissalCount: Int {
+        get {
+            userDefaults.integer(forKey: surveyWallDismissalCountKey)
+        }
+        set {
+            userDefaults.set(newValue, forKey: surveyWallDismissalCountKey)
+        }
+    }
+    
     // Tracks whether we've shown the non-blocking subscription offer during trial
     private let hasShownSubscriptionOfferKey = "hasShownSubscriptionOffer"
     var hasShownSubscriptionOffer: Bool {
@@ -72,6 +92,8 @@ final class FirstRunManager {
         userDefaults.removeObject(forKey: hasShownSubscriptionOfferKey)
         userDefaults.removeObject(forKey: sessionCountKey)
         userDefaults.removeObject(forKey: hasAcceptedSurveyKey)
+        userDefaults.removeObject(forKey: surveyPromptsDisabledKey)
+        userDefaults.removeObject(forKey: surveyWallDismissalCountKey)
     }
 
     func resetTutorialForDebug() {
@@ -92,6 +114,8 @@ final class FirstRunManager {
         userDefaults.removeObject(forKey: hasShownSubscriptionOfferKey)
         userDefaults.removeObject(forKey: sessionCountKey)
         userDefaults.removeObject(forKey: hasAcceptedSurveyKey)
+        userDefaults.removeObject(forKey: surveyPromptsDisabledKey)
+        userDefaults.removeObject(forKey: surveyWallDismissalCountKey)
         // Reset trial date for fresh TestFlight experience
         let now = Date()
         _ = KeychainManager.shared.setDate(now, forKey: "trial_start_date")

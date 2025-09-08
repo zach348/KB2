@@ -74,6 +74,11 @@ struct GameConfiguration {
     /// Use ONLY for local development and manual QA. Default: false.
     var forceNonEntitledOnLaunch: Bool = false
 
+    /// Feature flag: enables the session-gated survey wall feature for users with 7+ sessions.
+    /// When true, users with 7+ sessions will see a survey prompt before starting new sessions.
+    /// Default: true.
+    let isSessionGatedSurveyEnabled: Bool = true
+
     // --- Arousal Mapping & Thresholds ---
     let trackingArousalThresholdLow: CGFloat = 0.35
     let trackingArousalThresholdHigh: CGFloat = 1.0
@@ -364,7 +369,7 @@ struct GameConfiguration {
     // --- EMA-Based Initial Arousal Configuration ---
     
     /// The minimum arousal level that can be set from the pre-session EMA.
-    let emaArousalTargetMin: CGFloat = 0.7
+    let emaArousalTargetMin: CGFloat = 0.75
     
     /// The maximum arousal level that can be set from the pre-session EMA.
     let emaArousalTargetMax: CGFloat = 1.0

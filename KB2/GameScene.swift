@@ -94,11 +94,12 @@ private var tutorialManager: TutorialManager?
 // Tutorial completion callback
 var tutorialCompletionHandler: (() -> Void)?
 
-// --- Session Management Properties ---
-var tutorialMode: Bool = false
-var sessionMode: Bool = false
-var sessionDuration: TimeInterval = 0
-var sessionStartTime: TimeInterval = 0
+    // --- Session Management Properties ---
+    var tutorialMode: Bool = false
+    var sessionMode: Bool = false
+    var sessionDuration: TimeInterval = 0
+    var sessionStartTime: TimeInterval = 0
+    private var didIncrementSessionCount = false
 var initialArousalLevel: CGFloat = 1.0
 var targetArousalForWarmup: CGFloat = 1.0 // ADDED: Target arousal from EMA calculation
 var sessionProfile: SessionProfile = .standard // Default profile
@@ -2612,6 +2613,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     let elapsedTime = currentTime - sessionStartTime
     let progress = min(1.0, elapsedTime / sessionDuration)
 
+    // --- ADDED: Session count increment at 85% completion ---
+    if !didIncrementSessionCount && progress >= 0.85 {
+        FirstRunManager.shared.sessionCount += 1
+        didIncrementSessionCount = true
+        print("DEBUG: Session count incremented at \(Int(progress * 100))% completion to \(FirstRunManager.shared.sessionCount)")
+    }
+    // --- END ADDED ---
+
     // --- ADDED: Partial data upload logic ---
     if sessionMode && !isSessionCompleted && !isPartialUploadInProgress { // Check isPartialUploadInProgress
         let currentProgressPercent = Int(progress * 100)
@@ -3123,10 +3132,6 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
         print("--- Session Completed ---")
         
-        // Increment session counter for survey logic
-        FirstRunManager.shared.sessionCount += 1
-        print("DEBUG: Session count incremented to \(FirstRunManager.shared.sessionCount)")
-        
         DataLogger.shared.logStateTransition(from: "session_active", to: "session_end")
 
         // Stop all game activities
@@ -3386,7 +3391,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let meetsSessionThreshold = sessionCount >= 2
         let hasNotAcceptedSurvey = !hasAcceptedSurvey
         
-        if meetsSessionThreshold && hasNotAcceptedSurvey {
+        if meetsSessionThreshold && hasNotAcceptedSurvey && !FirstRunManager.shared.surveyPromptsDisabled {
             print("DEBUG: All conditions met - presenting survey")
             presentSurveyModal()
         } else {
