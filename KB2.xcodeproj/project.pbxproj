@@ -253,6 +253,7 @@
 				DEVELOPMENT_TEAM = 4FG9HV6926;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
+				"OTHER_SWIFT_FLAGS[arch=*]" = "-D BETA";
 				PRODUCT_BUNDLE_IDENTIFIER = com.trainingstate.KB2Tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

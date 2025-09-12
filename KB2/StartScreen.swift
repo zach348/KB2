@@ -177,6 +177,14 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
             (startButton.position.y - 40)
         versionLabel.position = CGPoint(x: frame.midX, y: max(bottomPosition, 30))
         addChild(versionLabel)
+        
+        // Add copyright notice below version
+        let copyrightLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
+        copyrightLabel.text = "© 2025 Training State, LLC - All rights reserved"
+        copyrightLabel.fontSize = 12
+        copyrightLabel.fontColor = SKColor(cgColor: secondaryColor.cgColor).withAlphaComponent(0.6)
+        copyrightLabel.position = CGPoint(x: frame.midX, y: max(bottomPosition - 20, 10))
+        addChild(copyrightLabel)
     }
     
     private func setupSlider(in view: SKView) {
@@ -376,6 +384,14 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
 
         alert.addAction(UIAlertAction(title: "Show Paywall Now", style: .destructive, handler: { _ in
             self.presentEntitlementGate()
+        }))
+        
+        // Survey prompts toggle
+        let surveysDisabled = FirstRunManager.shared.surveyPromptsDisabled
+        let surveyToggleTitle = surveysDisabled ? "Disable Survey Prompts: ON → OFF" : "Disable Survey Prompts: OFF → ON"
+        alert.addAction(UIAlertAction(title: surveyToggleTitle, style: .default, handler: { _ in
+            FirstRunManager.shared.surveyPromptsDisabled.toggle()
+            self.presentDebugSheet()
         }))
         
         // TestFlight reset available in both DEBUG and RELEASE for testing

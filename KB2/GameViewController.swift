@@ -87,6 +87,52 @@ class GameViewController: UIViewController {
     // This method will be called by StartScreen
     func presentPreSessionEMAAndStartGame(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalFromStartScreen: CGFloat) {
         let config = GameConfiguration()
+        
+        // Check for survey wall first (7+ sessions)
+        if config.isSessionGatedSurveyEnabled && 
+           FirstRunManager.shared.sessionCount >= 4 &&
+           !FirstRunManager.shared.surveyPromptsDisabled {
+            
+            let dismissalCount = FirstRunManager.shared.surveyWallDismissalCount
+            let skipsRemaining = max(0, 2 - dismissalCount)
+            
+            let surveyWallView = SurveyWallView(
+                onTakeSurvey: { [weak self] in
+                    self?.handleSurveyWallTakeSurvey()
+                },
+                onSkip: { [weak self] in
+                    self?.handleSurveyWallSkip(sessionDuration: sessionDuration, sessionProfile: sessionProfile, initialArousalFromStartScreen: initialArousalFromStartScreen)
+                },
+                skipsRemaining: skipsRemaining
+            )
+            
+            let hostingController = UIHostingController(rootView: surveyWallView)
+            hostingController.modalPresentationStyle = .fullScreen
+            hostingController.overrideUserInterfaceStyle = .dark
+            self.present(hostingController, animated: true)
+            return
+        }
+        
+        // Check if this is the second session
+        if FirstRunManager.shared.sessionCount == 1 {
+            // Present the prompt view first
+            let promptView = SecondSessionPromptView { [weak self] in
+                self?.dismiss(animated: true) {
+                    self?.proceedToPreSessionEMA(sessionDuration: sessionDuration, sessionProfile: sessionProfile, initialArousalFromStartScreen: initialArousalFromStartScreen)
+                }
+            }
+            let hostingController = UIHostingController(rootView: promptView)
+            hostingController.modalPresentationStyle = .fullScreen
+            hostingController.overrideUserInterfaceStyle = .dark
+            self.present(hostingController, animated: true)
+        } else {
+            // Otherwise, proceed as normal
+            proceedToPreSessionEMA(sessionDuration: sessionDuration, sessionProfile: sessionProfile, initialArousalFromStartScreen: initialArousalFromStartScreen)
+        }
+    }
+
+    private func proceedToPreSessionEMA(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalFromStartScreen: CGFloat) {
+        let config = GameConfiguration()
         let shouldForceTutorial = config.forceShowTutorial
         let shouldShowTutorial = shouldForceTutorial || !FirstRunManager.shared.hasCompletedTutorial
 
@@ -307,5 +353,43 @@ class GameViewController: UIViewController {
 
     override var prefersStatusBarHidden: Bool {
         return true
+    }
+    
+    // MARK: - Survey Wall Handlers
+    
+    private func handleSurveyWallTakeSurvey() {
+        // Open the survey URL - using the same URL as the existing survey system
+        if let url = URL(string: "https://www.surveymonkey.com/r/HXFLWWG") {
+            UIApplication.shared.open(url)
+        }
+        
+        // Dismiss the survey wall
+        dismiss(animated: true) {
+            // Return to start screen after opening survey
+            self.presentStartScreen()
+        }
+    }
+    
+    private func handleSurveyWallSkip(sessionDuration: TimeInterval, sessionProfile: SessionProfile, initialArousalFromStartScreen: CGFloat) {
+        let currentDismissals = FirstRunManager.shared.surveyWallDismissalCount
+        let maxSkips = 3
+        
+        if currentDismissals < maxSkips {
+            // Increment dismissal count and allow session to proceed
+            FirstRunManager.shared.surveyWallDismissalCount = currentDismissals + 1
+            
+            dismiss(animated: true) {
+                self.proceedToPreSessionEMA(
+                    sessionDuration: sessionDuration,
+                    sessionProfile: sessionProfile,
+                    initialArousalFromStartScreen: initialArousalFromStartScreen
+                )
+            }
+        } else {
+            // Maximum skips exceeded - return to start screen
+            dismiss(animated: true) {
+                self.presentStartScreen()
+            }
+        }
     }
 }
