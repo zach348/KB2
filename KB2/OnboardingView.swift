@@ -31,7 +31,7 @@ struct OnboardingView: View {
         }()
         
         // Beta Page
-        var betaPage = AttributedString("Greetings! Thank you for beta testing Kalibrate! After you complete your second session, you'll be prompted to take a brief survey. We'd be grateful if you could take a moment to share your thoughts  - your feedback will directly shape the future of Kalibrate.")
+        var betaPage = AttributedString("Greetings! Thank you for beta testing Kalibrate! Note that the trial limitation is diabled in this version. After you complete your second session, you'll be prompted to take a brief survey. We'd be grateful if you could take a moment to share your thoughts  - your feedback will directly shape the future of Kalibrate.")
         betaPage.font = baseFont
         if let range1 = betaPage.range(of: "Thank you for beta testing Kalibrate!") {
             betaPage[range1].font = boldFont

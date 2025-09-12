@@ -177,6 +177,14 @@ class StartScreen: SKScene, PaywallViewControllerDelegate {
             (startButton.position.y - 40)
         versionLabel.position = CGPoint(x: frame.midX, y: max(bottomPosition, 30))
         addChild(versionLabel)
+        
+        // Add copyright notice below version
+        let copyrightLabel = SKLabelNode(fontNamed: "HelveticaNeue-Light")
+        copyrightLabel.text = "© 2025 Training State, LLC - All rights reserved"
+        copyrightLabel.fontSize = 12
+        copyrightLabel.fontColor = SKColor(cgColor: secondaryColor.cgColor).withAlphaComponent(0.6)
+        copyrightLabel.position = CGPoint(x: frame.midX, y: max(bottomPosition - 20, 10))
+        addChild(copyrightLabel)
     }
     
     private func setupSlider(in view: SKView) {

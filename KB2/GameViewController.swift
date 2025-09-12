@@ -90,11 +90,11 @@ class GameViewController: UIViewController {
         
         // Check for survey wall first (7+ sessions)
         if config.isSessionGatedSurveyEnabled && 
-           FirstRunManager.shared.sessionCount >= 7 && 
+           FirstRunManager.shared.sessionCount >= 4 &&
            !FirstRunManager.shared.surveyPromptsDisabled {
             
             let dismissalCount = FirstRunManager.shared.surveyWallDismissalCount
-            let skipsRemaining = max(0, 3 - dismissalCount)
+            let skipsRemaining = max(0, 2 - dismissalCount)
             
             let surveyWallView = SurveyWallView(
                 onTakeSurvey: { [weak self] in

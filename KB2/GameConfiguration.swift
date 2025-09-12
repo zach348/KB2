@@ -59,7 +59,7 @@ struct GameConfiguration {
 
     /// QA override: when true, the entitlement system is bypassed and users are always treated as entitled.
     /// Use ONLY for local development and manual QA. Default: false.
-    var entitlementBypassEnabled: Bool = false
+    var entitlementBypassEnabled: Bool = true
 
     /// QA override: when true, clears entitlement-related Keychain items on launch (simulates a fresh install).
     /// Use ONLY for local development and manual QA. Default: false.
@@ -369,7 +369,7 @@ struct GameConfiguration {
     // --- EMA-Based Initial Arousal Configuration ---
     
     /// The minimum arousal level that can be set from the pre-session EMA.
-    let emaArousalTargetMin: CGFloat = 0.75
+    let emaArousalTargetMin: CGFloat = 0.775
     
     /// The maximum arousal level that can be set from the pre-session EMA.
     let emaArousalTargetMax: CGFloat = 1.0
