@@ -27,10 +27,16 @@ class SettingsViewController: UIViewController {
     private let doneButton = UIButton(type: .system)
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     
+    // ADDED: VHA Settings UI Elements
+    private let vhaSettingsTitleLabel = UILabel()
+    private let audioSwitch = UISwitch()
+    private let hapticsSwitch = UISwitch()
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+        configureSwitches() // Configure switches before updating status
         updateSubscriptionStatus()
     }
     
@@ -112,6 +118,21 @@ class SettingsViewController: UIViewController {
         let spacer2 = UIView()
         spacer2.heightAnchor.constraint(equalToConstant: 24).isActive = true
         mainStackView.addArrangedSubview(spacer2)
+        
+        // VHA Settings Section
+        vhaSettingsTitleLabel.text = "Stimulation Settings"
+        vhaSettingsTitleLabel.font = UIFont.systemFont(ofSize: 20, weight: .semibold)
+        vhaSettingsTitleLabel.textColor = whiteColor
+        vhaSettingsTitleLabel.textAlignment = .left
+        
+        let audioRow = createSwitchRow(title: "Rhythmic Tones", switchControl: audioSwitch)
+        let hapticsRow = createSwitchRow(title: "Rhythmic Haptics", switchControl: hapticsSwitch)
+        
+        mainStackView.addArrangedSubview(vhaSettingsTitleLabel)
+        mainStackView.setCustomSpacing(16, after: vhaSettingsTitleLabel)
+        mainStackView.addArrangedSubview(audioRow)
+        mainStackView.addArrangedSubview(hapticsRow)
+        mainStackView.setCustomSpacing(24, after: hapticsRow)
         
         mainStackView.addArrangedSubview(viewProgressButton)
         mainStackView.addArrangedSubview(achievementsButton)
@@ -332,6 +353,43 @@ class SettingsViewController: UIViewController {
     
     @objc private func doneButtonTapped() {
         dismiss(animated: true)
+    }
+    
+    // MARK: - VHA Settings Methods
+    
+    private func configureSwitches() {
+        audioSwitch.isOn = UserSettings.isAudioEnabled
+        hapticsSwitch.isOn = UserSettings.isHapticsEnabled
+        
+        audioSwitch.addTarget(self, action: #selector(audioSwitchChanged), for: .valueChanged)
+        hapticsSwitch.addTarget(self, action: #selector(hapticsSwitchChanged), for: .valueChanged)
+    }
+    
+    @objc private func audioSwitchChanged(_ sender: UISwitch) {
+        UserSettings.isAudioEnabled = sender.isOn
+    }
+    
+    @objc private func hapticsSwitchChanged(_ sender: UISwitch) {
+        UserSettings.isHapticsEnabled = sender.isOn
+    }
+    
+    private func createSwitchRow(title: String, switchControl: UISwitch) -> UIView {
+        let rowStackView = UIStackView()
+        rowStackView.axis = .horizontal
+        rowStackView.alignment = .center
+        rowStackView.distribution = .equalSpacing
+        
+        let label = UILabel()
+        label.text = title
+        label.font = UIFont.systemFont(ofSize: 16)
+        label.textColor = secondaryColor
+        
+        switchControl.onTintColor = primaryColor
+        
+        rowStackView.addArrangedSubview(label)
+        rowStackView.addArrangedSubview(switchControl)
+        
+        return rowStackView
     }
     
     // MARK: - Helper Methods

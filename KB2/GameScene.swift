@@ -81,6 +81,10 @@ struct SessionChallengePhase {
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
 
+    // --- Brand Colors ---
+    private let primaryColor = UIColor(red: 0x77/255.0, green: 0xFD/255.0, blue: 0xC7/255.0, alpha: 1.0) // #77FDC7
+    private let darkColor = UIColor(red: 0x24/255.0, green: 0x24/255.0, blue: 0x24/255.0, alpha: 1.0) // #242424
+    
     //====================================================================================================
 // MARK: - CONFIGURATION & CORE PROPERTIES
 //====================================================================================================
@@ -120,6 +124,31 @@ internal var arousalAtBreathingStart: CGFloat = 0.35 // System arousal level whe
     private var warmupStartingArousal: CGFloat = 0.0
     private var warmupSmoothingTargetArousal: CGFloat = 0.0
     // --- END ADDED ---
+
+    // --- FIRST SESSION ON-RAMP PROPERTIES ---
+    private var isFirstSessionOnRampActive: Bool = false
+    private var firstSessionStartTime: TimeInterval = 0
+    private var firstSessionTargetArousal: CGFloat = 0.0
+    private var firstSessionTargetTargetCount: Int = 0
+    private var vhaIntroductionPhaseActive: Bool = false
+    private var arousalRampPhaseActive: Bool = false
+    
+    // VHA introduction control
+    private var visualPulsesEnabled: Bool = true  // Always start with visual
+    private var audioPulsesEnabled: Bool = false
+    private var hapticPulsesEnabled: Bool = false
+    
+    // UI elements for first session guidance
+    private var firstSessionGuideLabel: SKLabelNode?
+    private var firstSessionCountdownLabel: SKLabelNode?
+    
+    // Tone Opt-Out Overlay Properties
+    private var toneOptOutOverlay: SKShapeNode?
+    private var toneOptOutLabel: SKLabelNode?
+    private var disableTonesButton: SKShapeNode?
+    private var tryTonesButton: SKShapeNode?
+    private var isToneOptOutPresented: Bool = false
+    // --- END FIRST SESSION ON-RAMP PROPERTIES ---
 
 // --- User Arousal Estimation ---
 var arousalEstimator: ArousalEstimator? // Tracks the user's estimated arousal level
@@ -344,8 +373,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             initialTargetAudioFrequency: initialTargetAudioFreq
         )
 
-        // ADDED: Initialize AdaptiveDifficultyManager
-        let admInitialArousal = self.sessionMode ? self.initialArousalLevel : self._currentArousalLevel
+        // ADDED: Initialize AdaptiveDifficultyManager BEFORE warmup ramp which depends on it
+        let admInitialArousal = self.sessionMode ? self._currentArousalLevel : self._currentArousalLevel
         self.adaptiveDifficultyManager = AdaptiveDifficultyManager(
             configuration: self.gameConfiguration,
             initialArousal: admInitialArousal,
@@ -364,8 +393,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         setupFadeOverlay()
         setupFeedbackAssets()
         
-        if hapticsReady { startHapticEngine() }
-        audioManager.startEngine(withFadeIn: true) // Use fade-in on session start
+        // --- TUTORIAL FIX: Only start VHA systems if NOT in tutorial mode ---
+        if !tutorialMode {
+            if hapticsReady { startHapticEngine() }
+            audioManager.startEngine(withFadeIn: true) // Use fade-in on session start
+        }
+        // --- END TUTORIAL FIX ---
         
         if sessionMode {
             // Initialize achievement tracking for this session
@@ -373,7 +406,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             
             // Ensure session target is correct for arousal calculations
             initialArousalLevel = targetArousalForWarmup
-            sessionStartTime = CACurrentMediaTime()
+            // NOTE: sessionStartTime will be set later - after first session on-ramp completes, or immediately for regular sessions
             
             // Determine breathing transition point based on pre-session EMA jitteriness or use random fallback
             if let emaResponse = preSessionEMA {
@@ -426,14 +459,20 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         
         createBalls()
         if !balls.isEmpty { applyInitialImpulses() }
-        setupTimer();
-        precisionTimer?.start()
-        startTrackingTimers(); updateUI()
-        flashCooldownEndTime = CACurrentMediaTime()
+        startTrackingTimers()
         
         if currentState == .tracking {
             startThrottledMotionControl()
         }
+        
+        setupTimer();
+        // --- TUTORIAL FIX: Only start VHA systems if NOT in tutorial mode ---
+        if !tutorialMode {
+            precisionTimer?.start()
+        }
+        // --- END TUTORIAL FIX ---
+        updateUI() // Moved from after startTrackingTimers to run in both modes
+        flashCooldownEndTime = CACurrentMediaTime()
         
         // Phase 4.5: Register for ADM state saving notification
         NotificationCenter.default.addObserver(
@@ -445,7 +484,13 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         
         if tutorialMode {
             tutorialManager = TutorialManager()
-            tutorialManager?.start(in: self)
+            // Defer tutorial UI creation to avoid blocking didMove(to:)
+            let deferTutorial = SKAction.wait(forDuration: 0.1)
+            let startTutorial = SKAction.run { [weak self] in
+                guard let self = self else { return }
+                self.tutorialManager?.start(in: self)
+            }
+            self.run(SKAction.sequence([deferTutorial, startTutorial]))
         }
         
         print("--- GameScene: didMove(to:) Finished ---")
@@ -573,6 +618,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Add session progress bar if in session mode
         if sessionMode {
             setupSessionProgressBar()
+            
+            // Setup first session guide label if needed
+            setupFirstSessionGuideLabel()
+            
+            // Setup tone opt-out overlay
+            setupToneOptOutOverlay()
         }
     }
     
@@ -1122,6 +1173,22 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     //====================================================================================================
     // --- Touch Handling ---
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // Handle Tone Opt-Out Taps
+        if isToneOptOutPresented, let touch = touches.first {
+            let location = touch.location(in: self)
+            let tappedNodes = self.nodes(at: location)
+            
+            if tappedNodes.contains(where: { $0.name == "disableTonesButton" }) {
+                UserSettings.isAudioEnabled = false
+                print("FIRST_SESSION_OPTOUT: User disabled tones.")
+                completeFirstSessionOnRamp()
+            } else if tappedNodes.contains(where: { $0.name == "tryTonesButton" }) {
+                print("FIRST_SESSION_OPTOUT: User will try tones.")
+                completeFirstSessionOnRamp()
+            }
+            return // Consume the touch
+        }
+        
         if tutorialMode {
             if let touch = touches.first {
                 tutorialManager?.handleTap(at: touch.location(in: self))
@@ -1263,7 +1330,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 arousalEstimator?.recordTap(at: tapTime, wasCorrect: true)
 
                 // --- Add Visual Feedback (Particle Emitter) ---
-                if normalizedFeedbackArousal > 0, let template = correctTapEmitterTemplate {
+                if !tutorialMode, normalizedFeedbackArousal > 0, let template = correctTapEmitterTemplate {
                     let emitter = template.copy() as! SKEmitterNode
                     // Map arousal to emitter properties (e.g., birth rate, scale)
                     emitter.particleBirthRate = gameConfiguration.particleFeedbackMaxBirthRate * normalizedFeedbackArousal
@@ -1275,7 +1342,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 // -----------------------------------------------
 
                 // --- Play Audio Feedback (Correct Tap) ---
-                if normalizedFeedbackArousal > 0, let player = correctTapPlayer {
+                if !tutorialMode, normalizedFeedbackArousal > 0, let player = correctTapPlayer {
                     player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
                     player.currentTime = 0 // Rewind
                     player.play()
@@ -1285,7 +1352,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 // --- Check for Round Completion ---
                 if targetsFoundThisRound >= targetsToFind {
                      // --- Play Audio Feedback (Group Complete) ---   // <<< RESTORED BLOCK
-                     if normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
+                     if !tutorialMode, normalizedFeedbackArousal > 0, let player = groupCompletePlayer {
                          player.volume = gameConfiguration.audioFeedbackMaxVolume * Float(normalizedFeedbackArousal)
                          player.currentTime = 0 // Rewind
                          player.play()
@@ -1413,6 +1480,16 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Skip target count updates if not in tracking or identifying
         guard currentState == .tracking || currentState == .identifying else { return }
         
+        // FIRST SESSION FIX: Lock target count during first session on-ramp
+        if isFirstSessionOnRampActive {
+            // Force target count to remain at the pre-calculated value
+            if currentTargetCount != firstSessionTargetTargetCount {
+                print("FIRST_SESSION: Locking target count to \(firstSessionTargetTargetCount) (was \(currentTargetCount))")
+                currentTargetCount = firstSessionTargetTargetCount
+            }
+            return
+        }
+        
         // Get current target count from ADM
         let targetCountFromADM: Int
         if let admTargetCount = self.adaptiveDifficultyManager?.currentTargetCount {
@@ -1474,6 +1551,12 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func initializeWarmupRamp() {
         guard sessionMode else { return }
         
+        // Check if this is the user's first session and first session on-ramp is enabled
+        if gameConfiguration.enableFirstSessionOnRamp && FirstRunManager.shared.sessionCount == 0 {
+            initializeFirstSessionOnRamp()
+            return
+        }
+        
         // Calculate starting arousal (target * multiplier from config)
         warmupStartingArousal = targetArousalForWarmup * gameConfiguration.warmupArousalStartMultiplier
         
@@ -1505,12 +1588,16 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         warmupRoundTargetArousal = warmupStartingArousal + warmupRampIncrement
         isWarmupRampActive = true
         
+        // Start session clock for regular sessions (not first sessions)
+        sessionStartTime = CACurrentMediaTime()
+        
         print("WARMUP_RAMP: Initialized")
         print("  - Target arousal: \(String(format: "%.3f", targetArousalForWarmup))")
         print("  - Starting arousal: \(String(format: "%.3f", warmupStartingArousal))")
         print("  - Warmup rounds: \(warmupRounds)")
         print("  - Increment per round: \(String(format: "%.3f", warmupRampIncrement))")
         print("  - First round target: \(String(format: "%.3f", warmupRoundTargetArousal))")
+        print("  - Session clock started at: \(String(format: "%.2f", sessionStartTime))")
     }
     
     /// Advances the warmup ramp to the next round target - called after each identification round during warmup
@@ -1545,6 +1632,258 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             let smoothingStep = arousalDifference * gameConfiguration.warmupArousalSmoothingFactor
             currentArousalLevel += smoothingStep
         }
+    }
+
+    //====================================================================================================
+    // MARK: - FIRST SESSION ON-RAMP MANAGEMENT
+    //====================================================================================================
+    
+    /// Initializes the special first session on-ramp system for brand new users
+    private func initializeFirstSessionOnRamp() {
+        print("FIRST_SESSION: Initializing first session on-ramp for new user")
+        
+        // Store the target arousal we want to reach
+        firstSessionTargetArousal = targetArousalForWarmup
+        
+        // Calculate target count based on the final target arousal to avoid changing counts during ramp
+        // This provides a stable experience as suggested by the user
+        let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
+        let normalizedTargetArousal = max(0.0, min(1.0, (firstSessionTargetArousal - gameConfiguration.trackingArousalThresholdLow) / trackingRange))
+        let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
+        firstSessionTargetTargetCount = gameConfiguration.minTargetsAtHighTrackingArousal + Int(targetCountRange * (1.0 - normalizedTargetArousal))
+        
+        // Set current target count to the calculated final value
+        currentTargetCount = firstSessionTargetTargetCount
+        
+        // Start at the gentle introduction arousal level (just above breathing threshold)
+        currentArousalLevel = gameConfiguration.firstSessionStartingArousal
+        
+        // Initialize VHA control flags
+        visualPulsesEnabled = true
+        audioPulsesEnabled = false
+        hapticPulsesEnabled = false
+        
+        // Mark first session on-ramp as active
+        isFirstSessionOnRampActive = true
+        firstSessionStartTime = CACurrentMediaTime()
+        vhaIntroductionPhaseActive = true
+        arousalRampPhaseActive = false
+        
+        // Start the VHA introduction sequence
+        startFirstSessionVHAIntroduction()
+        
+        print("FIRST_SESSION: On-ramp initialized")
+        print("  - Starting arousal: \(String(format: "%.3f", currentArousalLevel))")
+        print("  - Target arousal: \(String(format: "%.3f", firstSessionTargetArousal))")
+        print("  - Fixed target count: \(firstSessionTargetTargetCount)")
+        print("  - VHA introduction duration: \(gameConfiguration.firstSessionVHAIntroductionDuration)s")
+        print("  - Arousal ramp duration: \(gameConfiguration.firstSessionArousalRampDuration)s")
+    }
+    
+    /// Starts the sequential VHA introduction for first session users
+    private func startFirstSessionVHAIntroduction() {
+        guard isFirstSessionOnRampActive && vhaIntroductionPhaseActive else { return }
+        
+        // Show initial guidance
+        updateFirstSessionGuideText("Focus on the gentle light...")
+        
+        // Schedule audio introduction
+        let audioIntroAction = SKAction.wait(forDuration: gameConfiguration.firstSessionAudioIntroductionStart)
+        let enableAudioAction = SKAction.run { [weak self] in
+            self?.audioPulsesEnabled = true
+            self?.updateFirstSessionGuideText("Listen to the sound...")
+            print("FIRST_SESSION: Audio pulses enabled at \(String(format: "%.1f", CACurrentMediaTime() - (self?.firstSessionStartTime ?? 0)))s")
+        }
+        
+        // Schedule haptic introduction
+        let hapticIntroAction = SKAction.wait(forDuration: gameConfiguration.firstSessionHapticIntroductionStart)
+        let enableHapticsAction = SKAction.run { [weak self] in
+            self?.hapticPulsesEnabled = true
+            self?.updateFirstSessionGuideText("Feel the vibration...")
+            print("FIRST_SESSION: Haptic pulses enabled at \(String(format: "%.1f", CACurrentMediaTime() - (self?.firstSessionStartTime ?? 0)))s")
+        }
+        
+        // End VHA introduction phase and start arousal ramp
+        let endIntroAction = SKAction.wait(forDuration: gameConfiguration.firstSessionVHAIntroductionDuration)
+        let startRampAction = SKAction.run { [weak self] in
+            self?.vhaIntroductionPhaseActive = false
+            self?.arousalRampPhaseActive = true
+            self?.updateFirstSessionGuideText("Warming up...")
+            print("FIRST_SESSION: VHA introduction complete, starting arousal ramp")
+        }
+        
+        // Run all actions concurrently
+        run(SKAction.sequence([audioIntroAction, enableAudioAction]), withKey: "firstSessionAudioIntro")
+        run(SKAction.sequence([hapticIntroAction, enableHapticsAction]), withKey: "firstSessionHapticIntro")
+        run(SKAction.sequence([endIntroAction, startRampAction]), withKey: "firstSessionEndIntro")
+    }
+    
+    /// Updates the guidance text for first session users
+    private func updateFirstSessionGuideText(_ text: String) {
+        firstSessionGuideLabel?.text = text
+        firstSessionGuideLabel?.isHidden = false
+        
+        // Add a gentle fade animation
+        let fadeOut = SKAction.fadeAlpha(to: 0.3, duration: 0.3)
+        let fadeIn = SKAction.fadeAlpha(to: 1.0, duration: 0.3)
+        firstSessionGuideLabel?.run(SKAction.sequence([fadeOut, fadeIn]))
+    }
+    
+    /// Updates arousal smoothly during the first session arousal ramp phase
+    private func updateFirstSessionArousalRamp(deltaTime: TimeInterval) {
+        guard isFirstSessionOnRampActive && arousalRampPhaseActive else { return }
+        
+        let elapsedTime = CACurrentMediaTime() - firstSessionStartTime
+        let rampStartTime = gameConfiguration.firstSessionVHAIntroductionDuration
+        let rampElapsedTime = elapsedTime - rampStartTime
+        
+        if rampElapsedTime <= 0 {
+            return // Still in VHA introduction phase
+        }
+        
+        if rampElapsedTime >= gameConfiguration.firstSessionArousalRampDuration {
+            // Ramp complete - present the opt-out overlay instead of completing immediately
+            presentToneOptOutOverlay()
+            return
+        }
+        
+        // Calculate smooth arousal ramp
+        let rampProgress = rampElapsedTime / gameConfiguration.firstSessionArousalRampDuration
+        let startingArousal = gameConfiguration.firstSessionStartingArousal
+        let targetArousal = firstSessionTargetArousal
+        let arousalDifference = targetArousal - startingArousal
+        
+        // Use a smooth ease-in curve for the ramp
+        let easedProgress = CGFloat(sin(rampProgress * .pi / 2)) // Sine ease-in
+        let targetCurrentArousal = startingArousal + (arousalDifference * easedProgress)
+        
+        // Apply smoothing to avoid jarring changes
+        let arousalDiff = targetCurrentArousal - currentArousalLevel
+        if abs(arousalDiff) > 0.001 {
+            currentArousalLevel += arousalDiff * gameConfiguration.firstSessionArousalRampSmoothingFactor
+        }
+        
+        // Update guide text based on progress - show "Ready!" only in final 5 seconds with countdown
+        let secondsRemaining = gameConfiguration.firstSessionArousalRampDuration - rampElapsedTime
+        if secondsRemaining <= 5.0 && secondsRemaining > 0 {
+            updateFirstSessionGuideText("Ready!")
+            firstSessionCountdownLabel?.isHidden = false
+            firstSessionCountdownLabel?.text = "\(Int(ceil(secondsRemaining)))"
+        } else if rampProgress > 0.7 {
+            // Show "Warming up..." until final 5 seconds
+            updateFirstSessionGuideText("Warming up...")
+            firstSessionCountdownLabel?.isHidden = true
+        }
+    }
+
+    // --- Tone Opt-Out Overlay and On-Ramp Completion ---
+    
+    private func setupToneOptOutOverlay() {
+        let overlayWidth = self.size.width * 0.8
+        let overlayHeight: CGFloat = 220
+        
+        // Main overlay container
+        toneOptOutOverlay = SKShapeNode(rectOf: CGSize(width: overlayWidth, height: overlayHeight), cornerRadius: 15)
+        toneOptOutOverlay?.fillColor = SKColor.black.withAlphaComponent(0.8)
+        toneOptOutOverlay?.strokeColor = SKColor.white.withAlphaComponent(0.5)
+        toneOptOutOverlay?.lineWidth = 2
+        toneOptOutOverlay?.position = CGPoint(x: frame.midX, y: frame.midY)
+        toneOptOutOverlay?.zPosition = 200
+        toneOptOutOverlay?.isHidden = true
+        addChild(toneOptOutOverlay!)
+        
+        // Text label
+        toneOptOutLabel = SKLabelNode(fontNamed: "HelveticaNeue")
+        toneOptOutLabel?.text = "Are the tones bothering you?\n\nIt's recommended trying a full session with them on. You can always disable them later in your app settings."
+        toneOptOutLabel?.fontSize = 16
+        toneOptOutLabel?.fontColor = .white
+        toneOptOutLabel?.numberOfLines = 0
+        toneOptOutLabel?.horizontalAlignmentMode = .center
+        toneOptOutLabel?.verticalAlignmentMode = .center
+        toneOptOutLabel?.preferredMaxLayoutWidth = overlayWidth - 40
+        toneOptOutLabel?.position = CGPoint(x: 0, y: 50)
+        toneOptOutOverlay?.addChild(toneOptOutLabel!)
+        
+        // Button dimensions
+        let buttonWidth = (overlayWidth - 60) / 2
+        let buttonHeight: CGFloat = 44
+        
+        // "Disable them" Button
+        disableTonesButton = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 10)
+        disableTonesButton?.fillColor = SKColor.darkGray
+        disableTonesButton?.strokeColor = .white
+        disableTonesButton?.lineWidth = 1
+        disableTonesButton?.position = CGPoint(x: -overlayWidth/4, y: -overlayHeight/2 + 40)
+        disableTonesButton?.name = "disableTonesButton" // Name for tap handling
+        
+        let disableLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        disableLabel.text = "Disable them"
+        disableLabel.fontSize = 14
+        disableLabel.fontColor = .white
+        disableLabel.verticalAlignmentMode = .center
+        disableTonesButton?.addChild(disableLabel)
+        
+        toneOptOutOverlay?.addChild(disableTonesButton!)
+
+        // "I'll try it" Button
+        tryTonesButton = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 10)
+        tryTonesButton?.fillColor = SKColor(cgColor: primaryColor.cgColor)
+        tryTonesButton?.strokeColor = .clear
+        tryTonesButton?.lineWidth = 0
+        tryTonesButton?.position = CGPoint(x: overlayWidth/4, y: -overlayHeight/2 + 40)
+        tryTonesButton?.name = "tryTonesButton" // Name for tap handling
+        
+        let tryLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        tryLabel.text = "I'll try it"
+        tryLabel.fontSize = 14
+        tryLabel.fontColor = SKColor(cgColor: darkColor.cgColor)
+        tryLabel.verticalAlignmentMode = .center
+        tryTonesButton?.addChild(tryLabel)
+        
+        toneOptOutOverlay?.addChild(tryTonesButton!)
+    }
+    
+    private func presentToneOptOutOverlay() {
+        guard !isToneOptOutPresented else { return }
+        
+        // Pause the ramp process
+        arousalRampPhaseActive = false
+        isToneOptOutPresented = true
+        
+        // Hide the other on-ramp UI
+        firstSessionGuideLabel?.isHidden = true
+        firstSessionCountdownLabel?.isHidden = true
+        
+        // Show the overlay
+        toneOptOutOverlay?.isHidden = false
+        toneOptOutOverlay?.alpha = 0
+        toneOptOutOverlay?.run(SKAction.fadeIn(withDuration: 0.3))
+    }
+
+    private func completeFirstSessionOnRamp() {
+        // Hide the overlay first
+        isToneOptOutPresented = false
+        let fadeOutOverlay = SKAction.fadeOut(withDuration: 0.3)
+        toneOptOutOverlay?.run(fadeOutOverlay) {
+            self.toneOptOutOverlay?.isHidden = true
+        }
+        
+        // Transition to normal session behavior
+        currentArousalLevel = firstSessionTargetArousal
+        isFirstSessionOnRampActive = false
+        
+        // START SESSION CLOCK NOW - after on-ramp is complete
+        sessionStartTime = CACurrentMediaTime()
+        
+        // Reset tracking timers for a smooth transition (prevents immediate identification task)
+        startTrackingTimers()
+        
+        // Clear any pending identification check to prevent immediate trigger
+        identificationCheckNeeded = false
+        
+        print("FIRST_SESSION: On-ramp complete, transitioning to normal session behavior")
+        print("FIRST_SESSION: Session clock started at: \(String(format: "%.2f", sessionStartTime))")
+        print("FIRST_SESSION: Tracking timers reset for smooth transition")
     }
 
     //====================================================================================================
@@ -1943,7 +2282,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
 
         // --- Haptics ---
         let restartHaptics = SKAction.run { [weak self] in
-             try? self?.breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
+            guard let self = self, UserSettings.isHapticsEnabled else { return }
+             try? self.breathingHapticPlayer?.start(atTime: CHHapticTimeImmediate)
         }
 
         // --- Assemble Sequence ---
@@ -2362,6 +2702,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 print("WARMUP_RAMP: Smoothing complete. Handoff to main session arousal logic.")
             }
         }
+        
+        // ADDED: Update first session on-ramp per-frame during arousal ramp phase
+        if sessionMode && isFirstSessionOnRampActive {
+            updateFirstSessionArousalRamp(deltaTime: dt)
+        }
 
         if currentState == .tracking {
             timeUntilNextShift -= dt
@@ -2388,7 +2733,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // This block handles initiating the ID phase if it's needed and conditions are met.
         // It is separate from the `currentState == .tracking` block because `identificationCheckNeeded` can be set
         // and then persist even if other state changes or updates occur before ID can start.
-        if identificationCheckNeeded {
+        if identificationCheckNeeded && !isFirstSessionOnRampActive {
             if currentState == .tracking && !isFlashSequenceRunning && currentTime >= flashCooldownEndTime {
                 startIdentificationPhase()
                 identificationCheckNeeded = false // Reset the flag as we are starting the ID phase
@@ -2582,6 +2927,9 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         // Exit if warmup ramp is active - let it control arousal exclusively
         guard !isWarmupRampActive else { return }
         
+        // Exit if first session on-ramp is active - let it control arousal exclusively
+        guard !isFirstSessionOnRampActive else { return }
+        
         let currentTime = CACurrentMediaTime()
         
         // TESTING: Skip throttling during tests
@@ -2767,6 +3115,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     
     private func updateSessionProgressBar() {
         guard sessionMode, let progressFill = sessionProgressFill, let timeLabel = sessionTimeLabel else { return }
+        
+        // Don't calculate progress if the session clock hasn't officially started yet
+        // (e.g., during first session on-ramp)
+        guard sessionStartTime > 0 else { return }
+        
         // Allow one final update if session was just completed to show 100%
         if isSessionCompleted && progressFill.path?.boundingBox.width == (sessionProgressBar?.frame.width ?? 0) {
              return
@@ -2810,6 +3163,28 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let minutes = Int(timeInSeconds) / 60
         let seconds = Int(timeInSeconds) % 60
         return String(format: "%d:%02d remaining", minutes, seconds)
+    }
+    
+    private func setupFirstSessionGuideLabel() {
+        firstSessionGuideLabel = SKLabelNode(fontNamed: "HelveticaNeue-Medium")
+        firstSessionGuideLabel?.fontSize = 20
+        firstSessionGuideLabel?.fontColor = .white
+        firstSessionGuideLabel?.position = CGPoint(x: frame.midX, y: frame.midY - 150)
+        firstSessionGuideLabel?.horizontalAlignmentMode = .center
+        firstSessionGuideLabel?.verticalAlignmentMode = .center // Center multi-line text vertically
+        firstSessionGuideLabel?.numberOfLines = 0 // Allow multiple lines
+        firstSessionGuideLabel?.isHidden = true
+        firstSessionGuideLabel?.zPosition = 150
+        addChild(firstSessionGuideLabel!)
+        
+        firstSessionCountdownLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
+        firstSessionCountdownLabel?.fontSize = 36
+        firstSessionCountdownLabel?.fontColor = .white
+        firstSessionCountdownLabel?.position = CGPoint(x: frame.midX, y: frame.midY - 200)
+        firstSessionCountdownLabel?.horizontalAlignmentMode = .center
+        firstSessionCountdownLabel?.isHidden = true
+        firstSessionCountdownLabel?.zPosition = 150
+        addChild(firstSessionCountdownLabel!)
     }
 
     //====================================================================================================
@@ -2914,8 +3289,16 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     }
 
     private func handleHapticTick(visualTickTime: CFTimeInterval) {
+        // Check if haptics are globally enabled by the user
+        guard UserSettings.isHapticsEnabled else { return }
+        
         guard currentState == .tracking || currentState == .identifying || currentState == .breathing else { return }
         guard hapticsReady, let player = hapticPlayer else { return }
+        
+        // Check if first session on-ramp is active and haptics should be disabled
+        if isFirstSessionOnRampActive && !hapticPulsesEnabled {
+            return
+        }
         
         // Ensure haptic offset is within reasonable bounds
         let safeHapticOffset = max(-0.05, min(hapticOffset, 0.05)) // Limit between -50ms and +50ms
@@ -2929,6 +3312,11 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let audioFreqRange = gameConfiguration.maxAudioFrequency - gameConfiguration.minAudioFrequency
         let currentActualTargetAudioFreq = gameConfiguration.minAudioFrequency + (audioFreqRange * Float(clampedArousal))
         self.lastCalculatedTargetAudioFrequencyForTests = currentActualTargetAudioFreq // Update for tests
+
+        // Check if first session on-ramp is active and audio should be disabled
+        if isFirstSessionOnRampActive && !audioPulsesEnabled {
+            return
+        }
 
         // Ensure audio offset is within reasonable bounds
         let safeAudioOffset = max(-0.05, min(audioOffset, 0.05)) // Limit between -50ms and +50ms
@@ -3467,6 +3855,10 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             }
         }
     }
+
+    // MARK: - Tutorial Support
+    
+    // MARK: - VHA Control
     
     // MARK: - VHA Control
     /// Suspends all VHA (Visual, Haptic, Audio) stimulation components gracefully

@@ -18,6 +18,11 @@ class TutorialManager {
     
     func start(in scene: GameScene) {
         self.scene = scene
+        
+        // --- TUTORIAL FIX: Immediately suspend VHA to prevent conflicts ---
+        scene.suspendVHA()
+        // --- END TUTORIAL FIX ---
+        
         setupOverlay()
         presentStep()
     }
@@ -37,7 +42,6 @@ class TutorialManager {
         calloutLabel?.zPosition = 201
         calloutLabel?.numberOfLines = 0
         calloutLabel?.preferredMaxLayoutWidth = scene.frame.width * 0.8
-        overlay?.addChild(calloutLabel!)
         
         let buttonWidth: CGFloat = 150
         let buttonHeight: CGFloat = 50
@@ -47,7 +51,6 @@ class TutorialManager {
         nextButton?.lineWidth = 0
         nextButton?.zPosition = 201
         nextButton?.name = "tutorialNextButton"
-        overlay?.addChild(nextButton!)
         
         nextButtonLabel = SKLabelNode(fontNamed: "HelveticaNeue-Bold")
         nextButtonLabel?.fontSize = 20
@@ -55,26 +58,28 @@ class TutorialManager {
         nextButtonLabel?.verticalAlignmentMode = .center
         nextButtonLabel?.zPosition = 202
         nextButtonLabel?.name = "tutorialNextButton"
-        nextButton?.addChild(nextButtonLabel!)
     }
     
     private func presentStep() {
-        guard let scene = scene else { return }
+        guard let scene = scene, let overlay = overlay, let calloutLabel = calloutLabel, let nextButton = nextButton, let nextButtonLabel = nextButtonLabel else { return }
         
         switch tutorialStep {
         case 0:
+            // Defer adding child nodes until they are needed
+            if calloutLabel.parent == nil { overlay.addChild(calloutLabel) }
+            if nextButton.parent == nil { overlay.addChild(nextButton) }
+            if nextButtonLabel.parent == nil { nextButton.addChild(nextButtonLabel) }
+            
             // Step 1: Single, Clear Instruction
-            scene.pauseBalls()
-            calloutLabel?.text = "First, keep track of the highlighted targets as they move."
-            calloutLabel?.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY + 100)
-            nextButton?.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY - 100)
-            nextButtonLabel?.text = "Start Practice"
-            nextButton?.isHidden = false
+            calloutLabel.text = "First, keep track of the highlighted targets as they move."
+            calloutLabel.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY + 100)
+            nextButton.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY - 100)
+            nextButtonLabel.text = "Start Practice"
+            nextButton.isHidden = false
         case 1:
             // Step 2: One Practice Round - Track Phase
-            calloutLabel?.isHidden = true
-            nextButton?.isHidden = true
-            scene.resumeBalls()
+            calloutLabel.isHidden = true
+            nextButton.isHidden = true
             let wait = SKAction.wait(forDuration: 5.0)
             let startIdentification = SKAction.run {
                 scene.startIdentificationPhase(isTutorial: true)
@@ -83,19 +88,19 @@ class TutorialManager {
             scene.run(SKAction.sequence([wait, startIdentification]))
         case 2:
             // Step 2: One Practice Round - Tap Phase (No-fail with visual timer)
-            calloutLabel?.text = "Now, tap the targets. In a real session, this timer will count down, but for this practice, it's paused. Take all the time you need."
-            calloutLabel?.isHidden = false
-            nextButton?.isHidden = true
+            calloutLabel.text = "Now, tap the targets. In a real session, this timer will count down, but for this practice, it's paused. Take all the time you need."
+            calloutLabel.isHidden = false
+            nextButton.isHidden = true
             // Note: We start the identification phase to show the timer visually, but don't call startIdentificationTimeout
             // so there's no actual timeout - the user can take as long as they need
         case 3:
             // Step 3: Reinforce the "Why" and transition
             scene.pauseBalls()
-            calloutLabel?.text = "Well done. The goal of this focus task is to prepare your mind for the guided breathing that follows. Ready to start your first session?"
-            calloutLabel?.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY + 100)
-            nextButton?.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY - 100)
-            nextButtonLabel?.text = "Start Session"
-            nextButton?.isHidden = false
+            calloutLabel.text = "Well done. The goal of this focus task is to prepare your mind for the guided breathing that follows. Ready to start your first session?"
+            calloutLabel.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY + 100)
+            nextButton.position = CGPoint(x: scene.frame.midX, y: scene.frame.midY - 100)
+            nextButtonLabel.text = "Start Session"
+            nextButton.isHidden = false
         default:
             endTutorial()
         }

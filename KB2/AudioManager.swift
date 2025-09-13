@@ -358,6 +358,9 @@ class AudioManager {
     }
 
     func handleAudioTick(visualTickTime: CFTimeInterval, currentArousal: CGFloat, currentTargetAudioFreq: Float, audioOffset: TimeInterval, sceneCurrentState: GameState) {
+        // Check if audio is globally enabled by the user
+        guard UserSettings.isAudioEnabled else { return }
+        
         // Only proceed if in a state that plays rhythmic audio
         guard (sceneCurrentState == .tracking || sceneCurrentState == .identifying || sceneCurrentState == .breathing) else { return }
         

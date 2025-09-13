@@ -259,7 +259,15 @@ class GameViewController: UIViewController {
         tutorialScene.tutorialMode = true
         tutorialScene.tutorialCompletionHandler = completion
         tutorialScene.scaleMode = .aspectFill
+        
+        // Present the scene.
         view.presentScene(tutorialScene, transition: SKTransition.fade(withDuration: 0.5))
+        
+        // After the transition, suspend VHA. This must be done via an action on the new scene.
+        let waitAction = SKAction.wait(forDuration: 0.5) // duration of the transition
+        let suspendAction = SKAction.run { tutorialScene.suspendVHA() }
+        tutorialScene.run(SKAction.sequence([waitAction, suspendAction]))
+        
         view.ignoresSiblingOrder = true
         view.showsFPS = true
         view.showsNodeCount = true
@@ -273,6 +281,9 @@ class GameViewController: UIViewController {
         
         // Clear the pending parameters
         pendingSessionParameters = nil
+        
+        // Resume VHA before starting the next phase, which might need it.
+        self.resumeVHA()
         
         // Now start the session flow with the stored parameters
         presentPreSessionEMAAndStartGame(

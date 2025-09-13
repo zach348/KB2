@@ -183,7 +183,7 @@ struct GameConfiguration {
     //====================================================================================================
     let usePreciseAudio: Bool = true // Feature flag for PreciseAudioPulser
     let minAudioFrequency: Float = 75.0 // Min frequency for rhythmic audio
-    let maxAudioFrequency: Float = 300.0 // Max frequency for rhythmic audio
+    let maxAudioFrequency: Float = 250.0 // Max frequency for rhythmic audio (reduced from 300.0 for less jarring experience)
     let audioMinAmplitude: Float = 0.15   // Min amplitude for audio pulse
     let audioMaxAmplitude: Float = 0.325   // Max amplitude for audio pulse
     let audioPulseRateFactor: Double = 0.8 // Factor to derive pulser rate from timer frequency
@@ -392,11 +392,39 @@ struct GameConfiguration {
     /// This preserves the current "on-ramp" approach for highly stressed users.
     let emaStressPacingArousalMax: CGFloat = 0.35
     
-    /// Multiplier to determine the starting arousal for the warmup ramp (e.g., 0.85 means start at 85% of the EMA-calculated target arousal).
-    let warmupArousalStartMultiplier: CGFloat = 0.8
+    /// Multiplier to determine the starting arousal for the warmup ramp (e.g., 0.6 means start at 60% of the EMA-calculated target arousal).
+    let warmupArousalStartMultiplier: CGFloat = 0.6
     
     /// Controls how quickly the arousal smooths towards its per-round target during the warmup ramp. Higher values mean faster smoothing.
     let warmupArousalSmoothingFactor: CGFloat = 0.005
+    
+    //====================================================================================================
+    // MARK: - FIRST SESSION ON-RAMP CONFIGURATION
+    //====================================================================================================
+    
+    /// Enables the special first session on-ramp system for completely new users
+    let enableFirstSessionOnRamp: Bool = true
+    
+    /// Starting arousal level for first session (just above breathing threshold to ensure tracking state)
+    let firstSessionStartingArousal: CGFloat = 0.36
+    
+    /// Duration of the sequential VHA introduction phase (in seconds)
+    let firstSessionVHAIntroductionDuration: TimeInterval = 15.0
+    
+    /// Duration of the slow arousal ramp phase after VHA introduction (in seconds) 
+    let firstSessionArousalRampDuration: TimeInterval = 50.0
+    
+    /// Visual pulse introduction timing (start time in seconds from session start)
+    let firstSessionVisualIntroductionStart: TimeInterval = 0.0
+    
+    /// Audio pulse introduction timing (start time in seconds from session start)
+    let firstSessionAudioIntroductionStart: TimeInterval = 5.0
+    
+    /// Haptic pulse introduction timing (start time in seconds from session start)
+    let firstSessionHapticIntroductionStart: TimeInterval = 10.0
+    
+    /// Smoothing factor for the first session arousal ramp (higher = faster transition)
+    let firstSessionArousalRampSmoothingFactor: CGFloat = 0.03
 
     // --- Session-Aware Adaptation (Phase 5) ---
     
