@@ -425,6 +425,20 @@ struct GameConfiguration {
     
     /// Smoothing factor for the first session arousal ramp (higher = faster transition)
     let firstSessionArousalRampSmoothingFactor: CGFloat = 0.03
+    
+    //====================================================================================================
+    // MARK: - REGULAR SESSION ON-RAMP CONFIGURATION
+    //====================================================================================================
+    
+    /// Enables a time-based on-ramp for regular (non-first) sessions.
+    let enableRegularSessionOnRamp: Bool = true
+    
+    /// Duration of the arousal ramp for regular sessions (in seconds).
+    let regularSessionOnRampDuration: TimeInterval = 25.0
+    
+    /// Time before the end of the ramp when the "Ready!" countdown appears.
+    let regularSessionCountdownDuration: TimeInterval = 5.0
+    
 
     // --- Session-Aware Adaptation (Phase 5) ---
     

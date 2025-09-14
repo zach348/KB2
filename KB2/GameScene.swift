@@ -118,12 +118,18 @@ internal var initialBreathingPacingArousal: CGFloat = 0.35 // Initial effective 
 internal var arousalAtBreathingStart: CGFloat = 0.35 // System arousal level when breathing phase began
 
     // --- ADDED: Warmup Ramp Properties ---
-    private var isWarmupRampActive: Bool = false
-    private var warmupRoundTargetArousal: CGFloat = 0.0
-    private var warmupRampIncrement: CGFloat = 0.0
+    private var isWarmupRampActive: Bool = false // DEPRECATED - Replaced by time-based on-ramp
+    private var warmupRoundTargetArousal: CGFloat = 0.0 // DEPRECATED
+    private var warmupRampIncrement: CGFloat = 0.0 // DEPRECATED
     private var warmupStartingArousal: CGFloat = 0.0
-    private var warmupSmoothingTargetArousal: CGFloat = 0.0
+    private var warmupSmoothingTargetArousal: CGFloat = 0.0 // DEPRECATED
     // --- END ADDED ---
+
+    // --- REGULAR SESSION ON-RAMP PROPERTIES ---
+    private var isRegularWarmupOnRampActive: Bool = false
+    private var regularWarmupStartTime: TimeInterval = 0
+    private var regularWarmupLockedTargetCount: Int = 0
+    // --- END REGULAR SESSION ON-RAMP PROPERTIES ---
 
     // --- FIRST SESSION ON-RAMP PROPERTIES ---
     private var isFirstSessionOnRampActive: Bool = false
@@ -1094,17 +1100,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
                 guard let self = self else { return }
                 
                 // MODIFIED: Use ADM phase as source of truth for warmup ramp management
-                if self.sessionMode && self.isWarmupRampActive {
-                    if adm.currentPhase == .warmup {
-                        // Still in warmup phase - advance to next round target
-                        self.advanceWarmupRampRound()
-                        print("WARMUP_RAMP: Advanced after identification round (Success: \(success))")
-                    } else if adm.currentPhase == .standard {
-                        // ADM has transitioned to standard phase - begin final smoothing to session target
-                        self.warmupSmoothingTargetArousal = self.targetArousalForWarmup
-                        print("WARMUP_RAMP: ADM phase changed to standard - smoothing to target \(String(format: "%.3f", self.warmupSmoothingTargetArousal))")
-                    }
-                }
+                // DEPRECATED: The old round-based warmup ramp has been replaced by a time-based on-ramp.
+                // This logic is no longer needed.
                 
                 // Explicitly force a DOM update after recording performance
                 // This ensures that changes to normalized positions are immediately
@@ -1490,6 +1487,15 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             return
         }
         
+        // REGULAR WARMUP FIX: Lock target count during regular session on-ramp
+        if isRegularWarmupOnRampActive {
+            if currentTargetCount != regularWarmupLockedTargetCount {
+                print("REGULAR_WARMUP: Locking target count to \(regularWarmupLockedTargetCount) (was \(currentTargetCount))")
+                currentTargetCount = regularWarmupLockedTargetCount
+            }
+            return
+        }
+        
         // Get current target count from ADM
         let targetCountFromADM: Int
         if let admTargetCount = self.adaptiveDifficultyManager?.currentTargetCount {
@@ -1550,88 +1556,114 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     /// Initializes the warmup ramp system when session mode is enabled
     private func initializeWarmupRamp() {
         guard sessionMode else { return }
-        
-        // Check if this is the user's first session and first session on-ramp is enabled
+
+        // Prioritize the special first-session on-ramp for new users
         if gameConfiguration.enableFirstSessionOnRamp && FirstRunManager.shared.sessionCount == 0 {
             initializeFirstSessionOnRamp()
             return
         }
         
-        // Calculate starting arousal (target * multiplier from config)
+        // Use the new time-based on-ramp for all other sessions if enabled
+        if gameConfiguration.enableRegularSessionOnRamp {
+            initializeRegularWarmupOnRamp()
+        } else {
+            // Fallback to original behavior if new on-ramp is disabled (no pre-session delay)
+            sessionStartTime = CACurrentMediaTime()
+        }
+    }
+
+    /// Initializes the time-based on-ramp for regular (non-first) sessions.
+    private func initializeRegularWarmupOnRamp() {
+        print("REGULAR_WARMUP: Initializing 25-second on-ramp...")
+
+        // Calculate the fixed target count for the duration of the ramp
+        let trackingRange = gameConfiguration.trackingArousalThresholdHigh - gameConfiguration.trackingArousalThresholdLow
+        let normalizedTargetArousal = max(0.0, min(1.0, (targetArousalForWarmup - gameConfiguration.trackingArousalThresholdLow) / trackingRange))
+        let targetCountRange = CGFloat(gameConfiguration.maxTargetsAtLowTrackingArousal - gameConfiguration.minTargetsAtHighTrackingArousal)
+        regularWarmupLockedTargetCount = gameConfiguration.minTargetsAtHighTrackingArousal + Int(targetCountRange * (1.0 - normalizedTargetArousal))
+        
+        // Set current target count immediately to the locked value
+        currentTargetCount = regularWarmupLockedTargetCount
+        
+        // Set starting arousal and VHA state
         warmupStartingArousal = targetArousalForWarmup * gameConfiguration.warmupArousalStartMultiplier
-        
-        // Calculate the number of warmup rounds from ADM
-        guard let adm = adaptiveDifficultyManager else {
-            print("WARMUP_RAMP: ERROR - ADM not initialized")
-            return
-        }
-        
-        // Get warmup phase length from ADM (calculated in ADM init based on session duration)
-        let expectedRounds = SessionAnalytics.estimateExpectedRounds(
-            forSessionDuration: sessionDuration,
-            config: gameConfiguration,
-            initialArousal: initialArousalLevel
-        )
-        let warmupRounds = Int(CGFloat(expectedRounds) * gameConfiguration.warmupPhaseProportion)
-        
-        guard warmupRounds > 0 else {
-            print("WARMUP_RAMP: No warmup rounds calculated - ramp disabled")
-            isWarmupRampActive = false
-            return
-        }
-        
-        // Calculate increment per round to reach target from starting point
-        warmupRampIncrement = (targetArousalForWarmup - warmupStartingArousal) / CGFloat(warmupRounds)
-        
-        // Set starting arousal and initialize first round target
         currentArousalLevel = warmupStartingArousal
-        warmupRoundTargetArousal = warmupStartingArousal + warmupRampIncrement
-        isWarmupRampActive = true
+        visualPulsesEnabled = true
+        audioPulsesEnabled = true
+        hapticPulsesEnabled = true
         
-        // Start session clock for regular sessions (not first sessions)
+        // Mark the ramp as active and record its start time
+        isRegularWarmupOnRampActive = true
+        regularWarmupStartTime = CACurrentMediaTime()
+        
+        // Show initial "Warming up..." label
+        updateFirstSessionGuideText("Warming up...")
+        
+        print("REGULAR_WARMUP: On-ramp initialized")
+        print("  - Starting arousal: \(String(format: "%.3f", currentArousalLevel))")
+        print("  - Target arousal: \(String(format: "%.3f", targetArousalForWarmup))")
+        print("  - Fixed target count: \(regularWarmupLockedTargetCount)")
+        print("  - Ramp duration: \(gameConfiguration.regularSessionOnRampDuration)s")
+    }
+
+    /// Updates arousal and UI during the regular session on-ramp. Called every frame.
+    private func updateRegularWarmupOnRamp(deltaTime: TimeInterval) {
+        guard isRegularWarmupOnRampActive else { return }
+
+        let elapsedTime = CACurrentMediaTime() - regularWarmupStartTime
+        
+        // Check if the ramp is complete
+        if elapsedTime >= gameConfiguration.regularSessionOnRampDuration {
+            completeRegularWarmupOnRamp()
+            return
+        }
+
+        // Calculate smooth arousal ramp
+        let rampProgress = elapsedTime / gameConfiguration.regularSessionOnRampDuration
+        let targetArousal = targetArousalForWarmup
+        let arousalDifference = targetArousal - warmupStartingArousal
+        let easedProgress = CGFloat(sin(rampProgress * .pi / 2)) // Sine ease-in for a smooth start
+        let targetCurrentArousal = warmupStartingArousal + (arousalDifference * easedProgress)
+        
+        // Apply smoothing to avoid jarring changes
+        let smoothingFactor = gameConfiguration.firstSessionArousalRampSmoothingFactor // Reuse smoothing factor
+        let arousalDiff = targetCurrentArousal - currentArousalLevel
+        if abs(arousalDiff) > 0.001 {
+            currentArousalLevel += arousalDiff * smoothingFactor
+        }
+        
+        // Update guide text to show countdown in the final seconds
+        let countdownDuration = gameConfiguration.regularSessionCountdownDuration
+        let secondsRemaining = gameConfiguration.regularSessionOnRampDuration - elapsedTime
+        if secondsRemaining <= countdownDuration && secondsRemaining > 0 {
+            updateFirstSessionGuideText("Ready!")
+            firstSessionCountdownLabel?.isHidden = false
+            firstSessionCountdownLabel?.text = "\(Int(ceil(secondsRemaining)))"
+        } else {
+            // Ensure "Warming up..." is visible and countdown is hidden otherwise
+            updateFirstSessionGuideText("Warming up...")
+            firstSessionCountdownLabel?.isHidden = true
+        }
+    }
+
+    /// Completes the regular on-ramp and transitions to the main session.
+    private func completeRegularWarmupOnRamp() {
+        print("REGULAR_WARMUP: On-ramp complete. Starting session.")
+        isRegularWarmupOnRampActive = false
+        
+        // Hide the guide labels
+        firstSessionGuideLabel?.isHidden = true
+        firstSessionCountdownLabel?.isHidden = true
+        
+        // Snap to the final target arousal
+        currentArousalLevel = targetArousalForWarmup
+        
+        // IMPORTANT: Start the main session clock NOW
         sessionStartTime = CACurrentMediaTime()
         
-        print("WARMUP_RAMP: Initialized")
-        print("  - Target arousal: \(String(format: "%.3f", targetArousalForWarmup))")
-        print("  - Starting arousal: \(String(format: "%.3f", warmupStartingArousal))")
-        print("  - Warmup rounds: \(warmupRounds)")
-        print("  - Increment per round: \(String(format: "%.3f", warmupRampIncrement))")
-        print("  - First round target: \(String(format: "%.3f", warmupRoundTargetArousal))")
-        print("  - Session clock started at: \(String(format: "%.2f", sessionStartTime))")
-    }
-    
-    /// Advances the warmup ramp to the next round target - called after each identification round during warmup
-    private func advanceWarmupRampRound() {
-        guard isWarmupRampActive else { return }
-        
-        // Move to next round target
-        warmupRoundTargetArousal = min(targetArousalForWarmup, warmupRoundTargetArousal + warmupRampIncrement)
-        
-        print("WARMUP_RAMP: Advanced to round target \(String(format: "%.3f", warmupRoundTargetArousal))")
-    }
-    
-    /// Updates arousal smoothly toward the current round target - called per-frame during warmup
-    private func updateWarmupRampSmoothing(deltaTime: TimeInterval) {
-        guard isWarmupRampActive else { return }
-        guard let adm = adaptiveDifficultyManager else { return }
-        
-        let targetArousal: CGFloat
-        if adm.currentPhase == .warmup {
-            // Still in warmup - smooth toward round target
-            targetArousal = warmupRoundTargetArousal
-        } else {
-            // Transitioned to standard phase - smooth toward final session target
-            targetArousal = warmupSmoothingTargetArousal
-        }
-        
-        let arousalDifference = targetArousal - currentArousalLevel
-        
-        // Only apply smoothing if there's a meaningful difference
-        if abs(arousalDifference) > 0.001 {
-            // Use smoothing factor from config for per-frame interpolation
-            let smoothingStep = arousalDifference * gameConfiguration.warmupArousalSmoothingFactor
-            currentArousalLevel += smoothingStep
-        }
+        // Reset tracking timers for a smooth transition into the main session
+        startTrackingTimers()
+        identificationCheckNeeded = false
     }
 
     //====================================================================================================
@@ -2691,21 +2723,14 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             updateArousalForSession()
         }
         
-        // ADDED: Update warmup ramp smoothing per-frame during warmup phase
-        if sessionMode && isWarmupRampActive {
-            updateWarmupRampSmoothing(deltaTime: dt)
-            
-            // Check if final warmup smoothing is complete
-            if let adm = adaptiveDifficultyManager, adm.currentPhase == .standard && 
-               abs(currentArousalLevel - warmupSmoothingTargetArousal) < 0.005 {
-                isWarmupRampActive = false
-                print("WARMUP_RAMP: Smoothing complete. Handoff to main session arousal logic.")
-            }
-        }
-        
         // ADDED: Update first session on-ramp per-frame during arousal ramp phase
         if sessionMode && isFirstSessionOnRampActive {
             updateFirstSessionArousalRamp(deltaTime: dt)
+        }
+        
+        // ADDED: Update regular session on-ramp per-frame
+        if sessionMode && isRegularWarmupOnRampActive {
+            updateRegularWarmupOnRamp(deltaTime: dt)
         }
 
         if currentState == .tracking {
@@ -2924,8 +2949,8 @@ private var isSessionCompleted = false // Added to prevent multiple completions
     private func updateArousalForSession() {
         guard sessionMode, !isSessionCompleted else { return } // Do not update if session is already completed
         
-        // Exit if warmup ramp is active - let it control arousal exclusively
-        guard !isWarmupRampActive else { return }
+        // Exit if a warmup ramp is active - let it control arousal exclusively
+        guard !isWarmupRampActive && !isRegularWarmupOnRampActive else { return }
         
         // Exit if first session on-ramp is active - let it control arousal exclusively
         guard !isFirstSessionOnRampActive else { return }
