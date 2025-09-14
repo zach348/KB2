@@ -952,14 +952,15 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let waitBeforeCountdown = SKAction.wait(forDuration: gameConfiguration.identificationStartDelay)
         
         if isTutorial {
-            // TUTORIAL MODE: Show static timer without countdown
-            let showStaticTimerAction = SKAction.run { [weak self] in 
+            // TUTORIAL MODE: Show a static timer that does not count down.
+            let showStaticTimerAction = SKAction.run { [weak self] in
                 guard let self = self else { return }
-                // Show static timer display with full time
+                // Set the label to show the full time, making it clear that it's a timed task in principle.
                 self.countdownLabel.text = String(format: "Time: %.1f", self.currentIdentificationDuration)
                 self.countdownLabel.isHidden = false
-                // No timeout action - timer is purely visual
+                // Crucially, we do NOT start the startIdentificationTimeout action, so the timer remains static.
             }
+            // Run the action to show the label after a brief delay.
             self.run(SKAction.sequence([waitBeforeCountdown, showStaticTimerAction]))
         } else {
             // NORMAL MODE: Start countdown timer
@@ -1723,7 +1724,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let audioIntroAction = SKAction.wait(forDuration: gameConfiguration.firstSessionAudioIntroductionStart)
         let enableAudioAction = SKAction.run { [weak self] in
             self?.audioPulsesEnabled = true
-            self?.updateFirstSessionGuideText("Listen to the sound...")
+            self?.updateFirstSessionGuideText("Listen to the tones...")
             print("FIRST_SESSION: Audio pulses enabled at \(String(format: "%.1f", CACurrentMediaTime() - (self?.firstSessionStartTime ?? 0)))s")
         }
         
@@ -1731,7 +1732,7 @@ private var isSessionCompleted = false // Added to prevent multiple completions
         let hapticIntroAction = SKAction.wait(forDuration: gameConfiguration.firstSessionHapticIntroductionStart)
         let enableHapticsAction = SKAction.run { [weak self] in
             self?.hapticPulsesEnabled = true
-            self?.updateFirstSessionGuideText("Feel the vibration...")
+            self?.updateFirstSessionGuideText("Feel the vibrations...")
             print("FIRST_SESSION: Haptic pulses enabled at \(String(format: "%.1f", CACurrentMediaTime() - (self?.firstSessionStartTime ?? 0)))s")
         }
         
