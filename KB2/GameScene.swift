@@ -3542,6 +3542,16 @@ private var isSessionCompleted = false // Added to prevent multiple completions
             print("DEBUG: handleSessionCompletion called but session already marked as completed.")
             return
         }
+        
+        // --- ACHIEVEMENT FIX: Record final breathing state time ---
+        // If the session ends while the user is in the breathing state, we need to manually
+        // record the exit to ensure the duration is counted towards Zen achievements.
+        if currentState == .breathing {
+            AchievementManager.shared.recordBreathingStateExited()
+            print("ACHIEVEMENT_FIX: Session ended in breathing state. Final breathing duration recorded.")
+        }
+        // --- END ACHIEVEMENT FIX ---
+        
         isSessionCompleted = true // Mark as completed to prevent multiple calls
 
         print("--- Session Completed ---")
