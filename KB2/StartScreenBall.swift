@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // KB2/StartScreenBall.swift
 // A simplified ball graphic for the start screen with responsive sizing
 

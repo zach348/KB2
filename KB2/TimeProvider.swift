@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 //
 //  TimeProvider.swift
 //  KB2

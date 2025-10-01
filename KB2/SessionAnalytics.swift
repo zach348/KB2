@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 import Foundation
 
 /// SessionAnalytics provides calculations for session-related metrics

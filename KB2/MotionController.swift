@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // Kalibrate/MotionController.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Step 8: Added circlePoints function (COMPLETE FILE)

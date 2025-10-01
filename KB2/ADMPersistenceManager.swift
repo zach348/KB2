@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // Kalibrate/ADMPersistenceManager.swift
 // Created: 6/21/2025
 // Role: Manages persistence of ADM state across sessions

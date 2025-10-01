@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // KB2/PreciseAudioPulser.swift
 // Created: [Current Date]
 // Role: Provides sample-accurate audio synthesis with precise isochronic pulsing capabilities.

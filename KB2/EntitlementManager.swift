@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // KB2/EntitlementManager.swift
 // Centralized entitlement logic: active subscription OR 7-day trial window
 

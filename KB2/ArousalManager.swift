@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // KB2/ArousalManager.swift
 // Created: [Current Date]
 // Role: Manages arousal levels and associated parameter calculations

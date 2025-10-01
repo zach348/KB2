@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // KB2/PrecisionTimer.swift
 // Created: [Current Date]
 // Role: Provides a high-precision timer synchronized with screen refresh (CADisplayLink)

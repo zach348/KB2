@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // Kalibrate/AdaptiveDifficultyManager.swift
 // Created: [Current Date]
 // Role: Manages adaptive difficulty based on Key Performance Indicators (KPIs) and arousal levels.

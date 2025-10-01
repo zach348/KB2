@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // KB2/VHAManager.swift
 // Created: [Current Date]
 // Role: Manages Visual, Haptic, and Audio (VHA) stimulation systems

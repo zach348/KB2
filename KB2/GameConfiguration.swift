@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // Kalibrate/GameConfiguration.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Added Adaptive Difficulty Manager Configuration

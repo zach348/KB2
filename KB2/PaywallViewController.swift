@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 import UIKit
 
 protocol PaywallViewControllerDelegate: AnyObject {

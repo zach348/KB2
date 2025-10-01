@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // Kalibrate/Ball.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Step 11 FIX 9: Added isVisuallyHidden flag

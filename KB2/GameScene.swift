@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // Kalibrate/GameScene.swift
 // Created: [Previous Date]
 // Updated: [Current Date] - Step 13 - Refactoring Preparation

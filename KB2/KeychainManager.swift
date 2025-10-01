@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // KB2/KeychainManager.swift
 // Minimal Keychain wrapper for storing small values (e.g., trial_start_date)
 

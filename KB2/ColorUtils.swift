@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // Kalibrate/ColorUtils.swift
 // Created: [Current Date]
 // Role: Utility functions for color manipulation and metrics.

@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 import AVFoundation
 import SpriteKit // For CGFloat if used by helper methods, though aiming for AVFoundation focus.
 

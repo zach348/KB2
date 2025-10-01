@@ -1,3 +1,4 @@
+// Copyright 2025 Training State, LLC. All rights reserved.
 // KB2/SecondSessionPromptView.swift
 import SwiftUI
 
